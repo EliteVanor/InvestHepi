@@ -68,20 +68,30 @@ function App() {
     loadInterests();
   }, [ready, needPassword, loadDigest, loadCalendar, loadInterests]);
 
-  // Snapshot which headlines are new for each digest (first visit ever: nothing is "new").
+  // First visit ever on this device: start with everything read, in every section.
+  const firstVisit = useRef<boolean | null>(null);
   useEffect(() => {
-    setNewSnap((prev) => {
-      let changed = false;
-      const next = { ...prev };
-      for (const s of SECTION_IDS) {
-        const d = digests[s];
-        if (!d || prev[s]?.at === d.generatedAt) continue;
-        const ids = seen.size === 0 ? new Set<string>() : new Set(d.news.filter((n) => !seen.has(n.id)).map((n) => n.id));
-        next[s] = { at: d.generatedAt, ids };
-        changed = true;
-      }
-      return changed ? next : prev;
-    });
+    if (ready && firstVisit.current === null) firstVisit.current = seen.size === 0;
+  }, [ready, seen]);
+
+  // Snapshot which headlines are new for each digest.
+  const snapRef = useRef(newSnap);
+  snapRef.current = newSnap;
+  useEffect(() => {
+    const prev = snapRef.current;
+    const next = { ...prev };
+    const toMark: string[] = [];
+    let changed = false;
+    for (const s of SECTION_IDS) {
+      const d = digests[s];
+      if (!d || prev[s]?.at === d.generatedAt) continue;
+      const fresh = prev[s] === undefined && firstVisit.current;
+      next[s] = { at: d.generatedAt, ids: fresh ? new Set<string>() : new Set(d.news.filter((n) => !seen.has(n.id)).map((n) => n.id)) };
+      if (fresh) toMark.push(...d.news.map((n) => n.id));
+      changed = true;
+    }
+    if (changed) setNewSnap(next);
+    if (toMark.length) markSeen(toMark);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [digests]);
 
@@ -96,7 +106,7 @@ function App() {
   const badge = (s: SectionId) => {
     if (s === tab) return newSnap[s]?.ids.size ?? 0;
     const d = digests[s];
-    if (!d || seen.size === 0) return 0;
+    if (!d) return 0;
     return d.news.filter((n) => !seen.has(n.id)).length;
   };
 

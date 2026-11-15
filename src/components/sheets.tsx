@@ -29,7 +29,7 @@ export function SettingsSheet({
     <Sheet title={t("set.title")} onClose={onClose}>
       <div className="segmented" role="tablist" style={{ width: "100%", display: "flex" }}>
         {tabs.map(([id, key]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{ flex: 1, padding: "6px 4px" }}>
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{ flex: 1, padding: "6px 4px" }} className={id === "shortcuts" ? "desktop-only" : undefined}>
             {t(key)}
           </button>
         ))}
