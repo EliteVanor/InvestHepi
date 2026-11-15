@@ -1,0 +1,3 @@
+{
+  "crons": [{ "path": "/api/refresh?section=interests", "schedule": "40 12 * * 1-5" }]
+}

@@ -1,0 +1,116 @@
+export type SectionId = "interests" | "world" | "us";
+
+export const SECTIONS: { id: SectionId; label: string; blurb: string }[] = [
+  { id: "interests", label: "My Interests", blurb: "News about the markets and stocks you follow" },
+  { id: "world", label: "World", blurb: "Global events that move markets" },
+  { id: "us", label: "US", blurb: "US politics, economy and policy" },
+];
+
+/** Something the user follows, e.g. "Semiconductors". */
+export interface Interest {
+  id: string;
+  name: string;
+  /** Search phrase for news feeds, e.g. "semiconductor OR chip stocks". */
+  query: string;
+  /** Tickers used for prices and grading. First one is the "benchmark" used for track record. */
+  tickers: string[];
+}
+
+export interface NewsItem {
+  id: string;
+  title: string;
+  link: string;
+  source: string;
+  publishedAt: string; // ISO
+  summary?: string;
+  /** Interest ids this item matched (only for the interests section). */
+  tags?: string[];
+}
+
+export interface Quote {
+  symbol: string;
+  price: number;
+  prevClose: number;
+  changePct: number;
+  /** Daily closes, oldest first: [isoDate, close] */
+  history: [string, number][];
+  source: "yahoo" | "stooq";
+}
+
+export type Direction = "up" | "down" | "flat";
+export type Action = "BUY" | "ADD" | "HOLD" | "WAIT" | "TRIM" | "SELL" | "AVOID";
+
+export interface Impact {
+  interest: string;
+  direction: Direction;
+  magnitude: "small" | "moderate" | "large";
+  confidence: number; // 0-100
+  reasoning: string;
+}
+
+export interface Analog {
+  event: string;
+  date: string;
+  whatHappenedNext: string;
+}
+
+export interface KeyEvent {
+  title: string;
+  whatHappened: string;
+  whyItMatters: string;
+  importance: number; // 1-5
+  sourceIds: number[];
+  impacts: Impact[];
+  analog: Analog | null;
+  whatCouldGoWrong: string;
+}
+
+export interface Outlook {
+  interest: string;
+  ticker: string;
+  direction: Direction;
+  confidence: number; // 0-100
+  horizon: "today" | "this week";
+  action: Action;
+  actionTrigger: string;
+  rationale: string;
+  risks: string;
+}
+
+export interface Analysis {
+  headline: string;
+  mood: "risk-on" | "risk-off" | "mixed";
+  summary: string[];
+  events: KeyEvent[];
+  outlook: Outlook[];
+  watchNext: string[];
+}
+
+export interface Digest {
+  section: SectionId;
+  generatedAt: string;
+  provider: string; // e.g. "groq:openai/gpt-oss-120b" or "rules"
+  providerNote?: string;
+  analysis: Analysis;
+  news: NewsItem[];
+  quotes: Quote[];
+  feedErrors: string[];
+}
+
+/** A logged call, graded later against real prices. */
+export interface Call {
+  id: string; // `${date}:${ticker}`
+  date: string; // US/Eastern trading date the call is for (YYYY-MM-DD)
+  madeAt: string; // ISO
+  interest: string;
+  ticker: string;
+  direction: Direction;
+  confidence: number;
+  action: Action;
+  provider: string;
+  baseClose?: number; // previous close at time of call
+  outcomeClose?: number;
+  returnPct?: number;
+  correct?: boolean;
+  gradedAt?: string;
+}
