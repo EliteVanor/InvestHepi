@@ -9,9 +9,10 @@ import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, mer
 import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
 import type { MsgKey } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
-import type { CalendarEvent, Digest, Holding, Interest, SectionId } from "@/lib/types";
+import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type SectionId } from "@/lib/types";
+import { AccountButton, AccountCtx, SignInCard, SignInSheet, type Account } from "@/components/account";
 
-const SECTION_IDS: SectionId[] = ["interests", "world", "us"];
+const SECTION_IDS: SectionId[] = ALL_SECTIONS;
 const TAB_KEY = "ih-tab";
 
 export default function Page() {
@@ -44,6 +45,13 @@ function App() {
   const [holdings, setHoldings] = useState<Holding[]>([]);
   // Guests (VIEWER_PASSWORD) get a read-only view. The server enforces it; this just hides controls.
   const [readOnly, setReadOnly] = useState(false);
+  const [account, setAccount] = useState<Account>({ mode: "single", user: null, admin: false });
+  const [signIn, setSignIn] = useState(false);
+  useEffect(() => {
+    const on = () => setSignIn(true);
+    window.addEventListener("ih-signin", on);
+    return () => window.removeEventListener("ih-signin", on);
+  }, []);
   const [titleHidden, setTitleHidden] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const toast = useToast();
@@ -85,10 +93,11 @@ function App() {
 
   const loadDigest = useCallback(
     async (s: SectionId) => {
-      const j = await api<{ digest: Digest | null }>(`/api/digest?section=${s}`);
+      // ?lang= lets signed-out visitors read shared sections in their language.
+      const j = await api<{ digest: Digest | null }>(`/api/digest?section=${s}&lang=${lang}`);
       setDigests((d) => ({ ...d, [s]: j.digest }));
     },
-    [api],
+    [api, lang],
   );
   const loadCalendar = useCallback(() => api<{ events: CalendarEvent[]; notes: string[] }>("/api/calendar").then(setCalendar).catch(() => {}), [api]);
   const loadInterests = useCallback(() => api<{ interests: Interest[] }>("/api/interests").then((j) => setInterests(j.interests)).catch(() => {}), [api]);
@@ -97,17 +106,17 @@ function App() {
   useEffect(() => {
     if (!ready || needPassword) return;
     Promise.all(SECTION_IDS.map((s) => loadDigest(s))).catch((e) => {
-      if ((e as Error).message !== "401") setError((e as Error).message);
+      if (!["401", "signin"].includes((e as Error).message)) setError((e as Error).message);
     });
     loadCalendar();
     loadInterests();
-    api<{ role?: "owner" | "viewer" | null }>("/api/status")
-      .then((j) => {
-        const viewer = j.role === "viewer";
-        setReadOnly(viewer);
-        if (!viewer) api<{ holdings: Holding[] }>("/api/portfolio").then((h) => setHoldings(h.holdings)).catch(() => {});
-      })
-      .catch(() => {});
+    Promise.all([api<Account>("/api/me").catch(() => null), api<{ role?: "owner" | "viewer" | null }>("/api/status").catch(() => null)]).then(([me, st]) => {
+      if (me) setAccount(me);
+      // Multi-user: visitors are read-only until they sign in. Single-user: guest password.
+      const viewer = me?.mode === "multi" ? !me.user : st?.role === "viewer";
+      setReadOnly(viewer);
+      if (!viewer) api<{ holdings: Holding[] }>("/api/portfolio").then((h) => setHoldings(h.holdings)).catch(() => {});
+    });
   }, [ready, needPassword, loadDigest, loadCalendar, loadInterests, api]);
 
   // First visit ever on this device: start with everything read, in every section.
@@ -164,7 +173,7 @@ function App() {
         await Promise.all([loadDigest(s), loadCalendar()]);
         if (!failed) toast(t("toast.updated"));
       } catch (e) {
-        if ((e as Error).message !== "401") setError((e as Error).message);
+        if (!["401", "signin"].includes((e as Error).message)) setError((e as Error).message);
       } finally {
         setRefreshing(null);
       }
@@ -267,7 +276,7 @@ function App() {
   );
 
   return (
-    <>
+    <AccountCtx.Provider value={account}>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -284,16 +293,17 @@ function App() {
             ))}
           </nav>
           <span className="spacer desktop-only" />
-          <button className="icon-btn" aria-label={t("sc.palette")} title={`${t("sc.palette")} (⌘K)`} onClick={() => setSheet({ kind: "palette" })}>
+          <button className="icon-btn desktop-only" aria-label={t("sc.palette")} title={`${t("sc.palette")} (⌘K)`} onClick={() => setSheet({ kind: "palette" })}>
             <IconSearch />
           </button>
           <button className="icon-btn" aria-label={t("nav.track")} title={`${t("nav.track")} (T)`} onClick={() => setSheet({ kind: "track" })}>
             <IconTarget />
           </button>
-          {readOnly && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
+          {readOnly && account.mode !== "multi" && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
           <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing} hidden={readOnly}>
             <IconRefresh className={refreshing ? "spin" : ""} />
           </button>
+          <AccountButton />
           <button className="icon-btn" aria-label={t("nav.settings")} title={t("nav.settings")} onClick={() => setSheet({ kind: "settings" })}>
             <IconGear />
           </button>
@@ -361,6 +371,7 @@ function App() {
                   <>
                     <MoodGaugeCard gauge={shown.gauge} />
                     {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
+                {isHome && readOnly && account.mode === "multi" && <SignInCard />}
                     <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
                     <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
                   </>
@@ -388,6 +399,7 @@ function App() {
               <aside className="rail">
                 <MoodGaugeCard gauge={shown.gauge} />
                 {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
+                {isHome && readOnly && account.mode === "multi" && <SignInCard />}
                 <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
                 <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
                 <UpNext events={calendar.events} notes={calendar.notes} />
@@ -409,7 +421,7 @@ function App() {
 
       <nav className="tabbar" role="tablist" aria-label="Sections">
         {SECTION_IDS.map((s) => {
-          const Icon = s === "interests" ? IconStar : s === "world" ? IconGlobe : IconFlag;
+          const Icon = s === "interests" ? IconStar : s === "world" ? IconGlobe : s === "vn" ? IconVn : IconFlag;
           return (
             <button key={s} role="tab" aria-selected={tab === s} onClick={() => switchTab(s)}>
               <Icon />
@@ -437,7 +449,8 @@ function App() {
         </button>
       )}
 
-      {needPassword && <PasswordSheet />}
+      {needPassword && account.mode !== "multi" && <PasswordSheet />}
+      {signIn && <SignInSheet onClose={() => setSignIn(false)} />}
       {sheet?.kind === "settings" && (
         <SettingsSheet
           readOnly={readOnly}
@@ -464,7 +477,16 @@ function App() {
         <CatchUp digest={shown} calendar={calendar.events} onClose={() => setSheet(null)} onAsk={() => setSheet({ kind: "ask" })} />
       )}
       {sheet?.kind === "palette" && <CommandPalette onClose={() => setSheet(null)} tickers={chartSymbols} actions={paletteActions} readOnly={readOnly} />}
-    </>
+    </AccountCtx.Provider>
+  );
+}
+
+function IconVn(p: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...p}>
+      <rect x="3" y="5" width="18" height="14" rx="2.5" />
+      <path d="m12 8.6 1 2.1 2.3.3-1.7 1.6.4 2.3-2-1.1-2 1.1.4-2.3-1.7-1.6 2.3-.3z" />
+    </svg>
   );
 }
 

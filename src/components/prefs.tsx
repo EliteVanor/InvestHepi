@@ -126,6 +126,12 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
       headers: { "Content-Type": "application/json", "x-app-password": encodeURIComponent(pwRef.current || lsGet<string>(K.pw, "")), ...(init?.headers ?? {}) },
     });
     if (res.status === 401) {
+      const body = (await res.clone().json().catch(() => ({}))) as { error?: string };
+      if (body.error === "signin") {
+        // Multi-user mode: this needs an account, so offer Google sign-in (not a password).
+        window.dispatchEvent(new Event("ih-signin"));
+        throw new Error("signin");
+      }
       setNeedPassword(true);
       throw new Error("401");
     }

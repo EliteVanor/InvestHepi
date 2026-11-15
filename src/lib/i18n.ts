@@ -375,6 +375,14 @@ const en = {
   "pw.network": "Couldn't reach the server. Check your connection and try again.",
   "ro.badge": "View only",
   "ro.hint": "Guest access: you can read the briefings but not change anything.",
+  "sec.vn": "Vietnam",
+  "sec.vn.blurb": "Vietnam's stock market and economy",
+  "auth.signin": "Sign in with Google",
+  "auth.signout": "Sign out",
+  "auth.title": "Sign in to make it yours",
+  "auth.body": "Free. Follow your own stocks, get a personal AI briefing, track holdings, receive email alerts and ask the AI follow-up questions.",
+  "auth.short": "Sign in",
+  "int.vnPreset": "Add Vietnam stocks",
 };
 
 export type MsgKey = keyof typeof en;
@@ -751,6 +759,14 @@ const vi: Dict = {
   "pw.network": "Không kết nối được máy chủ. Kiểm tra kết nối rồi thử lại.",
   "ro.badge": "Chỉ xem",
   "ro.hint": "Quyền khách: bạn có thể đọc bản tin nhưng không thay đổi gì.",
+  "sec.vn": "Việt Nam",
+  "sec.vn.blurb": "Thị trường chứng khoán và kinh tế Việt Nam",
+  "auth.signin": "Đăng nhập bằng Google",
+  "auth.signout": "Đăng xuất",
+  "auth.title": "Đăng nhập để cá nhân hóa",
+  "auth.body": "Miễn phí. Theo dõi cổ phiếu của riêng bạn, nhận bản tin AI cá nhân, quản lý danh mục, nhận cảnh báo qua email và đặt câu hỏi cho AI.",
+  "auth.short": "Đăng nhập",
+  "int.vnPreset": "Thêm cổ phiếu Việt Nam",
 };
 
 const zh: Dict = {
@@ -1124,6 +1140,14 @@ const zh: Dict = {
   "pw.network": "无法连接服务器。请检查网络后重试。",
   "ro.badge": "仅查看",
   "ro.hint": "访客权限：可以阅读简报，但不能修改任何内容。",
+  "sec.vn": "越南",
+  "sec.vn.blurb": "越南股市与经济",
+  "auth.signin": "使用 Google 登录",
+  "auth.signout": "退出登录",
+  "auth.title": "登录以个性化",
+  "auth.body": "免费。关注你自己的股票，获取个人 AI 简报，管理持仓，接收邮件提醒，并向 AI 提问。",
+  "auth.short": "登录",
+  "int.vnPreset": "添加越南股票",
 };
 
 const ja: Dict = {
@@ -1497,6 +1521,14 @@ const ja: Dict = {
   "pw.network": "サーバーに接続できません。接続を確認して、もう一度お試しください。",
   "ro.badge": "閲覧のみ",
   "ro.hint": "ゲストアクセス: ブリーフィングは読めますが、変更はできません。",
+  "sec.vn": "ベトナム",
+  "sec.vn.blurb": "ベトナムの株式市場と経済",
+  "auth.signin": "Google でログイン",
+  "auth.signout": "ログアウト",
+  "auth.title": "ログインしてカスタマイズ",
+  "auth.body": "無料。自分の銘柄をフォローし、個人向け AI ブリーフィング、保有銘柄の管理、メール通知、AI への質問が使えます。",
+  "auth.short": "ログイン",
+  "int.vnPreset": "ベトナム株を追加",
 };
 
 const ko: Dict = {
@@ -1870,6 +1902,14 @@ const ko: Dict = {
   "pw.network": "서버에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
   "ro.badge": "보기 전용",
   "ro.hint": "게스트 권한: 브리핑은 볼 수 있지만 변경할 수는 없습니다.",
+  "sec.vn": "베트남",
+  "sec.vn.blurb": "베트남 증시와 경제",
+  "auth.signin": "Google로 로그인",
+  "auth.signout": "로그아웃",
+  "auth.title": "로그인하고 나만의 앱으로",
+  "auth.body": "무료. 내 종목을 팔로우하고, 개인 AI 브리핑, 보유 종목 관리, 이메일 알림, AI 질문을 이용하세요.",
+  "auth.short": "로그인",
+  "int.vnPreset": "베트남 주식 추가",
 };
 
 const es: Dict = {
@@ -2243,6 +2283,14 @@ const es: Dict = {
   "pw.network": "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.",
   "ro.badge": "Solo lectura",
   "ro.hint": "Acceso de invitado: puedes leer los resúmenes, pero no cambiar nada.",
+  "sec.vn": "Vietnam",
+  "sec.vn.blurb": "Bolsa y economía de Vietnam",
+  "auth.signin": "Iniciar sesión con Google",
+  "auth.signout": "Cerrar sesión",
+  "auth.title": "Inicia sesión para personalizarlo",
+  "auth.body": "Gratis. Sigue tus propias acciones, recibe un resumen de IA personal, controla tus posiciones, recibe alertas por email y pregunta a la IA.",
+  "auth.short": "Iniciar sesión",
+  "int.vnPreset": "Añadir acciones de Vietnam",
 };
 
 const fr: Dict = {
@@ -2616,6 +2664,14 @@ const fr: Dict = {
   "pw.network": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
   "ro.badge": "Lecture seule",
   "ro.hint": "Accès invité : vous pouvez lire les synthèses, mais pas les modifier.",
+  "sec.vn": "Vietnam",
+  "sec.vn.blurb": "Bourse et économie du Vietnam",
+  "auth.signin": "Se connecter avec Google",
+  "auth.signout": "Se déconnecter",
+  "auth.title": "Connectez-vous pour personnaliser",
+  "auth.body": "Gratuit. Suivez vos propres actions, recevez une synthèse IA personnelle, suivez vos positions, recevez des alertes e-mail et posez vos questions à l'IA.",
+  "auth.short": "Se connecter",
+  "int.vnPreset": "Ajouter des actions vietnamiennes",
 };
 
 const de: Dict = {
@@ -2989,6 +3045,14 @@ const de: Dict = {
   "pw.network": "Server nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
   "ro.badge": "Nur ansehen",
   "ro.hint": "Gastzugang: Du kannst die Briefings lesen, aber nichts ändern.",
+  "sec.vn": "Vietnam",
+  "sec.vn.blurb": "Vietnams Aktienmarkt und Wirtschaft",
+  "auth.signin": "Mit Google anmelden",
+  "auth.signout": "Abmelden",
+  "auth.title": "Anmelden und personalisieren",
+  "auth.body": "Kostenlos. Folge deinen eigenen Aktien, erhalte ein persönliches KI-Briefing, verwalte Bestände, bekomme E-Mail-Alerts und stelle der KI Fragen.",
+  "auth.short": "Anmelden",
+  "int.vnPreset": "Vietnam-Aktien hinzufügen",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

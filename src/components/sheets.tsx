@@ -7,12 +7,14 @@ import type { AlertSettings } from "@/lib/alerts";
 import type { ChartData } from "@/lib/chart";
 import { tickerMatcher } from "@/lib/tickers";
 import type { TrackStats } from "@/lib/track";
-import type { Call, Digest, Holding, Interest, Quote, SectionId, Settings } from "@/lib/types";
+import { SECTION_IDS, type Call, type Digest, type Holding, type Interest, type Quote, type SectionId, type Settings } from "@/lib/types";
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart } from "./LiveChart";
 import { Ring, Sheet, arrow, fmtPct, fmtPrice } from "./primitives";
 import { AlertsTab } from "./v3";
+import { useAccount } from "./account";
+import { VN_PRESET } from "@/lib/config";
 import { HoldingsEditor, TickerSearch, TrackExtras } from "./v4";
 
 /* -------------------------------------------------------------- Settings */
@@ -83,6 +85,7 @@ export function SettingsSheet({
 
 function GeneralTab({ onBriefingLangSaved }: { onBriefingLangSaved: () => void }) {
   const { t, theme, setTheme, lang, setLang, api, forgetPassword } = usePrefs();
+  const acc = useAccount();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [briefLang, setBriefLang] = useState<string>("en");
   const [saving, setSaving] = useState(false);
@@ -163,17 +166,19 @@ function GeneralTab({ onBriefingLangSaved }: { onBriefingLangSaved: () => void }
         )}
         {msg && <p className="hint ok">{msg}</p>}
       </div>
-      <div className="sheet-section">
-        <button
-          className="btn-plain"
-          onClick={() => {
-            forgetPassword();
-            location.reload();
-          }}
-        >
-          {t("set.signOut")}
-        </button>
-      </div>
+      {acc.mode !== "multi" && (
+        <div className="sheet-section">
+          <button
+            className="btn-plain"
+            onClick={() => {
+              forgetPassword();
+              location.reload();
+            }}
+          >
+            {t("set.signOut")}
+          </button>
+        </div>
+      )}
     </>
   );
 }
@@ -253,6 +258,11 @@ function InterestsTab({ onSaved }: { onSaved: () => void }) {
         <button className="btn-plain" onClick={() => setList(withText(defaults))}>
           {t("int.reset")}
         </button>
+        {!list.some((x) => x.id === VN_PRESET.id) && (
+          <button className="btn-plain" onClick={() => setList((l) => [...l, ...withText([VN_PRESET])])}>
+            🇻🇳 {t("int.vnPreset")}
+          </button>
+        )}
         <button className="btn-plain" onClick={() => setList((l) => [...l, { id: "", name: "", query: "", tickers: [], tickerText: "" }])}>
           <IconPlus width={15} height={15} style={{ verticalAlign: -2 }} /> {t("int.add")}
         </button>
@@ -316,7 +326,7 @@ function StatusTab() {
       <div className="sheet-section">
         <h3>{t("st.last")}</h3>
         <div className="group">
-          {(["interests", "world", "us"] as SectionId[]).map((sec) => {
+          {SECTION_IDS.map((sec) => {
             const l = s.lastRefresh[sec];
             return (
               <div className="row" key={sec}>

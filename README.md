@@ -99,8 +99,9 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
          ┌────────────────────────────────┼─────────────────────────────┐
          ▼                                ▼                             ▼
   News: Google News RSS per interest,  Prices: Yahoo chart API      Track record:
-  Yahoo per-ticker RSS, CNBC,          (Stooq fallback)             grade past calls
+  Yahoo per-ticker RSS, CNBC,          (Nasdaq, Stooq fallback)     grade past calls
   MarketWatch, BBC, NPR, Al Jazeera,
+  VnExpress, CafeF, Vietstock,
   optional Finnhub
          │  dedupe near-duplicate headlines, tag by interest
          ▼
@@ -134,6 +135,21 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
    Then in the app go to Settings → Alerts: turn alerts on, enter your email, press **Send test email**.
 6. **Turn on the scheduler**: GitHub repo → Settings → Secrets and variables → Actions → add `APP_URL` (your Vercel URL, e.g. `https://invest-helper-xyz.vercel.app`) and `CRON_SECRET` (same value as in Vercel). Run it once by hand from the Actions tab → "Refresh briefings" → Run workflow. A second workflow, "Price alerts", checks prices every 20 minutes during US market hours (no AI, ~600 of the 2,000 free monthly Action minutes on a private repo). Want it every minute? Create a free job at [cron-job.org](https://cron-job.org) that calls `GET https://YOUR-APP/api/alerts/check` with the header `Authorization: Bearer YOUR_CRON_SECRET`.
 7. Open the site, enter your password, and press **↻ Refresh** on any section.
+
+### Accounts for other people (optional, free)
+
+By default the app is just for you, behind `APP_PASSWORD`. To let anyone sign in with Google and get their own interests, holdings, alerts and personal briefing:
+
+1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → create a project → **OAuth consent screen** (External, add your app name and email) → **Credentials** → Create credentials → OAuth client ID → Web application.
+2. Authorized redirect URI: `https://YOUR-APP.vercel.app/api/auth/callback/google` (add `http://localhost:3000/api/auth/callback/google` too for local dev).
+3. In Vercel add `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET` (`openssl rand -base64 32`) and `OWNER_EMAIL` (your Google email, so you keep your current data and can force refreshes). Redeploy.
+4. While the consent screen is in "Testing", only test users you add can sign in (up to 100). Press **Publish app** when you want anyone in. Basic sign-in (email, name, picture) doesn't need Google's verification review.
+
+What changes:
+- Visitors can read everything without signing in (default interests, shared sections in their language). Saving interests, holdings, alerts, Ask AI and refresh need an account. The password prompt goes away.
+- World, US and Vietnam are generated once per language and shared by everyone. Personal briefings are shared too when interests and language match exactly, so 50 people on the defaults cost the same as one.
+- The scheduler refreshes the 2 stalest personal sets per call, 3 calls per run (6 sets, about 5x a day). Past roughly 6 distinct interest sets, briefings get refreshed less often, not more expensively. Raise the `INTEREST_ROUNDS` repo variable when you have the quota for it. Manual refresh has a cooldown (30 min shared, 5 min personal) to protect the free AI tier.
+- Actions minutes: each run is now about 7 minutes. Fine on a public repo (unlimited); on a private repo that plus price alerts is about 1,300 of the 2,000 free minutes.
 
 ### Adding Claude later
 
