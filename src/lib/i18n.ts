@@ -383,6 +383,8 @@ const en = {
   "auth.body": "Free. Follow your own stocks, get a personal AI briefing, track holdings, receive email alerts and ask the AI follow-up questions.",
   "auth.short": "Sign in",
   "int.vnPreset": "Add Vietnam stocks",
+  "mkt.break": "Lunch break",
+  "mkt.breakIn": "Lunch break in {t}",
 };
 
 export type MsgKey = keyof typeof en;
@@ -767,6 +769,8 @@ const vi: Dict = {
   "auth.body": "Miễn phí. Theo dõi cổ phiếu của riêng bạn, nhận bản tin AI cá nhân, quản lý danh mục, nhận cảnh báo qua email và đặt câu hỏi cho AI.",
   "auth.short": "Đăng nhập",
   "int.vnPreset": "Thêm cổ phiếu Việt Nam",
+  "mkt.break": "Nghỉ trưa",
+  "mkt.breakIn": "Nghỉ trưa sau {t}",
 };
 
 const zh: Dict = {
@@ -1148,6 +1152,8 @@ const zh: Dict = {
   "auth.body": "免费。关注你自己的股票，获取个人 AI 简报，管理持仓，接收邮件提醒，并向 AI 提问。",
   "auth.short": "登录",
   "int.vnPreset": "添加越南股票",
+  "mkt.break": "午间休市",
+  "mkt.breakIn": "{t}后午休",
 };
 
 const ja: Dict = {
@@ -1529,6 +1535,8 @@ const ja: Dict = {
   "auth.body": "無料。自分の銘柄をフォローし、個人向け AI ブリーフィング、保有銘柄の管理、メール通知、AI への質問が使えます。",
   "auth.short": "ログイン",
   "int.vnPreset": "ベトナム株を追加",
+  "mkt.break": "昼休み",
+  "mkt.breakIn": "あと{t}で昼休み",
 };
 
 const ko: Dict = {
@@ -1910,6 +1918,8 @@ const ko: Dict = {
   "auth.body": "무료. 내 종목을 팔로우하고, 개인 AI 브리핑, 보유 종목 관리, 이메일 알림, AI 질문을 이용하세요.",
   "auth.short": "로그인",
   "int.vnPreset": "베트남 주식 추가",
+  "mkt.break": "점심 휴장",
+  "mkt.breakIn": "{t} 후 점심 휴장",
 };
 
 const es: Dict = {
@@ -2291,6 +2301,8 @@ const es: Dict = {
   "auth.body": "Gratis. Sigue tus propias acciones, recibe un resumen de IA personal, controla tus posiciones, recibe alertas por email y pregunta a la IA.",
   "auth.short": "Iniciar sesión",
   "int.vnPreset": "Añadir acciones de Vietnam",
+  "mkt.break": "Pausa de mediodía",
+  "mkt.breakIn": "Pausa en {t}",
 };
 
 const fr: Dict = {
@@ -2672,6 +2684,8 @@ const fr: Dict = {
   "auth.body": "Gratuit. Suivez vos propres actions, recevez une synthèse IA personnelle, suivez vos positions, recevez des alertes e-mail et posez vos questions à l'IA.",
   "auth.short": "Se connecter",
   "int.vnPreset": "Ajouter des actions vietnamiennes",
+  "mkt.break": "Pause déjeuner",
+  "mkt.breakIn": "Pause dans {t}",
 };
 
 const de: Dict = {
@@ -3053,6 +3067,8 @@ const de: Dict = {
   "auth.body": "Kostenlos. Folge deinen eigenen Aktien, erhalte ein persönliches KI-Briefing, verwalte Bestände, bekomme E-Mail-Alerts und stelle der KI Fragen.",
   "auth.short": "Anmelden",
   "int.vnPreset": "Vietnam-Aktien hinzufügen",
+  "mkt.break": "Mittagspause",
+  "mkt.breakIn": "Mittagspause in {t}",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

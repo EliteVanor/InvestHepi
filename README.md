@@ -136,6 +136,12 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
 6. **Turn on the scheduler**: GitHub repo → Settings → Secrets and variables → Actions → add `APP_URL` (your Vercel URL, e.g. `https://invest-helper-xyz.vercel.app`) and `CRON_SECRET` (same value as in Vercel). Run it once by hand from the Actions tab → "Refresh briefings" → Run workflow. A second workflow, "Price alerts", checks prices every 20 minutes during US market hours (no AI, ~600 of the 2,000 free monthly Action minutes on a private repo). Want it every minute? Create a free job at [cron-job.org](https://cron-job.org) that calls `GET https://YOUR-APP/api/alerts/check` with the header `Authorization: Bearer YOUR_CRON_SECRET`.
 7. Open the site, enter your password, and press **↻ Refresh** on any section.
 
+### Vietnam tab
+
+A full briefing for the Vietnamese market, in the reader's language: headlines from VnExpress, CafeF, Vietstock, Tuổi Trẻ and Google News (Vietnamese and English), and a buy/hold/wait call with confidence, triggers and risks for VN-Index, banks, real estate, securities firms, tech & retail, and steel & industrials. The AI gets Vietnam-specific context: HOSE hours (ICT), State Bank of Vietnam policy, USD/VND, foreign flows, margin debt, the 7% daily limit. Calls are logged and graded like the others.
+
+Prices: Yahoo first (`FPT.VN`, `^VNINDEX.VN`), then the public TCBS and VNDirect endpoints, all free and keyless. They're unofficial, so any of them can change or block cloud servers; the chart shows which sources failed if all three do. The scheduler adds two Vietnam-only runs, before the HOSE open (8:15 ICT) and after the close (15:10 ICT). Holidays like Tet aren't modeled in the market clock.
+
 ### Accounts for other people (optional, free)
 
 By default the app is just for you, behind `APP_PASSWORD`. To let anyone sign in with Google and get their own interests, holdings, alerts and personal briefing:

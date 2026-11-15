@@ -322,7 +322,7 @@ function App() {
             <div className="eyebrow" suppressHydrationWarning>{dateStr}</div>
             <h1 className="large-title" ref={titleRef}>{t(`sec.${tab}` as MsgKey)}</h1>
           </div>
-          <StatusPill />
+          <StatusPill market={tab === "vn" ? "vn" : "us"} />
         </div>
 
         {shown && <MarketStrip quotes={liveQuotes} macro={liveMacro} onOpen={openTicker} />}
@@ -373,7 +373,7 @@ function App() {
                     {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                 {isHome && readOnly && account.mode === "multi" && <SignInCard />}
                     <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
-                    <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
+                    {tab !== "vn" && <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />}
                   </>
                 )}
                 <Events events={shown.analysis.events} news={shown.news} />
@@ -401,7 +401,7 @@ function App() {
                 {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                 {isHome && readOnly && account.mode === "multi" && <SignInCard />}
                 <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
-                <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
+                {tab !== "vn" && <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />}
                 <UpNext events={calendar.events} notes={calendar.notes} />
                 <WatchNext items={shown.analysis.watchNext} />
               </aside>

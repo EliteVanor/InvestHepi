@@ -10,6 +10,9 @@ on:
     - cron: "20 17 * * 1-5"   # midday
     - cron: "25 21 * * 1-5"   # after the close
     - cron: "35 22 * * 0"     # Sunday evening
+    # Vietnam only (ICT = UTC+7): before the HOSE open and after the close.
+    - cron: "15 1 * * 1-5"    # 8:15 ICT
+    - cron: "10 8 * * 1-5"    # 15:10 ICT
   workflow_dispatch: {}
 
 jobs:
@@ -22,6 +25,7 @@ jobs:
           APP_URL: ${{ secrets.APP_URL }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           INTEREST_ROUNDS: ${{ vars.INTEREST_ROUNDS }}
+          SCHEDULE: ${{ github.event.schedule }}
         run: |
           if [ -z "$APP_URL" ] || [ -z "$CRON_SECRET" ]; then
             echo "Set APP_URL and CRON_SECRET repo secrets to enable scheduled refreshes."; exit 0
@@ -33,6 +37,9 @@ jobs:
             echo
             sleep 65  # free LLM tiers limit tokens per minute; give each call a fresh minute
           }
+          if [ "$SCHEDULE" = "15 1 * * 1-5" ] || [ "$SCHEDULE" = "10 8 * * 1-5" ]; then
+            call vn; exit 0
+          fi
           # Shared sections: one briefing per language that active users read.
           for s in world us vn; do call $s; done
           # Personal briefings: each call refreshes the 2 stalest interest sets (users with the

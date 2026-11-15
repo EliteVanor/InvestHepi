@@ -11,7 +11,7 @@ import { SECTION_IDS, type Call, type Digest, type Holding, type Interest, type 
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart } from "./LiveChart";
-import { Ring, Sheet, arrow, fmtPct, fmtPrice } from "./primitives";
+import { Ring, Sheet, arrow, fmtPct, fmtPrice, symLabel } from "./primitives";
 import { AlertsTab } from "./v3";
 import { useAccount } from "./account";
 import { VN_PRESET } from "@/lib/config";
@@ -445,7 +445,7 @@ export function TrackSheet({ onClose }: { onClose: () => void }) {
                         {fmtDate(c.date)}
                         {c.id.endsWith(":w") ? ` (${t("track.week")})` : ""}
                       </td>
-                      <td style={{ fontWeight: 600 }}>{c.ticker}</td>
+                      <td style={{ fontWeight: 600 }}>{symLabel(c.ticker)}</td>
                       <td className={c.direction}>
                         {arrow(c.direction)} {t(`act.${c.action}` as MsgKey)}
                       </td>
@@ -510,7 +510,7 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symb
   };
 
   return (
-    <Sheet title={<span>{symbol}{cd?.name ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide>
+    <Sheet title={<span>{symLabel(symbol)}{cd?.name ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide>
       <LiveChart symbol={symbol} height={300} onData={(d) => d.range === "1d" && setCd(d)} />
       <div className="stats stats-5" style={{ marginTop: 14 }}>
         <div className="stat"><small>{t("tk.5d")}</small><b className={`num ${(chg5 ?? 0) >= 0 ? "up" : "down"}`}>{chg5 == null ? "–" : fmtPct(chg5, 1)}</b></div>

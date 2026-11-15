@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { afterRefresh } from "./alerts";
 import { getCalendar } from "./calendar";
 import { SECTORS } from "./chart";
-import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, SECTION_FEEDS, VN_INTEREST, VN_SYMBOLS } from "./config";
+import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, SECTION_FEEDS, VN_GROUPS, VN_SYMBOLS } from "./config";
 import { GUEST, OWNER, currentUid, ukey, withUser } from "./context";
 import { isLang } from "./languages";
 import { analyze } from "./llm";
@@ -149,16 +149,18 @@ interface MarketData {
 const MARKET_TTL_MS = 10 * 60_000;
 
 /** Prices, macro, sectors and technicals, shared across sections and users for 10 minutes. */
-async function marketData(symbols: string[]): Promise<MarketData> {
-  const key = [...new Set(symbols.map((s) => s.toUpperCase()))].sort().join(",");
+const VN_MACRO = ["VND=X"];
+
+async function marketData(symbols: string[], extraMacro: string[] = []): Promise<MarketData> {
+  const key = [...new Set(symbols.map((s) => s.toUpperCase()))].sort().join(",") + (extraMacro.length ? `|${extraMacro.join(",")}` : "");
   const slot = `market:${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
   const cached = await getJSON<MarketData>(slot).catch(() => null);
   if (cached && cached.key === key && Date.now() - cached.at < MARKET_TTL_MS && cached.quotes.length) return cached;
   const [quotes, macro, sectors, technicals] = await Promise.all([
     getQuotes(symbols),
-    getQuotes(MACRO.map((m) => m.symbol)),
+    getQuotes([...MACRO.map((m) => m.symbol), ...extraMacro]),
     getQuotes(SECTORS.map((x) => x.symbol)),
-    getTechnicals(symbols).catch(() => ({}) as Record<string, Technicals>),
+    getTechnicals(["SPY", ...symbols]).catch(() => ({}) as Record<string, Technicals>),
   ]);
   const data: MarketData = { key, at: Date.now(), quotes, macro, sectors, technicals };
   if (quotes.length) await setJSON(slot, data).catch(() => {});
@@ -177,13 +179,18 @@ interface BuildOptions {
   now: Date;
 }
 
+export const VN_CALLS = "calls:vn";
+
 async function buildDigest(o: BuildOptions): Promise<Digest> {
-  const symbols = [...BENCHMARKS, ...o.interests.flatMap((i) => i.tickers), ...(o.extraSymbols ?? [])];
+  // Vietnam: its own symbols lead the strip; US benchmarks stay for the global risk read.
+  const symbols = o.section === "vn"
+    ? [...(o.extraSymbols ?? []), ...o.interests.flatMap((i) => i.tickers), ...BENCHMARKS]
+    : [...BENCHMARKS, ...o.interests.flatMap((i) => i.tickers), ...(o.extraSymbols ?? [])];
   const [newsRes, market, calendar] = await Promise.all([
     o.section === "interests"
       ? fetchInterestNews(o.interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY)
       : fetchFeeds(SECTION_FEEDS[o.section]).then((r) => ({ items: dedupe(r.items), errors: r.errors })),
-    marketData(symbols),
+    marketData(symbols, o.section === "vn" ? VN_MACRO : []),
     getCalendar(o.interests).catch(() => ({ events: [], notes: [], generatedAt: o.now.toISOString() })),
   ]);
   const { quotes, macro, sectors, technicals } = market;
@@ -225,8 +232,13 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
 /** Refresh one shared section in one language. */
 export async function refreshShared(section: SectionId, lang: string, now = new Date()): Promise<Digest> {
   const isVn = section === "vn";
-  const interests = isVn ? [...DEFAULT_INTERESTS, VN_INTEREST] : DEFAULT_INTERESTS;
-  const d = await buildDigest({ section, interests, lang, callsKey: `calls:${interestHash(DEFAULT_INTERESTS, "en")}`, extraSymbols: isVn ? VN_SYMBOLS : [], now });
+  // Vietnam gets its own coverage (VN-Index + sector groups) and its own track record.
+  const interests = isVn ? VN_GROUPS : DEFAULT_INTERESTS;
+  const callsKey = isVn ? VN_CALLS : `calls:${interestHash(DEFAULT_INTERESTS, "en")}`;
+  if (isVn) await gradeCalls(now, callsKey).catch(() => 0);
+  const d = await buildDigest({ section, interests, lang, callsKey, extraSymbols: isVn ? VN_SYMBOLS : [], now });
+  // Calls are keyed by date + ticker + horizon, so refreshing in several languages doesn't double-count.
+  if (isVn) await recordCalls(d.analysis.outlook, interests, d.provider, now, callsKey).catch(() => {});
   const prefix = prefixFor(section, lang);
   await setJSON(prefix, d);
   await archive(prefix, d).catch(() => {});

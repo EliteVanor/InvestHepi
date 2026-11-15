@@ -2,6 +2,7 @@
  * Intraday + historical chart data from Yahoo's public chart endpoint (no key), with a
  * short in-memory cache so live polling doesn't hammer it. Long ranges fall back to Stooq daily.
  */
+import { isVnSymbol, tcbsBars, vndirectBars } from "./vnmarket";
 
 export type ChartRange = "1d" | "5d" | "1mo" | "6mo" | "1y";
 export const CHART_RANGES: ChartRange[] = ["1d", "5d", "1mo", "6mo", "1y"];
@@ -30,7 +31,7 @@ export interface ChartData {
   currency?: string;
   name?: string;
   asOf: number; // unix seconds of last trade
-  source: "yahoo" | "stooq";
+  source: "yahoo" | "stooq" | "tcbs" | "vndirect";
 }
 
 const INTERVAL: Record<ChartRange, string> = { "1d": "1m", "5d": "5m", "1mo": "60m", "6mo": "1d", "1y": "1d" };
@@ -180,16 +181,48 @@ async function stooqDaily(symbol: string, range: ChartRange): Promise<ChartData>
   return { symbol, range, bars, price: last.c, prevClose: prev.c, changePct: ((last.c - prev.c) / prev.c) * 100, asOf: last.t, source: "stooq" };
 }
 
+/** Vietnamese stocks and indexes from local public APIs (see vnmarket.ts). */
+async function vnChart(symbol: string, range: ChartRange, src: "tcbs" | "vndirect"): Promise<ChartData> {
+  const days = { "1d": 10, "5d": 10, "1mo": 25, "6mo": 130, "1y": 260 }[range];
+  let bars: Bar[];
+  if (src === "tcbs" && (range === "1d" || range === "5d")) {
+    const intraday = await tcbsBars(symbol, true, 0);
+    // 1D = the latest session only; 5D = the last 5 sessions of 5-minute bars.
+    const dayOf = (t: number) => new Date((t + 7 * 3600) * 1000).toISOString().slice(0, 10);
+    const sessions = [...new Set(intraday.map((b) => dayOf(b.t)))];
+    const keep = new Set(sessions.slice(range === "1d" ? -1 : -5));
+    bars = intraday.filter((b) => keep.has(dayOf(b.t)));
+    const daily = await tcbsBars(symbol, false, 10).catch(() => [] as Bar[]);
+    const lastDay = sessions.at(-1)!;
+    const prev = daily.filter((b) => dayOf(b.t) < lastDay).at(-1)?.c ?? bars[0].c;
+    const last = bars.at(-1)!;
+    return { symbol, range, bars, price: last.c, prevClose: prev, changePct: ((last.c - prev) / prev) * 100, asOf: last.t, currency: "VND", source: "tcbs" };
+  }
+  bars = src === "tcbs" ? await tcbsBars(symbol, false, days) : await vndirectBars(symbol, days);
+  if (range !== "1y") bars = bars.slice(-days);
+  const last = bars.at(-1)!;
+  const prev = bars.at(-2)!;
+  const hi = Math.max(...bars.map((b) => b.h ?? b.c));
+  const lo = Math.min(...bars.map((b) => b.l ?? b.c));
+  return { symbol, range, bars, price: last.c, prevClose: prev.c, changePct: ((last.c - prev.c) / prev.c) * 100, asOf: last.t, currency: "VND", source: src, ...(range === "1y" ? { fiftyTwoWeekHigh: hi, fiftyTwoWeekLow: lo } : {}) };
+}
+
 export async function getChart(symbol: string, range: ChartRange): Promise<ChartData> {
   const key = `${symbol}|${range}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS[range]) return hit.data;
   // Cloud IPs often get refused by one source, so try several in order and report every failure.
-  const sources: [string, () => Promise<ChartData>][] = [
-    ["yahoo", () => yahooChart(symbol, range)],
-    ["nasdaq", () => nasdaqChart(symbol, range)],
-    ["stooq", () => stooqDaily(symbol, range === "1d" || range === "5d" ? "1mo" : range)],
-  ];
+  const sources: [string, () => Promise<ChartData>][] = isVnSymbol(symbol)
+    ? [
+        ["yahoo", () => yahooChart(symbol, range)],
+        ["tcbs", () => vnChart(symbol, range, "tcbs")],
+        ["vndirect", () => vnChart(symbol, range, "vndirect")],
+      ]
+    : [
+        ["yahoo", () => yahooChart(symbol, range)],
+        ["nasdaq", () => nasdaqChart(symbol, range)],
+        ["stooq", () => stooqDaily(symbol, range === "1d" || range === "5d" ? "1mo" : range)],
+      ];
   const errors: string[] = [];
   for (const [, run] of sources) {
     try {
