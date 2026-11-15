@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { DEFAULT_ALERTS, loadAlertLog, loadAlertSettings, saveAlertSettings } from "@/lib/alerts";
-import { authorized, passwordRequired, unauthorized } from "@/lib/auth";
+import { authorized, passwordRequired, unauthorized, ownerOnly } from "@/lib/auth";
 import { emailProvider } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
@@ -31,12 +31,16 @@ const Settings = z.object({
 
 export async function GET(req: Request) {
   if (!authorized(req)) return unauthorized();
+  const ro = ownerOnly(req);
+  if (ro) return ro;
   const [settings, log] = await Promise.all([loadAlertSettings(), loadAlertLog()]);
   return Response.json({ settings, log: log.slice(0, 30), provider: emailProvider(), defaults: DEFAULT_ALERTS });
 }
 
 export async function PUT(req: Request) {
   if (!authorized(req)) return unauthorized();
+  const ro = ownerOnly(req);
+  if (ro) return ro;
   const locked = passwordRequired();
   if (locked) return locked;
 

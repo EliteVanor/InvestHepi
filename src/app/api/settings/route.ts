@@ -1,4 +1,4 @@
-import { authorized, passwordRequired, unauthorized } from "@/lib/auth";
+import { authorized, passwordRequired, unauthorized, ownerOnly } from "@/lib/auth";
 import { isLang } from "@/lib/languages";
 import { loadSettings, saveSettings } from "@/lib/pipeline";
 
@@ -11,6 +11,8 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   if (!authorized(req)) return unauthorized();
+  const ro = ownerOnly(req);
+  if (ro) return ro;
   const locked = passwordRequired();
   if (locked) return locked;
 

@@ -12,7 +12,28 @@ export function authorized(req: Request, { allowCron = false } = {}): boolean {
   // passwordRequired(), with a clear "set APP_PASSWORD" message instead of a 401 that would make
   // the browser ask for a password the server can't check.
   if (!pw) return true;
-  return passwordFrom(req) === pw;
+  return role(req) !== null;
+}
+
+export type Role = "owner" | "viewer";
+
+/**
+ * Who is calling. APP_PASSWORD = owner (full access). VIEWER_PASSWORD (optional) = guest:
+ * read-only briefings, no holdings, alerts, Ask AI, refresh or edits. No password configured = owner.
+ */
+export function role(req: Request): Role | null {
+  const pw = process.env.APP_PASSWORD?.trim();
+  if (!pw) return "owner";
+  const given = passwordFrom(req);
+  if (given === pw) return "owner";
+  const viewer = process.env.VIEWER_PASSWORD?.trim();
+  if (viewer && given === viewer) return "viewer";
+  return null;
+}
+
+/** 403 for guests on owner-only routes (403, not 401, so the browser doesn't re-ask for a password). */
+export function ownerOnly(req: Request): Response | null {
+  return role(req) === "viewer" ? Response.json({ error: "View-only access. Sign in with the owner password to do this." }, { status: 403 }) : null;
 }
 
 /** The browser sends the password URI-encoded so any character survives an HTTP header. */

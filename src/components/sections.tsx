@@ -413,7 +413,7 @@ export function WatchNext({ items }: { items: string[] }) {
 export function Headlines({
   digest, interests, newIds, onMarkRead, searchRef, onExplain,
 }: {
-  onExplain: (title: string) => void;
+  onExplain?: (title: string) => void;
   digest: Digest;
   interests: Interest[];
   newIds: Set<string>;
@@ -482,9 +482,11 @@ export function Headlines({
             {n.title}
           </a>
           <div className="news-actions">
-            <button className="save-btn" onClick={() => onExplain(n.title)} aria-label={t("news.explain")} title={t("news.explain")}>
-              <IconSparkles />
-            </button>
+            {onExplain && (
+              <button className="save-btn" onClick={() => onExplain(n.title)} aria-label={t("news.explain")} title={t("news.explain")}>
+                <IconSparkles />
+              </button>
+            )}
             <button className="save-btn" aria-pressed={isSaved(n.id)} onClick={() => toggleSaved(n)} aria-label={isSaved(n.id) ? t("news.unsave") : t("news.save")}>
               <IconBookmark filled={isSaved(n.id)} />
             </button>

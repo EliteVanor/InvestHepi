@@ -1,4 +1,4 @@
-import { authorized, isCron, passwordRequired, unauthorized } from "@/lib/auth";
+import { authorized, isCron, ownerOnly, passwordRequired, unauthorized } from "@/lib/auth";
 import { refreshAll } from "@/lib/pipeline";
 import { hit, limits } from "@/lib/ratelimit";
 import type { SectionId } from "@/lib/types";
@@ -9,6 +9,8 @@ export const maxDuration = 300;
 async function handle(req: Request) {
   if (!authorized(req, { allowCron: true })) return unauthorized();
   if (!isCron(req)) {
+    const ro = ownerOnly(req);
+    if (ro) return ro;
     const locked = passwordRequired();
     if (locked) return locked;
     const rl = await hit("refresh", limits.refresh());

@@ -1,4 +1,4 @@
-import { authorized, unauthorized } from "@/lib/auth";
+import { authorized, unauthorized, role } from "@/lib/auth";
 import { emailProvider } from "@/lib/email";
 import { providerChain } from "@/lib/llm";
 import { getJSON, storeKind } from "@/lib/store";
@@ -12,6 +12,7 @@ export async function GET(req: Request) {
     await Promise.all((["interests", "world", "us"] as const).map(async (s) => [s, await getJSON(`lastRefresh:${s}`)])),
   );
   return Response.json({
+    role: role(req),
     providers: providerChain().map((p) => p.id),
     store: storeKind,
     finnhub: Boolean(process.env.FINNHUB_API_KEY),

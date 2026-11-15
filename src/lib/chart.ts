@@ -86,11 +86,82 @@ export function parseYahooChart(j: unknown, symbol: string, range: ChartRange): 
   };
 }
 
+const YAHOO_HOSTS = ["query1.finance.yahoo.com", "query2.finance.yahoo.com"];
+
 async function yahooChart(symbol: string, range: ChartRange): Promise<ChartData> {
   const prepost = range === "1d" ? "&includePrePost=false" : "";
-  const res = await get(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${INTERVAL[range]}${prepost}`);
-  if (!res.ok) throw new Error(`yahoo ${res.status}`);
-  return parseYahooChart(await res.json(), symbol, range);
+  let last = "";
+  for (const host of YAHOO_HOSTS) {
+    const res = await get(`https://${host}/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${INTERVAL[range]}${prepost}`).catch((e) => e as Error);
+    if (res instanceof Error) {
+      last = `${host.split(".")[0]} ${res.message}`;
+      continue;
+    }
+    if (res.ok) return parseYahooChart(await res.json(), symbol, range);
+    last = `${host.split(".")[0]} ${res.status}`;
+  }
+  throw new Error(`yahoo: ${last}`);
+}
+
+/** Nasdaq's public quote API (US stocks and ETFs, no key). Prices come as "$123.45". */
+const nasdaqNum = (v: unknown) => Number(String(v ?? "").replace(/[$,%]/g, ""));
+const NASDAQ_HEADERS = { Accept: "application/json, text/plain, */*", Origin: "https://www.nasdaq.com", Referer: "https://www.nasdaq.com/" };
+
+async function nasdaqJson(path: string): Promise<{ data: unknown; cls: string }> {
+  let last = "";
+  for (const cls of ["stocks", "etf"]) {
+    const res = await fetch(`https://api.nasdaq.com/api/quote/${path}${path.includes("?") ? "&" : "?"}assetclass=${cls}`, { headers: { "User-Agent": UA, ...NASDAQ_HEADERS }, cache: "no-store", signal: AbortSignal.timeout(8000) });
+    if (!res.ok) {
+      last = String(res.status);
+      continue;
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const j: any = await res.json();
+    if (j?.data) return { data: j.data, cls };
+    last = "no data";
+  }
+  throw new Error(`nasdaq ${last}`);
+}
+
+/** Exported for tests. */
+export function parseNasdaqIntraday(d: unknown, symbol: string): ChartData {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = d as any;
+  const pts: { x: number; y: unknown }[] = data?.chart ?? [];
+  const bars: Bar[] = pts
+    .map((p) => ({ t: Math.floor(Number(p.x) / 1000), c: nasdaqNum(p.y) }))
+    .filter((p) => p.t > 0 && p.c > 0)
+    .map((p) => ({ t: p.t, o: p.c, h: p.c, l: p.c, c: p.c, v: 0 }));
+  if (bars.length < 2) throw new Error("nasdaq: no intraday data");
+  const price = nasdaqNum(data?.lastSalePrice) || bars.at(-1)!.c;
+  const prevClose = nasdaqNum(data?.previousClose) || bars[0].c;
+  return { symbol, range: "1d", bars, price, prevClose, changePct: ((price - prevClose) / prevClose) * 100, asOf: bars.at(-1)!.t, source: "yahoo" };
+}
+
+/** Exported for tests. */
+export function parseNasdaqHistorical(d: unknown, symbol: string, range: ChartRange): ChartData {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows: any[] = (d as any)?.tradesTable?.rows ?? [];
+  const bars: Bar[] = rows
+    .map((r) => {
+      const [m, day, y] = String(r.date).split("/").map(Number);
+      const c = nasdaqNum(r.close);
+      return { t: Math.floor(Date.UTC(y, m - 1, day, 21) / 1000), o: nasdaqNum(r.open) || c, h: nasdaqNum(r.high) || c, l: nasdaqNum(r.low) || c, c, v: nasdaqNum(r.volume) };
+    })
+    .filter((b) => b.c > 0 && Number.isFinite(b.t))
+    .sort((a, b) => a.t - b.t);
+  if (bars.length < 2) throw new Error("nasdaq: no history");
+  const last = bars.at(-1)!;
+  return { symbol, range, bars, price: last.c, prevClose: bars.at(-2)!.c, changePct: ((last.c - bars.at(-2)!.c) / bars.at(-2)!.c) * 100, asOf: last.t, source: "stooq" };
+}
+
+async function nasdaqChart(symbol: string, range: ChartRange): Promise<ChartData> {
+  if (/[=^]|-USD$|\./.test(symbol)) throw new Error("nasdaq: unsupported symbol");
+  if (range === "1d") return parseNasdaqIntraday((await nasdaqJson(`${encodeURIComponent(symbol)}/chart`)).data, symbol);
+  const days = { "5d": 10, "1mo": 35, "6mo": 190, "1y": 370 }[range];
+  const from = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
+  const d = await nasdaqJson(`${encodeURIComponent(symbol)}/historical?fromdate=${from}&limit=400`);
+  return parseNasdaqHistorical(d.data, symbol, range);
 }
 
 async function stooqDaily(symbol: string, range: ChartRange): Promise<ChartData> {
@@ -113,19 +184,26 @@ export async function getChart(symbol: string, range: ChartRange): Promise<Chart
   const key = `${symbol}|${range}`;
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < TTL_MS[range]) return hit.data;
-  let data: ChartData;
-  try {
-    data = await yahooChart(symbol, range);
-  } catch (e) {
-    if (range === "1d" || range === "5d" || /[=^]|-USD$|\.NYB$/.test(symbol)) {
-      if (hit) return hit.data; // serve stale rather than nothing
-      throw e;
+  // Cloud IPs often get refused by one source, so try several in order and report every failure.
+  const sources: [string, () => Promise<ChartData>][] = [
+    ["yahoo", () => yahooChart(symbol, range)],
+    ["nasdaq", () => nasdaqChart(symbol, range)],
+    ["stooq", () => stooqDaily(symbol, range === "1d" || range === "5d" ? "1mo" : range)],
+  ];
+  const errors: string[] = [];
+  for (const [, run] of sources) {
+    try {
+      const data = await run();
+      if (!data.bars.length) throw new Error("empty");
+      cache.set(key, { at: Date.now(), data });
+      if (cache.size > 300) cache.delete(cache.keys().next().value!);
+      return data;
+    } catch (e) {
+      errors.push((e as Error).message.slice(0, 80));
     }
-    data = await stooqDaily(symbol, range);
   }
-  cache.set(key, { at: Date.now(), data });
-  if (cache.size > 300) cache.delete(cache.keys().next().value!);
-  return data;
+  if (hit) return hit.data; // serve stale rather than nothing
+  throw new Error(errors.join(" · "));
 }
 
 export interface LiveQuote {

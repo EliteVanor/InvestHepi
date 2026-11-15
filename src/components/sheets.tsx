@@ -21,8 +21,9 @@ export type Tab = "general" | "interests" | "holdings" | "alerts" | "status" | "
 
 /** iOS-style settings: a root list that drills into pages. */
 export function SettingsSheet({
-  onClose, initialTab, onInterestsSaved, onBriefingLangSaved, onHoldingsSaved, prefillSymbol,
+  onClose, initialTab, onInterestsSaved, onBriefingLangSaved, onHoldingsSaved, prefillSymbol, readOnly,
 }: {
+  readOnly?: boolean;
   onClose: () => void;
   initialTab?: Tab;
   onInterestsSaved: () => void;
@@ -32,7 +33,7 @@ export function SettingsSheet({
 }) {
   const { t, theme, lang } = usePrefs();
   const [page, setPage] = useState<Tab | null>(initialTab ?? null);
-  const pages: { id: Tab; label: MsgKey; icon: ReactNode; tint: string; value?: string; desktopOnly?: boolean }[] = [
+  const allPages: { id: Tab; label: MsgKey; icon: ReactNode; tint: string; value?: string; desktopOnly?: boolean }[] = [
     { id: "general", label: "set.root.appearance", icon: <IconMoon />, tint: "#5e5ce6", value: `${t(`set.${theme}` as MsgKey)} · ${langInfo(lang).native}` },
     { id: "interests", label: "set.interests", icon: <IconStar />, tint: "#ff9f0a" },
     { id: "holdings", label: "pf.title", icon: <IconChart />, tint: "#30b0c7" },
@@ -40,6 +41,7 @@ export function SettingsSheet({
     { id: "status", label: "set.status", icon: <IconCheck />, tint: "#34c759" },
     { id: "shortcuts", label: "set.shortcuts", icon: <IconGear />, tint: "#8e8e93", desktopOnly: true },
   ];
+  const pages = allPages.filter((p) => !readOnly || p.id === "general" || p.id === "status" || p.id === "shortcuts");
   const current = pages.find((p) => p.id === page);
   return (
     <Sheet
@@ -461,7 +463,7 @@ export function TrackSheet({ onClose }: { onClose: () => void }) {
 
 /* ---------------------------------------------------------------- Ticker */
 
-export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symbol: string; quote?: Quote; digests: Digest[]; onClose: () => void; onAlert: (symbol: string) => void }) {
+export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symbol: string; quote?: Quote; digests: Digest[]; onClose: () => void; onAlert?: (symbol: string) => void }) {
   const { t, lang, api } = usePrefs();
   const [cd, setCd] = useState<ChartData | null>(null);
   const [alertMsg, setAlertMsg] = useState("");
@@ -547,7 +549,7 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symb
           </div>
         </div>
       )}
-      {price != null && (
+      {price != null && onAlert && (
         <div className="sheet-actions" style={{ justifyContent: "flex-start" }}>
           <button className="pill-btn" onClick={() => quickAlert("above")}>↑ {t("tk.alertAbove", { p: fmtPrice(Number((price * 1.05).toFixed(price >= 100 ? 0 : 2))) })}</button>
           <button className="pill-btn" onClick={() => quickAlert("below")}>↓ {t("tk.alertBelow", { p: fmtPrice(Number((price * 0.95).toFixed(price >= 100 ? 0 : 2))) })}</button>

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ask } from "@/lib/ask";
-import { authorized, passwordRequired, unauthorized } from "@/lib/auth";
+import { authorized, passwordRequired, unauthorized, ownerOnly } from "@/lib/auth";
 import { getCalendar } from "@/lib/calendar";
 import { isLang } from "@/lib/languages";
 import { hit, limits } from "@/lib/ratelimit";
@@ -20,6 +20,8 @@ const Body = z.object({
 
 export async function POST(req: Request) {
   if (!authorized(req)) return unauthorized();
+  const ro = ownerOnly(req);
+  if (ro) return ro;
   const locked = passwordRequired();
   if (locked) return locked;
   const parsed = Body.safeParse(await req.json().catch(() => null));

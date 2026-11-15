@@ -719,3 +719,6 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
   .ask-fab .fab-text, .ask-fab kbd { display: none; }
   .ask-fab svg { width: 22px; height: 22px; }
 }
+
+.chart-err { flex-direction: column; gap: 6px; text-align: center; padding: 0 16px; }
+.chart-err small { font-size: 11px; color: var(--label-3); font-family: var(--mono); max-width: 520px; word-break: break-word; }

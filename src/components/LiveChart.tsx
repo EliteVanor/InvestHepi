@@ -330,7 +330,12 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       )}
       <div className="chart-canvas" ref={box} style={{ height }} aria-label={`${symbol} chart`} role="img">
         {!data && !err && <div className="skeleton chart-skel" />}
-        {err && <div className="chart-err">{t("chart.error")}</div>}
+        {err && (
+          <div className="chart-err">
+            <span>{t("chart.error")}</span>
+            <small>{err}</small>
+          </div>
+        )}
       </div>
       <div className="chart-foot">
         <div className="segmented chart-ranges" role="tablist">

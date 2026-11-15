@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { authorized, passwordRequired, unauthorized } from "@/lib/auth";
+import { authorized, passwordRequired, unauthorized, ownerOnly } from "@/lib/auth";
 import { loadHoldings, saveHoldings } from "@/lib/portfolio";
 
 export const dynamic = "force-dynamic";
@@ -16,11 +16,15 @@ const Holdings = z
 
 export async function GET(req: Request) {
   if (!authorized(req)) return unauthorized();
+  const ro = ownerOnly(req);
+  if (ro) return ro;
   return Response.json({ holdings: await loadHoldings() });
 }
 
 export async function PUT(req: Request) {
   if (!authorized(req)) return unauthorized();
+  const ro = ownerOnly(req);
+  if (ro) return ro;
   const locked = passwordRequired();
   if (locked) return locked;
   const parsed = Holdings.safeParse(await req.json().catch(() => null));

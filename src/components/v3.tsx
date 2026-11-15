@@ -510,7 +510,7 @@ interface Item {
   keywords?: string;
 }
 
-export function CommandPalette({ onClose, tickers, actions }: { onClose: () => void; tickers: string[]; actions: PaletteActions }) {
+export function CommandPalette({ onClose, tickers, actions, readOnly }: { onClose: () => void; tickers: string[]; actions: PaletteActions; readOnly?: boolean }) {
   const { t } = usePrefs();
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
@@ -548,6 +548,10 @@ export function CommandPalette({ onClose, tickers, actions }: { onClose: () => v
       { id: "a-theme", group: g.act, label: t("cmd.theme"), sub: "D", icon: <IconMoon />, run: actions.theme },
       { id: "a-set", group: g.act, label: t("nav.settings"), icon: <IconGear />, run: () => actions.settings() },
     ];
+    if (readOnly) {
+      const ownerOnlyIds = new Set(["a-ask", "a-refresh", "a-alerts", "a-int", "a-hold"]);
+      for (let k = base.length - 1; k >= 0; k--) if (ownerOnlyIds.has(base[k].id)) base.splice(k, 1);
+    }
     if (!query) return base;
     const needle = query.toLowerCase();
     const matches = base.filter((i) => `${i.label} ${i.keywords ?? ""}`.toLowerCase().includes(needle));
@@ -562,12 +566,12 @@ export function CommandPalette({ onClose, tickers, actions }: { onClose: () => v
       const s = query.toUpperCase();
       extra.push({ id: `t-any-${s}`, group: g.tk, label: t("cmd.chart", { s }), sub: s, icon: <IconChart />, run: () => actions.ticker(s) });
     }
-    extra.push({ id: "q-ask", group: g.act, label: t("cmd.ask", { q: query }), icon: <IconSparkles />, run: () => actions.ask(query) });
+    if (!readOnly) extra.push({ id: "q-ask", group: g.act, label: t("cmd.ask", { q: query }), icon: <IconSparkles />, run: () => actions.ask(query) });
     extra.push({ id: "q-news", group: g.act, label: t("cmd.searchNews", { q: query }), icon: <IconSearch />, run: () => actions.searchNews(query) });
     // Keep one header per group: sections, tickers, search results, actions.
     const order = [g.sec, g.tk, t("cmd.search"), g.act];
     return [...matches, ...extra].map((it, i) => ({ it, i })).sort((a, b) => order.indexOf(a.it.group) - order.indexOf(b.it.group) || a.i - b.i).map((x) => x.it);
-  }, [q, t, tickers, actions, hits]);
+  }, [q, t, tickers, actions, hits, readOnly]);
 
   useEffect(() => setSel(0), [q]);
   useEffect(() => {

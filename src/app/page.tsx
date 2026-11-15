@@ -42,6 +42,8 @@ function App() {
   const [calendar, setCalendar] = useState<{ events: CalendarEvent[]; notes: string[] }>({ events: [], notes: [] });
   const [interests, setInterests] = useState<Interest[]>([]);
   const [holdings, setHoldings] = useState<Holding[]>([]);
+  // Guests (VIEWER_PASSWORD) get a read-only view. The server enforces it; this just hides controls.
+  const [readOnly, setReadOnly] = useState(false);
   const [titleHidden, setTitleHidden] = useState(false);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const toast = useToast();
@@ -99,7 +101,13 @@ function App() {
     });
     loadCalendar();
     loadInterests();
-    api<{ holdings: Holding[] }>("/api/portfolio").then((j) => setHoldings(j.holdings)).catch(() => {});
+    api<{ role?: "owner" | "viewer" | null }>("/api/status")
+      .then((j) => {
+        const viewer = j.role === "viewer";
+        setReadOnly(viewer);
+        if (!viewer) api<{ holdings: Holding[] }>("/api/portfolio").then((h) => setHoldings(h.holdings)).catch(() => {});
+      })
+      .catch(() => {});
   }, [ready, needPassword, loadDigest, loadCalendar, loadInterests, api]);
 
   // First visit ever on this device: start with everything read, in every section.
@@ -194,7 +202,7 @@ function App() {
       if (sheet && e.key !== "Escape") return;
       const k = e.key.toLowerCase();
       if (k === "1" || k === "2" || k === "3") switchTab(SECTION_IDS[Number(k) - 1]);
-      else if (k === "r") refresh(tab);
+      else if (k === "r" && !readOnly) refresh(tab);
       else if (k === "/") {
         e.preventDefault();
         document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -202,7 +210,7 @@ function App() {
       } else if (k === "t") setSheet({ kind: "track" });
       else if (k === "d") toggleTheme();
       else if (k === "l") window.dispatchEvent(new Event("ih-listen"));
-      else if (k === "a") {
+      else if (k === "a" && !readOnly) {
         e.preventDefault();
         setSheet({ kind: "ask" });
       } else if (k === "c") setSheet({ kind: "catchup" });
@@ -210,7 +218,7 @@ function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sheet, tab, refresh, switchTab, toggleTheme]);
+  }, [sheet, tab, refresh, switchTab, toggleTheme, readOnly]);
 
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
   const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);
@@ -282,7 +290,8 @@ function App() {
           <button className="icon-btn" aria-label={t("nav.track")} title={`${t("nav.track")} (T)`} onClick={() => setSheet({ kind: "track" })}>
             <IconTarget />
           </button>
-          <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing}>
+          {readOnly && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
+          <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing} hidden={readOnly}>
             <IconRefresh className={refreshing ? "spin" : ""} />
           </button>
           <button className="icon-btn" aria-label={t("nav.settings")} title={t("nav.settings")} onClick={() => setSheet({ kind: "settings" })}>
@@ -351,7 +360,7 @@ function App() {
                 {isMobile && (
                   <>
                     <MoodGaugeCard gauge={shown.gauge} />
-                    {isHome && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
+                    {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                     <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
                     <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
                   </>
@@ -368,7 +377,7 @@ function App() {
                   interests={interests}
                   newIds={newIds}
                   searchRef={searchRef}
-                  onExplain={(title) => setSheet({ kind: "ask", q: t("ask.explain", { title }) })}
+                  onExplain={readOnly ? undefined : (title) => setSheet({ kind: "ask", q: t("ask.explain", { title }) })}
                   onMarkRead={() => {
                     markSeen(shown.news.map((n) => n.id));
                     setNewSnap((p) => ({ ...p, [tab]: { at: shown.generatedAt, ids: new Set() } }));
@@ -378,7 +387,7 @@ function App() {
               {!isMobile && (
               <aside className="rail">
                 <MoodGaugeCard gauge={shown.gauge} />
-                {isHome && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
+                {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                 <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
                 <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
                 <UpNext events={calendar.events} notes={calendar.notes} />
@@ -409,19 +418,29 @@ function App() {
             </button>
           );
         })}
-        <button role="tab" aria-selected={sheet?.kind === "ask"} onClick={() => setSheet({ kind: "ask" })}>
-          <IconSparkles />
-          <span>{t("ask.title")}</span>
-        </button>
+        {readOnly ? (
+          <button role="tab" aria-selected={sheet?.kind === "track"} onClick={() => setSheet({ kind: "track" })}>
+            <IconTarget />
+            <span>{t("nav.track")}</span>
+          </button>
+        ) : (
+          <button role="tab" aria-selected={sheet?.kind === "ask"} onClick={() => setSheet({ kind: "ask" })}>
+            <IconSparkles />
+            <span>{t("ask.title")}</span>
+          </button>
+        )}
       </nav>
 
-      <button className="ask-fab" onClick={() => setSheet({ kind: "ask" })} aria-label={t("ask.title")}>
-        <IconSparkles /> <span className="fab-text">{t("ask.title")}</span> <kbd>A</kbd>
-      </button>
+      {!readOnly && (
+        <button className="ask-fab" onClick={() => setSheet({ kind: "ask" })} aria-label={t("ask.title")}>
+          <IconSparkles /> <span className="fab-text">{t("ask.title")}</span> <kbd>A</kbd>
+        </button>
+      )}
 
       {needPassword && <PasswordSheet />}
       {sheet?.kind === "settings" && (
         <SettingsSheet
+          readOnly={readOnly}
           initialTab={sheet.tab}
           prefillSymbol={sheet.symbol}
           onClose={() => setSheet(null)}
@@ -438,13 +457,13 @@ function App() {
       {sheet?.kind === "track" && <TrackSheet onClose={() => setSheet(null)} />}
       {sheet?.kind === "history" && <HistorySheet section={tab} current={oldDigest?.key ?? null} onPick={pickHistory} onClose={() => setSheet(null)} />}
       {sheet?.kind === "ticker" && (
-        <TickerSheet symbol={sheet.symbol} quote={quoteFor(sheet.symbol)} digests={allDigests} onClose={() => setSheet(null)} onAlert={(symbol) => setSheet({ kind: "settings", tab: "alerts", symbol })} />
+        <TickerSheet symbol={sheet.symbol} quote={quoteFor(sheet.symbol)} digests={allDigests} onClose={() => setSheet(null)} onAlert={readOnly ? undefined : (symbol) => setSheet({ kind: "settings", tab: "alerts", symbol })} />
       )}
       {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} tickers={chartSymbols} initial={sheet.q} />}
       {sheet?.kind === "catchup" && shown && (
         <CatchUp digest={shown} calendar={calendar.events} onClose={() => setSheet(null)} onAsk={() => setSheet({ kind: "ask" })} />
       )}
-      {sheet?.kind === "palette" && <CommandPalette onClose={() => setSheet(null)} tickers={chartSymbols} actions={paletteActions} />}
+      {sheet?.kind === "palette" && <CommandPalette onClose={() => setSheet(null)} tickers={chartSymbols} actions={paletteActions} readOnly={readOnly} />}
     </>
   );
 }

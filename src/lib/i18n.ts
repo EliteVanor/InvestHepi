@@ -373,6 +373,8 @@ const en = {
   "pf.edit": "Edit",
   "pw.wrong": "Wrong password. Check APP_PASSWORD in Vercel (Settings \u2192 Environment Variables) and try again.",
   "pw.network": "Couldn't reach the server. Check your connection and try again.",
+  "ro.badge": "View only",
+  "ro.hint": "Guest access: you can read the briefings but not change anything.",
 };
 
 export type MsgKey = keyof typeof en;
@@ -747,6 +749,8 @@ const vi: Dict = {
   "cmd.search": "Kết quả tìm kiếm",
   "pw.wrong": "Sai mật khẩu. Kiểm tra APP_PASSWORD trong Vercel (Settings → Environment Variables) rồi thử lại.",
   "pw.network": "Không kết nối được máy chủ. Kiểm tra kết nối rồi thử lại.",
+  "ro.badge": "Chỉ xem",
+  "ro.hint": "Quyền khách: bạn có thể đọc bản tin nhưng không thay đổi gì.",
 };
 
 const zh: Dict = {
@@ -1118,6 +1122,8 @@ const zh: Dict = {
   "cmd.search": "搜索结果",
   "pw.wrong": "密码错误。请检查 Vercel 中的 APP_PASSWORD（Settings → Environment Variables）后重试。",
   "pw.network": "无法连接服务器。请检查网络后重试。",
+  "ro.badge": "仅查看",
+  "ro.hint": "访客权限：可以阅读简报，但不能修改任何内容。",
 };
 
 const ja: Dict = {
@@ -1489,6 +1495,8 @@ const ja: Dict = {
   "cmd.search": "検索結果",
   "pw.wrong": "パスワードが違います。Vercel の APP_PASSWORD（Settings → Environment Variables）を確認して、もう一度お試しください。",
   "pw.network": "サーバーに接続できません。接続を確認して、もう一度お試しください。",
+  "ro.badge": "閲覧のみ",
+  "ro.hint": "ゲストアクセス: ブリーフィングは読めますが、変更はできません。",
 };
 
 const ko: Dict = {
@@ -1860,6 +1868,8 @@ const ko: Dict = {
   "cmd.search": "검색 결과",
   "pw.wrong": "비밀번호가 틀렸습니다. Vercel의 APP_PASSWORD(Settings → Environment Variables)를 확인하고 다시 시도하세요.",
   "pw.network": "서버에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
+  "ro.badge": "보기 전용",
+  "ro.hint": "게스트 권한: 브리핑은 볼 수 있지만 변경할 수는 없습니다.",
 };
 
 const es: Dict = {
@@ -2231,6 +2241,8 @@ const es: Dict = {
   "cmd.search": "Resultados de búsqueda",
   "pw.wrong": "Contraseña incorrecta. Revisa APP_PASSWORD en Vercel (Settings → Environment Variables) e inténtalo de nuevo.",
   "pw.network": "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.",
+  "ro.badge": "Solo lectura",
+  "ro.hint": "Acceso de invitado: puedes leer los resúmenes, pero no cambiar nada.",
 };
 
 const fr: Dict = {
@@ -2602,6 +2614,8 @@ const fr: Dict = {
   "cmd.search": "Résultats de recherche",
   "pw.wrong": "Mot de passe incorrect. Vérifiez APP_PASSWORD dans Vercel (Settings → Environment Variables) et réessayez.",
   "pw.network": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+  "ro.badge": "Lecture seule",
+  "ro.hint": "Accès invité : vous pouvez lire les synthèses, mais pas les modifier.",
 };
 
 const de: Dict = {
@@ -2973,6 +2987,8 @@ const de: Dict = {
   "cmd.search": "Suchergebnisse",
   "pw.wrong": "Falsches Passwort. Prüfe APP_PASSWORD in Vercel (Settings → Environment Variables) und versuche es erneut.",
   "pw.network": "Server nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
+  "ro.badge": "Nur ansehen",
+  "ro.hint": "Gastzugang: Du kannst die Briefings lesen, aber nichts ändern.",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };
