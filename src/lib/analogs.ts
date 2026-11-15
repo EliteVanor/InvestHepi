@@ -196,7 +196,3 @@ export function playbookFor(types: EventType[]): PlaybookEntry[] {
   const set = new Set(types);
   return PLAYBOOK.filter((p) => set.has(p.type));
 }
-
-export function playbookAsText(): string {
-  return PLAYBOOK.map((p) => `- [${p.type}] ${p.date}: ${p.event} → ${p.whatHappenedNext} Lesson: ${p.lesson}`).join("\n");
-}

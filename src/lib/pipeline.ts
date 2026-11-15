@@ -1,10 +1,15 @@
+import { getCalendar } from "./calendar";
 import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, SECTION_FEEDS } from "./config";
+import { isLang } from "./languages";
 import { analyze } from "./llm";
-import { getQuotes } from "./market";
+import { MACRO, getQuotes } from "./market";
 import { dedupe, fetchFeeds, fetchInterestNews } from "./news";
-import { getJSON, setJSON } from "./store";
+import { delJSON, getJSON, setJSON } from "./store";
 import { computeStats, gradeCalls, loadCalls, recordCalls, trackRecordText } from "./track";
-import type { Digest, Interest, SectionId } from "./types";
+import type { Digest, DigestMeta, Interest, SectionId, Settings } from "./types";
+
+const HISTORY_SIZE = 10;
+export const DEFAULT_SETTINGS: Settings = { briefingLanguage: "en" };
 
 export async function loadInterests(): Promise<Interest[]> {
   return (await getJSON<Interest[]>("interests")) ?? DEFAULT_INTERESTS;
@@ -14,19 +19,49 @@ export async function saveInterests(list: Interest[]): Promise<void> {
   await setJSON("interests", list);
 }
 
-export async function loadDigest(section: SectionId): Promise<Digest | null> {
+export async function loadSettings(): Promise<Settings> {
+  const s = await getJSON<Partial<Settings>>("settings");
+  return { ...DEFAULT_SETTINGS, ...s, briefingLanguage: isLang(s?.briefingLanguage) ? s!.briefingLanguage! : "en" };
+}
+
+export async function saveSettings(s: Settings): Promise<void> {
+  await setJSON("settings", s);
+}
+
+export async function loadDigest(section: SectionId, at?: string): Promise<Digest | null> {
+  if (at) return getJSON<Digest>(`digest:${section}:${at}`);
   return getJSON<Digest>(`digest:${section}`);
 }
 
+export interface HistoryEntry extends DigestMeta {
+  key: string;
+}
+
+export async function loadHistory(section: SectionId): Promise<HistoryEntry[]> {
+  return (await getJSON<HistoryEntry[]>(`history:${section}`)) ?? [];
+}
+
+async function archive(d: Digest): Promise<void> {
+  const ts = d.generatedAt.replace(/[^0-9]/g, "").slice(0, 14);
+  const key = `digest:${d.section}:${ts}`;
+  await setJSON(key, d);
+  const entry: HistoryEntry = { key: ts, generatedAt: d.generatedAt, provider: d.provider, headline: d.analysis.headline, mood: d.analysis.mood };
+  const list = [entry, ...(await loadHistory(d.section)).filter((h) => h.key !== ts)];
+  for (const old of list.slice(HISTORY_SIZE)) await delJSON(`digest:${d.section}:${old.key}`).catch(() => {});
+  await setJSON(`history:${d.section}`, list.slice(0, HISTORY_SIZE));
+}
+
 export async function refreshSection(section: SectionId, now = new Date()): Promise<Digest> {
-  const interests = await loadInterests();
+  const [interests, settings] = await Promise.all([loadInterests(), loadSettings()]);
   const symbols = [...BENCHMARKS, ...interests.flatMap((i) => i.tickers)];
 
-  const [newsRes, quotes] = await Promise.all([
+  const [newsRes, quotes, macro, calendar] = await Promise.all([
     section === "interests"
       ? fetchInterestNews(interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY)
       : fetchFeeds(SECTION_FEEDS[section]).then((r) => ({ items: dedupe(r.items), errors: r.errors })),
     getQuotes(symbols),
+    getQuotes(MACRO.map((m) => m.symbol)),
+    getCalendar(interests).catch(() => ({ events: [], notes: [], generatedAt: now.toISOString() })),
   ]);
   const news = newsRes.items.slice(0, MAX_ITEMS_PER_SECTION);
 
@@ -36,7 +71,10 @@ export async function refreshSection(section: SectionId, now = new Date()): Prom
     interests,
     news: news.slice(0, MAX_ITEMS_TO_LLM),
     quotes,
+    macro,
+    calendar: calendar.events,
     trackRecord: trackRecordText(stats),
+    language: settings.briefingLanguage,
     now,
   });
 
@@ -51,9 +89,12 @@ export async function refreshSection(section: SectionId, now = new Date()): Prom
     analysis,
     news,
     quotes,
+    macro,
     feedErrors: newsRes.errors,
+    language: provider === "rules" ? "en" : settings.briefingLanguage,
   };
   await setJSON(`digest:${section}`, digest);
+  await archive(digest).catch(() => {});
   return digest;
 }
 
@@ -64,8 +105,10 @@ export async function refreshAll(sections: SectionId[] = ["interests", "world", 
   for (const s of sections) {
     try {
       const d = await refreshSection(s);
+      await setJSON(`lastRefresh:${s}`, { at: d.generatedAt, provider: d.provider, ok: true });
       results.push({ section: s, ok: true, provider: d.provider });
     } catch (e) {
+      await setJSON(`lastRefresh:${s}`, { at: new Date().toISOString(), ok: false, error: (e as Error).message });
       results.push({ section: s, ok: false, error: (e as Error).message });
     }
   }

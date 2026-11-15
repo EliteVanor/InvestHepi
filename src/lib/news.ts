@@ -138,6 +138,10 @@ export function dedupe(items: NewsItem[], maxAgeHours = 36): NewsItem[] {
     const dup = kept.find((k) => k.item.id === item.id || jaccard(k.tok, tok) >= 0.55);
     if (dup) {
       if (item.tags) dup.item.tags = [...new Set([...(dup.item.tags ?? []), ...item.tags])];
+      // Remember other outlets covering the same story (coverage breadth = importance signal).
+      if (item.source && item.source !== dup.item.source && !dup.item.alsoIn?.includes(item.source)) {
+        dup.item.alsoIn = [...(dup.item.alsoIn ?? []), item.source].slice(0, 12);
+      }
       continue;
     }
     kept.push({ item, tok });

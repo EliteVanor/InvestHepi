@@ -33,3 +33,11 @@ export async function setJSON<T>(key: string, value: T): Promise<void> {
   await fs.mkdir(dir, { recursive: true });
   await fs.writeFile(fileFor(key), JSON.stringify(value, null, 2));
 }
+
+export async function delJSON(key: string): Promise<void> {
+  if (redis) {
+    await redis.del(key);
+    return;
+  }
+  await fs.rm(fileFor(key), { force: true });
+}

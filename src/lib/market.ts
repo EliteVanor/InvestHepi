@@ -54,6 +54,8 @@ export async function getQuote(symbol: string): Promise<Quote | null> {
   try {
     return await yahoo(symbol);
   } catch {
+    // Stooq only covers plain US tickers; futures (=F), FX and crypto pairs (-USD) need Yahoo.
+    if (/[=^]|-USD$|\.NYB$/.test(symbol)) return null;
     try {
       return await stooq(symbol);
     } catch {
@@ -77,6 +79,30 @@ export function quotesAsText(quotes: Quote[]): string {
       const mo = h.length > 1 ? ((q.price - h[0][1]) / h[0][1]) * 100 : NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       return `${q.symbol}: ${q.price.toFixed(2)} (last session ${f(q.changePct)}, 5d ${f(wk)}, 1mo ${f(mo)})`;
+    })
+    .join("\n");
+}
+
+/** Macro context shown in the strip and given to the AI. Yahoo symbols. */
+export const MACRO: { symbol: string; label: string; unit?: string }[] = [
+  { symbol: "^VIX", label: "VIX" },
+  { symbol: "^TNX", label: "US 10Y", unit: "%" },
+  { symbol: "CL=F", label: "Oil" },
+  { symbol: "GC=F", label: "Gold" },
+  { symbol: "DX-Y.NYB", label: "Dollar" },
+  { symbol: "BTC-USD", label: "Bitcoin" },
+];
+
+export const macroLabel = (symbol: string) => MACRO.find((m) => m.symbol === symbol)?.label ?? symbol;
+
+export function macroAsText(quotes: Quote[]): string {
+  if (!quotes.length) return "(macro data unavailable)";
+  return quotes
+    .map((q) => {
+      const h = q.history;
+      const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
+      const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
+      return `${macroLabel(q.symbol)}: ${q.price.toFixed(2)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;
     })
     .join("\n");
 }

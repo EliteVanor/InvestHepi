@@ -1,574 +1,340 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import type { Digest, Direction, Interest, Outlook, SectionId } from "@/lib/types";
-import { SECTIONS } from "@/lib/types";
-import type { TrackStats } from "@/lib/track";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconStar, IconTarget, IconAlert } from "@/components/Icons";
+import { PrefsProvider, usePrefs } from "@/components/prefs";
+import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
+import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet } from "@/components/sheets";
+import type { MsgKey } from "@/lib/i18n";
+import { langInfo } from "@/lib/languages";
+import type { CalendarEvent, Digest, Interest, SectionId } from "@/lib/types";
 
-const PW_KEY = "ih-password";
+const SECTION_IDS: SectionId[] = ["interests", "world", "us"];
 const TAB_KEY = "ih-tab";
 
-function safeGet(k: string) {
-  try {
-    return localStorage.getItem(k);
-  } catch {
-    return null;
-  }
-}
-function safeSet(k: string, v: string) {
-  try {
-    localStorage.setItem(k, v);
-  } catch {}
-}
-
-function timeAgo(iso: string) {
-  const m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
-  if (m < 1) return "just now";
-  if (m < 60) return `${m}m ago`;
-  const h = Math.round(m / 60);
-  return h < 24 ? `${h}h ago` : `${Math.round(h / 24)}d ago`;
-}
-
-const arrow = (d: Direction) => (d === "up" ? "▲" : d === "down" ? "▼" : "◆");
-
-export default function Home() {
-  const [tab, setTab] = useState<SectionId>("interests");
-  const [password, setPassword] = useState<string>("");
-  const [needPw, setNeedPw] = useState(false);
-  const [digests, setDigests] = useState<Partial<Record<SectionId, Digest | null>>>({});
-  const [store, setStore] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
-  const [showTrack, setShowTrack] = useState(false);
-
-  useEffect(() => {
-    setPassword(safeGet(PW_KEY) ?? "");
-    const t = safeGet(TAB_KEY) as SectionId | null;
-    if (t && SECTIONS.some((s) => s.id === t)) setTab(t);
-  }, []);
-
-  const api = useCallback(
-    async (path: string, init?: RequestInit) => {
-      const res = await fetch(path, { ...init, headers: { "Content-Type": "application/json", "x-app-password": password, ...(init?.headers ?? {}) } });
-      if (res.status === 401) {
-        setNeedPw(true);
-        throw new Error("Password required");
-      }
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? `HTTP ${res.status}`);
-      return j;
-    },
-    [password],
+export default function Page() {
+  return (
+    <PrefsProvider>
+      <App />
+    </PrefsProvider>
   );
+}
 
-  const load = useCallback(
-    async (section: SectionId) => {
-      setLoading(true);
-      setError("");
-      try {
-        const j = await api(`/api/digest?section=${section}`);
-        setDigests((d) => ({ ...d, [section]: j.digest }));
-        setStore(j.store);
-      } catch (e) {
-        setError((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
+type Sheet = null | { kind: "settings"; tab?: "general" | "interests" | "status" | "shortcuts" } | { kind: "track" } | { kind: "ticker"; symbol: string } | { kind: "history" };
+
+function App() {
+  const { ready, t, lang, api, needPassword, seen, markSeen, toggleTheme } = usePrefs();
+  const [tab, setTab] = useState<SectionId>("interests");
+  const [digests, setDigests] = useState<Partial<Record<SectionId, Digest | null>>>({});
+  const [oldDigest, setOldDigest] = useState<{ section: SectionId; key: string; digest: Digest } | null>(null);
+  const [calendar, setCalendar] = useState<{ events: CalendarEvent[]; notes: string[] }>({ events: [], notes: [] });
+  const [interests, setInterests] = useState<Interest[]>([]);
+  const [refreshing, setRefreshing] = useState<SectionId | null>(null);
+  const [error, setError] = useState("");
+  const [sheet, setSheet] = useState<Sheet>(null);
+  const [newSnap, setNewSnap] = useState<Partial<Record<SectionId, { at: string; ids: Set<string> }>>>({});
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // Restore last tab.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(TAB_KEY) as SectionId | null;
+      if (saved && SECTION_IDS.includes(saved)) setTab(saved);
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(TAB_KEY, tab);
+    } catch {}
+  }, [tab]);
+
+  const loadDigest = useCallback(
+    async (s: SectionId) => {
+      const j = await api<{ digest: Digest | null }>(`/api/digest?section=${s}`);
+      setDigests((d) => ({ ...d, [s]: j.digest }));
     },
     [api],
   );
+  const loadCalendar = useCallback(() => api<{ events: CalendarEvent[]; notes: string[] }>("/api/calendar").then(setCalendar).catch(() => {}), [api]);
+  const loadInterests = useCallback(() => api<{ interests: Interest[] }>("/api/interests").then((j) => setInterests(j.interests)).catch(() => {}), [api]);
 
+  // Initial load waits for prefs (read state) so "new" dots are computed correctly.
   useEffect(() => {
-    load(tab);
-    safeSet(TAB_KEY, tab);
-  }, [tab, load]);
+    if (!ready || needPassword) return;
+    Promise.all(SECTION_IDS.map((s) => loadDigest(s))).catch((e) => {
+      if ((e as Error).message !== "401") setError((e as Error).message);
+    });
+    loadCalendar();
+    loadInterests();
+  }, [ready, needPassword, loadDigest, loadCalendar, loadInterests]);
 
-  const refresh = async (section: SectionId) => {
-    setRefreshing(true);
-    setError("");
+  // Snapshot which headlines are new for each digest (first visit ever: nothing is "new").
+  useEffect(() => {
+    setNewSnap((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const s of SECTION_IDS) {
+        const d = digests[s];
+        if (!d || prev[s]?.at === d.generatedAt) continue;
+        const ids = seen.size === 0 ? new Set<string>() : new Set(d.news.filter((n) => !seen.has(n.id)).map((n) => n.id));
+        next[s] = { at: d.generatedAt, ids };
+        changed = true;
+      }
+      return changed ? next : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [digests]);
+
+  // Viewing a section for a few seconds marks its headlines as seen (dots stay until "mark all read").
+  const active = digests[tab];
+  useEffect(() => {
+    if (!active) return;
+    const id = setTimeout(() => markSeen(active.news.map((n) => n.id)), 4000);
+    return () => clearTimeout(id);
+  }, [active, markSeen]);
+
+  const badge = (s: SectionId) => {
+    if (s === tab) return newSnap[s]?.ids.size ?? 0;
+    const d = digests[s];
+    if (!d || seen.size === 0) return 0;
+    return d.news.filter((n) => !seen.has(n.id)).length;
+  };
+
+  const refresh = useCallback(
+    async (s: SectionId) => {
+      setRefreshing(s);
+      setError("");
+      try {
+        const r = await api<{ results: { ok: boolean; error?: string }[] }>(`/api/refresh?section=${s}`, { method: "POST" });
+        const failed = r.results?.find((x) => !x.ok);
+        if (failed) setError(failed.error ?? "Refresh failed");
+        setOldDigest(null);
+        await Promise.all([loadDigest(s), loadCalendar()]);
+      } catch (e) {
+        if ((e as Error).message !== "401") setError((e as Error).message);
+      } finally {
+        setRefreshing(null);
+      }
+    },
+    [api, loadDigest, loadCalendar],
+  );
+
+  const pickHistory = async (key: string | null) => {
+    setSheet(null);
+    if (!key) return setOldDigest(null);
     try {
-      const r = await api(`/api/refresh?section=${section}`, { method: "POST" });
-      const failed = r.results?.find((x: { ok: boolean }) => !x.ok);
-      if (failed) setError(failed.error);
-      await load(section);
+      const j = await api<{ digest: Digest | null }>(`/api/digest?section=${tab}&at=${key}`);
+      if (j.digest) setOldDigest({ section: tab, key, digest: j.digest });
     } catch (e) {
       setError((e as Error).message);
-    } finally {
-      setRefreshing(false);
     }
   };
 
-  const digest = digests[tab];
+  const switchTab = useCallback((s: SectionId) => {
+    setTab(s);
+    setOldDigest(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, []);
+
+  // Keyboard shortcuts.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable) return;
+      if (sheet && e.key !== "Escape") return;
+      const k = e.key.toLowerCase();
+      if (k === "1" || k === "2" || k === "3") switchTab(SECTION_IDS[Number(k) - 1]);
+      else if (k === "r") refresh(tab);
+      else if (k === "/") {
+        e.preventDefault();
+        document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        setTimeout(() => searchRef.current?.focus(), 250);
+      } else if (k === "t") setSheet({ kind: "track" });
+      else if (k === "d") toggleTheme();
+      else if (k === "l") window.dispatchEvent(new Event("ih-listen"));
+      else if (e.key === "?") setSheet({ kind: "settings", tab: "shortcuts" });
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [sheet, tab, refresh, switchTab, toggleTheme]);
+
+  const shown = oldDigest?.section === tab ? oldDigest.digest : active;
+  const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);
+  const quoteFor = (sym: string) => allDigests.flatMap((d) => [...d.quotes, ...(d.macro ?? [])]).find((q) => q.symbol === sym);
+  const newIds = newSnap[tab]?.ids ?? new Set<string>();
+  const dateStr = useMemo(
+    () => (ready ? new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "long", month: "long", day: "numeric" }).format(new Date()) : ""),
+    [ready, lang],
+  );
+  const loading = ready && !needPassword && active === undefined;
 
   return (
     <>
-      <header className="top">
-        <div className="top-inner">
+      <header className="topbar">
+        <div className="topbar-inner">
           <div className="brand">
-            Invest Helper <span>· daily catch-up</span>
+            <span className="brand-mark" aria-hidden="true" />
+            <span>Invest Helper</span>
           </div>
-          <nav className="tabs" aria-label="Sections">
-            {SECTIONS.map((s) => (
-              <button key={s.id} className={`tab ${tab === s.id ? "active" : ""}`} onClick={() => setTab(s.id)}>
-                {s.label}
+          <span className="spacer" />
+          <nav className="segmented desktop-only" aria-label="Sections">
+            {SECTION_IDS.map((s, i) => (
+              <button key={s} aria-pressed={tab === s} onClick={() => switchTab(s)} title={`${t(`sec.${s}` as MsgKey)} (${i + 1})`}>
+                {t(`sec.${s}` as MsgKey)}
+                {badge(s) > 0 && <span className="badge">{badge(s) > 99 ? "99+" : badge(s)}</span>}
               </button>
             ))}
           </nav>
-          <button className="icon-btn" onClick={() => refresh(tab)} disabled={refreshing} title="Fetch news and re-run the analysis">
-            {refreshing ? "Analyzing…" : "↻ Refresh"}
+          <span className="spacer desktop-only" />
+          <button
+            className="icon-btn"
+            aria-label={t("nav.search")}
+            title={`${t("nav.search")} (/)`}
+            onClick={() => {
+              document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              setTimeout(() => searchRef.current?.focus(), 300);
+            }}
+          >
+            <IconSearch />
           </button>
-          <button className="icon-btn" onClick={() => setShowTrack(true)}>
-            Track record
+          <button className="icon-btn desktop-only" aria-label={t("nav.track")} title={`${t("nav.track")} (T)`} onClick={() => setSheet({ kind: "track" })}>
+            <IconTarget />
           </button>
-          <button className="icon-btn" onClick={() => setShowSettings(true)}>
-            ⚙ Interests
+          <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing}>
+            <IconRefresh className={refreshing ? "spin" : ""} />
+          </button>
+          <button className="icon-btn" aria-label={t("nav.settings")} title={t("nav.settings")} onClick={() => setSheet({ kind: "settings" })}>
+            <IconGear />
           </button>
         </div>
       </header>
 
-      <main className="wrap">
-        {digest?.quotes?.length ? (
-          <div className="strip">
-            {digest.quotes.map((q) => (
-              <div className="quote" key={q.symbol}>
-                <b>{q.symbol}</b>
-                <span>{q.price.toFixed(2)}</span>
-                <span className={q.changePct >= 0 ? "pos" : "neg"}>
-                  {q.changePct >= 0 ? "+" : ""}
-                  {q.changePct.toFixed(2)}%
-                </span>
-              </div>
-            ))}
+      <main className="page">
+        <div className="page-head">
+          <div className="page-title">
+            <div className="eyebrow" suppressHydrationWarning>{dateStr}</div>
+            <h1 className="large-title">{t(`sec.${tab}` as MsgKey)}</h1>
           </div>
-        ) : null}
+          <StatusPill />
+        </div>
 
-        {error && <div className="warn">{error}</div>}
-        {store === "ephemeral" && (
-          <div className="warn">No database connected, so digests and the track record reset whenever Vercel recycles the server. Add the free Upstash Redis integration (see README).</div>
+        {shown && <MarketStrip quotes={shown.quotes} macro={shown.macro ?? []} onOpen={(symbol) => setSheet({ kind: "ticker", symbol })} />}
+
+        {error && (
+          <div className="banner">
+            <IconAlert />
+            <span style={{ wordBreak: "break-word" }}>{error}</span>
+            <button onClick={() => setError("")}>✕</button>
+          </div>
+        )}
+        {shown?.providerNote && !oldDigest && (
+          <div className="banner">
+            <IconAlert />
+            <span style={{ wordBreak: "break-word" }}>{shown.providerNote}</span>
+          </div>
         )}
 
-        {loading && !digest ? (
-          <div className="empty">Loading…</div>
-        ) : !digest ? (
-          <div className="empty">
-            <p>No briefing yet for this section.</p>
-            <button className="btn-primary" onClick={() => refresh(tab)} disabled={refreshing}>
-              {refreshing ? "Fetching news and analyzing (up to a minute)…" : "Generate briefing now"}
+        {loading ? (
+          <Skeleton />
+        ) : !shown ? (
+          <div className="card empty">
+            <div className="empty-orb" />
+            <h2>{t("empty.title")}</h2>
+            <p>{t("empty.body")}</p>
+            <button className="btn-primary" onClick={() => refresh(tab)} disabled={!!refreshing}>
+              {refreshing ? t("empty.working") : t("empty.cta")}
             </button>
           </div>
-        ) : (
-          <SectionView digest={digest} />
-        )}
-
-        <footer>
-          AI-generated predictions from public headlines. They can be wrong. Check the track record before trusting the confidence numbers. Not financial advice.
-        </footer>
-      </main>
-
-      {needPw && (
-        <PasswordModal
-          onSubmit={(pw) => {
-            safeSet(PW_KEY, pw);
-            setPassword(pw);
-            setNeedPw(false);
-          }}
-        />
-      )}
-      {showSettings && (
-        <SettingsModal
-          api={api}
-          onClose={() => setShowSettings(false)}
-          onSaved={() => {
-            setShowSettings(false);
-            setTab("interests");
-            refresh("interests");
-          }}
-        />
-      )}
-      {showTrack && <TrackModal api={api} onClose={() => setShowTrack(false)} />}
-    </>
-  );
-}
-
-function SectionView({ digest }: { digest: Digest }) {
-  const a = digest.analysis;
-  const tags = useMemo(() => [...new Set(digest.news.flatMap((n) => n.tags ?? []))], [digest.news]);
-  const [filter, setFilter] = useState<string | null>(null);
-  const news = filter ? digest.news.filter((n) => n.tags?.includes(filter)) : digest.news;
-
-  return (
-    <>
-      <div className="meta">
-        <span>Updated {timeAgo(digest.generatedAt)}</span>
-        <span className="pill">{digest.provider === "rules" ? "rule-based (no AI key)" : digest.provider}</span>
-        <span>{digest.news.length} stories</span>
-        {digest.feedErrors.length > 0 && (
-          <details>
-            <summary>{digest.feedErrors.length} feed(s) failed</summary>
-            <div className="small">{digest.feedErrors.join(" · ")}</div>
-          </details>
-        )}
-      </div>
-      {digest.providerNote && <div className="warn">{digest.providerNote}</div>}
-
-      <section className="card">
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <h2 style={{ margin: 0 }}>Briefing</h2>
-          <span className={`mood ${a.mood}`}>{a.mood}</span>
-        </div>
-        <p className="headline">{a.headline}</p>
-        <ul className="summary">
-          {a.summary.map((s, i) => (
-            <li key={i}>{s}</li>
-          ))}
-        </ul>
-      </section>
-
-      {a.outlook.length > 0 && (
-        <section className="card">
-          <h2>What to do</h2>
-          <div className="outlook-grid">
-            {a.outlook.map((o, i) => (
-              <OutlookCard key={i} o={o} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      <div className="two-col">
-        <section className="card">
-          <h2>Key events and impact</h2>
-          {a.events.length === 0 && <p className="small">No major events detected.</p>}
-          {a.events.map((e, i) => (
-            <article className="event" key={i}>
-              <h3>
-                <span className="imp" title={`Importance ${e.importance}/5`}>
-                  {"●".repeat(e.importance)}
-                  {"○".repeat(5 - e.importance)}
-                </span>
-                {e.title}
-              </h3>
-              <p className="small">
-                <b>What happened:</b> {e.whatHappened}
-              </p>
-              <p className="small">
-                <b>Why it matters:</b> {e.whyItMatters}
-              </p>
-              <div className="impacts">
-                {e.impacts.map((im, j) => (
-                  <span key={j} className={`chip ${im.direction}`} title={im.reasoning}>
-                    {arrow(im.direction)} {im.interest} · {im.magnitude} · {im.confidence}%
-                  </span>
-                ))}
-              </div>
-              {e.analog && (
-                <div className="analog">
-                  <b>Past example · {e.analog.date}</b>
-                  {e.analog.event}: {e.analog.whatHappenedNext}
-                </div>
-              )}
-              <p className="risk">⚠ What could go wrong: {e.whatCouldGoWrong}</p>
-              {e.sourceIds.length > 0 && (
-                <div className="sources">
-                  Sources:{" "}
-                  {e.sourceIds
-                    .map((id) => digest.news[id])
-                    .filter(Boolean)
-                    .slice(0, 4)
-                    .map((n) => (
-                      <a key={n.id} href={n.link} target="_blank" rel="noreferrer">
-                        {n.source}
-                      </a>
-                    ))}
-                </div>
-              )}
-            </article>
-          ))}
-        </section>
-
-        <div>
-          {a.watchNext.length > 0 && (
-            <section className="card">
-              <h2>Watch next</h2>
-              <ul className="summary">
-                {a.watchNext.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </section>
-          )}
-          <section className="card">
-            <h2>Headlines</h2>
-            {tags.length > 1 && (
-              <div className="filters">
-                <button className={`filter ${!filter ? "active" : ""}`} onClick={() => setFilter(null)}>
-                  All
-                </button>
-                {tags.map((t) => (
-                  <button key={t} className={`filter ${filter === t ? "active" : ""}`} onClick={() => setFilter(t)}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            )}
-            {news.map((n) => (
-              <div className="news-item" key={n.id}>
-                <a href={n.link} target="_blank" rel="noreferrer">
-                  {n.title}
-                </a>
-                <div className="news-meta">
-                  {n.source} · {timeAgo(n.publishedAt)}
-                  {n.tags?.map((t) => (
-                    <span className="tag" key={t}>
-                      {t}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </section>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function OutlookCard({ o }: { o: Outlook }) {
-  return (
-    <div className="ol">
-      <div className="ol-top">
-        <span className="ol-name">{o.interest}</span>
-        <span className="ol-ticker">{o.ticker}</span>
-        <span className={`action ${o.action}`}>{o.action}</span>
-      </div>
-      <div>
-        <span className={`dir ${o.direction}`}>
-          {arrow(o.direction)} {o.direction.toUpperCase()}
-        </span>{" "}
-        <span className="small">· {o.horizon}</span>
-      </div>
-      <div className="conf">
-        <span>Confidence {o.confidence}%</span>
-        <div className="bar">
-          <i style={{ width: `${o.confidence}%` }} />
-        </div>
-      </div>
-      <p className="trigger">{o.actionTrigger}</p>
-      <p className="small">{o.rationale}</p>
-      <p className="small">
-        <b>Risks:</b> {o.risks}
-      </p>
-    </div>
-  );
-}
-
-function PasswordModal({ onSubmit }: { onSubmit: (pw: string) => void }) {
-  const [pw, setPw] = useState("");
-  return (
-    <div className="overlay">
-      <form
-        className="modal"
-        style={{ maxWidth: 380 }}
-        onSubmit={(e) => {
-          e.preventDefault();
-          onSubmit(pw);
-        }}
-      >
-        <h2>Password</h2>
-        <p className="small">Enter the APP_PASSWORD you set in Vercel. It's saved in this browser.</p>
-        <input type="password" autoFocus value={pw} onChange={(e) => setPw(e.target.value)} />
-        <div className="modal-actions">
-          <button className="btn-primary" type="submit">
-            Unlock
-          </button>
-        </div>
-      </form>
-    </div>
-  );
-}
-
-type Api = (path: string, init?: RequestInit) => Promise<any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-
-function SettingsModal({ api, onClose, onSaved }: { api: Api; onClose: () => void; onSaved: () => void }) {
-  const [list, setList] = useState<(Interest & { tickerText: string })[]>([]);
-  const [defaults, setDefaults] = useState<Interest[]>([]);
-  const [err, setErr] = useState("");
-  const [saving, setSaving] = useState(false);
-
-  const withText = (l: Interest[]) => l.map((i) => ({ ...i, tickerText: i.tickers.join(", ") }));
-
-  useEffect(() => {
-    api("/api/interests")
-      .then((j) => {
-        setList(withText(j.interests));
-        setDefaults(j.defaults);
-      })
-      .catch((e) => setErr(e.message));
-  }, [api]);
-
-  const update = (i: number, patch: Partial<Interest & { tickerText: string }>) => setList((l) => l.map((x, j) => (j === i ? { ...x, ...patch } : x)));
-
-  const save = async () => {
-    setSaving(true);
-    setErr("");
-    try {
-      const body = list.map((x, i) => ({
-        id: x.id || `${x.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 30) || "interest"}-${i}`,
-        name: x.name.trim(),
-        query: x.query.trim() || x.name.trim(),
-        tickers: x.tickerText
-          .split(/[\s,]+/)
-          .map((t) => t.trim().toUpperCase())
-          .filter(Boolean),
-      }));
-      await api("/api/interests", { method: "PUT", body: JSON.stringify(body) });
-      onSaved();
-    } catch (e) {
-      setErr((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Your interests</h2>
-        <p className="small">
-          Each interest gets its own news search and outlook. The <b>first ticker</b> is the benchmark used for the outlook and the track record. Use
-          ETFs for broad themes (QQQ, SPY, SOXX, SMH, XLE…).
-        </p>
-        {list.map((x, i) => (
-          <div className="row" key={i}>
-            <div>
-              <label>Name</label>
-              <input type="text" value={x.name} onChange={(e) => update(i, { name: e.target.value })} placeholder="e.g. Energy" />
-            </div>
-            <div>
-              <label>News search (keywords, OR, "quoted phrases")</label>
-              <input type="text" value={x.query} onChange={(e) => update(i, { query: e.target.value })} placeholder='oil prices OR "energy stocks"' />
-            </div>
-            <div>
-              <label>Tickers (first = benchmark)</label>
-              <input type="text" value={x.tickerText} onChange={(e) => update(i, { tickerText: e.target.value })} placeholder="XLE, XOM, CVX" />
-            </div>
-            <button className="icon-btn" onClick={() => setList((l) => l.filter((_, j) => j !== i))} aria-label="Remove">
-              ✕
-            </button>
-          </div>
-        ))}
-        {err && <div className="warn">{err}</div>}
-        <div className="modal-actions">
-          <button className="icon-btn" onClick={() => setList(withText(defaults))}>
-            Reset to defaults
-          </button>
-          <button className="icon-btn" onClick={() => setList((l) => [...l, { id: "", name: "", query: "", tickers: [], tickerText: "" }])}>
-            + Add interest
-          </button>
-          <button className="icon-btn" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="btn-primary" onClick={save} disabled={saving}>
-            {saving ? "Saving…" : "Save and re-analyze"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function TrackModal({ api, onClose }: { api: Api; onClose: () => void }) {
-  const [s, setS] = useState<TrackStats | null>(null);
-  const [err, setErr] = useState("");
-  useEffect(() => {
-    api("/api/track").then(setS).catch((e) => setErr(e.message));
-  }, [api]);
-
-  return (
-    <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>Track record</h2>
-        <p className="small">
-          Every outlook in My Interests is logged as a call on the next session that hasn't opened yet, then graded against the real close. If the
-          70-79% bucket is right only 55% of the time, the AI is overconfident, and it sees these numbers on every run so it can adjust.
-        </p>
-        {err && <div className="warn">{err}</div>}
-        {!s ? (
-          <p className="small">Loading…</p>
         ) : (
           <>
-            <p className="headline" style={{ fontSize: 20 }}>
-              {s.hitRate == null ? "No graded calls yet" : `${(s.hitRate * 100).toFixed(0)}% hit rate`}
-              <span className="small" style={{ fontWeight: 400 }}>
-                {" "}
-                · {s.graded} graded / {s.total} logged
-              </span>
-            </p>
-            <table>
-              <thead>
-                <tr>
-                  <th>Stated confidence</th>
-                  <th>Calls</th>
-                  <th>Actually right</th>
-                </tr>
-              </thead>
-              <tbody>
-                {s.buckets.map((b) => (
-                  <tr key={b.label}>
-                    <td>{b.label}</td>
-                    <td>{b.n}</td>
-                    <td>{b.n ? `${((b.hits / b.n) * 100).toFixed(0)}%` : "–"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <h2 style={{ marginTop: 18, fontSize: 14 }}>Recent calls</h2>
-            <div style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Session</th>
-                    <th>Ticker</th>
-                    <th>Call</th>
-                    <th>Conf</th>
-                    <th>Result</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.recent.map((c) => (
-                    <tr key={c.id}>
-                      <td>
-                        {c.date}
-                        {c.id.endsWith(":w") ? " (wk)" : ""}
-                      </td>
-                      <td>{c.ticker}</td>
-                      <td className={`dir ${c.direction}`}>
-                        {arrow(c.direction)} {c.action}
-                      </td>
-                      <td>{c.confidence}%</td>
-                      <td>
-                        {c.correct === undefined ? (
-                          <span className="small">pending</span>
-                        ) : (
-                          <span className={c.correct ? "pos" : "neg"}>
-                            {c.correct ? "✓" : "✗"} {c.returnPct! >= 0 ? "+" : ""}
-                            {c.returnPct!.toFixed(2)}%
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <Briefing digest={shown} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} />
+            <Calls outlook={shown.analysis.outlook} onTicker={(symbol) => setSheet({ kind: "ticker", symbol })} />
+            <div className="grid">
+              <div>
+                <div className="mobile-only">
+                  <Movers movers={shown.analysis.movers} quotes={shown.quotes} onTicker={(symbol) => setSheet({ kind: "ticker", symbol })} />
+                </div>
+                <Events events={shown.analysis.events} news={shown.news} />
+                <div className="mobile-only">
+                  <UpNext events={calendar.events} notes={calendar.notes} />
+                  <WatchNext items={shown.analysis.watchNext} />
+                </div>
+                <Headlines
+                  digest={shown}
+                  interests={interests}
+                  newIds={newIds}
+                  searchRef={searchRef}
+                  onMarkRead={() => {
+                    markSeen(shown.news.map((n) => n.id));
+                    setNewSnap((p) => ({ ...p, [tab]: { at: shown.generatedAt, ids: new Set() } }));
+                  }}
+                />
+              </div>
+              <aside className="rail desktop-only">
+                <Movers movers={shown.analysis.movers} quotes={shown.quotes} onTicker={(symbol) => setSheet({ kind: "ticker", symbol })} />
+                <UpNext events={calendar.events} notes={calendar.notes} />
+                <WatchNext items={shown.analysis.watchNext} />
+              </aside>
             </div>
           </>
         )}
-        <div className="modal-actions">
-          <button className="icon-btn" onClick={onClose}>
-            Close
-          </button>
+
+        <footer className="foot">{t("foot.disclaimer")}</footer>
+      </main>
+
+      <nav className="tabbar" role="tablist" aria-label="Sections">
+        {SECTION_IDS.map((s) => {
+          const Icon = s === "interests" ? IconStar : s === "world" ? IconGlobe : IconFlag;
+          return (
+            <button key={s} role="tab" aria-selected={tab === s} onClick={() => switchTab(s)}>
+              <Icon />
+              <span>{t(`sec.${s}` as MsgKey)}</span>
+              {badge(s) > 0 && <span className="badge">{badge(s) > 99 ? "99+" : badge(s)}</span>}
+            </button>
+          );
+        })}
+        <button role="tab" aria-selected={false} onClick={() => setSheet({ kind: "track" })}>
+          <IconTarget />
+          <span>{t("nav.track")}</span>
+        </button>
+      </nav>
+
+      {needPassword && <PasswordSheet />}
+      {sheet?.kind === "settings" && (
+        <SettingsSheet
+          initialTab={sheet.tab}
+          onClose={() => setSheet(null)}
+          onInterestsSaved={() => {
+            setSheet(null);
+            switchTab("interests");
+            loadInterests();
+            refresh("interests");
+          }}
+          onBriefingLangSaved={() => refresh(tab)}
+        />
+      )}
+      {sheet?.kind === "track" && <TrackSheet onClose={() => setSheet(null)} />}
+      {sheet?.kind === "history" && <HistorySheet section={tab} current={oldDigest?.key ?? null} onPick={pickHistory} onClose={() => setSheet(null)} />}
+      {sheet?.kind === "ticker" && <TickerSheet symbol={sheet.symbol} quote={quoteFor(sheet.symbol)} digests={allDigests} onClose={() => setSheet(null)} />}
+    </>
+  );
+}
+
+function Skeleton() {
+  return (
+    <div aria-busy="true">
+      <div className="card hero">
+        <div className="skeleton" style={{ height: 22, width: 120 }} />
+        <div className="skeleton" style={{ height: 34, width: "80%", margin: "16px 0" }} />
+        <div className="skeleton" style={{ height: 16, width: "95%", marginBottom: 10 }} />
+        <div className="skeleton" style={{ height: 16, width: "88%", marginBottom: 10 }} />
+        <div className="skeleton" style={{ height: 16, width: "70%" }} />
+      </div>
+      <div className="card">
+        <div className="calls">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="skeleton" style={{ height: 150 }} />
+          ))}
         </div>
       </div>
     </div>

@@ -15,7 +15,7 @@ on:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - name: Refresh each section
         env:
@@ -30,5 +30,5 @@ jobs:
             curl -fsS -m 290 --retry 2 --retry-delay 20 \
               -H "Authorization: Bearer $CRON_SECRET" "${APP_URL%/}/api/refresh?section=$s" || echo "refresh $s failed"
             echo
-            sleep 20  # stay under free LLM per-minute limits
+            sleep 65  # free LLM tiers limit tokens per minute; give each section a fresh minute
           done

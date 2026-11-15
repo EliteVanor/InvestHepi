@@ -53,6 +53,15 @@ export const AnalysisSchema = z.object({
     )
     .describe("One entry per interest (benchmark ticker), plus entries for individual tickers with direct news"),
   watch_next: z.array(z.string()).describe("Upcoming catalysts with dates if known"),
+  movers: z
+    .array(
+      z.object({
+        ticker: z.string(),
+        change_pct: z.number().describe("Last-session % change from the snapshot"),
+        why: z.string().describe("Most likely reason from the headlines, or 'No clear news catalyst'"),
+      }),
+    )
+    .describe("1-4 of the user's tickers that moved most last session. Empty outside the interests section."),
 });
 
 export type RawAnalysis = z.infer<typeof AnalysisSchema>;
@@ -86,6 +95,7 @@ export function toAnalysis(r: RawAnalysis): Analysis {
       risks: o.risks,
     })),
     watchNext: r.watch_next ?? [],
+    movers: (r.movers ?? []).map((m) => ({ ticker: m.ticker.toUpperCase(), changePct: Number(m.change_pct) || 0, why: m.why })),
   };
 }
 
@@ -113,7 +123,8 @@ export const SCHEMA_HINT = `Return ONLY a JSON object with exactly this shape:
     "what_could_go_wrong": string
   }],
   "outlook": [{ "interest": string, "ticker": string, "direction": "up"|"down"|"flat", "confidence": 0-100, "horizon": "today"|"this week", "action": "BUY"|"ADD"|"HOLD"|"WAIT"|"TRIM"|"SELL"|"AVOID", "action_trigger": string, "rationale": string, "risks": string }],
-  "watch_next": string[]
+  "watch_next": string[],
+  "movers": [{ "ticker": string, "change_pct": number, "why": string }]
 }`;
 
 /** Repair common free-model JSON slips (string numbers, wrong case, missing arrays) before validation. */
@@ -162,5 +173,6 @@ export function normalizeRaw(input: unknown): unknown {
       risks: str(x?.risks),
     })),
     watch_next: arr(o.watch_next).map(str),
+    movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why) })),
   };
 }

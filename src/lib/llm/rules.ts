@@ -4,6 +4,7 @@
  * structure, but confidence is capped low.
  */
 import { EVENT_BIAS, EVENT_KEYWORDS, PLAYBOOK, type EventType } from "../analogs";
+import { tickerMatcher } from "../tickers";
 import type { Analysis, Direction, Interest, KeyEvent, NewsItem, Outlook, Quote } from "../types";
 
 function biasIndex(it: Interest): 0 | 1 | 2 {
@@ -82,5 +83,21 @@ export function analyzeWithRules(news: NewsItem[], interests: Interest[], quotes
     events,
     outlook,
     watchNext: [],
+    movers: rulesMovers(news, interests, quotes),
   };
+}
+
+/** Biggest movers among the user's tickers, explained by the first headline that names them. */
+function rulesMovers(news: NewsItem[], interests: Interest[], quotes: Quote[]) {
+  const mine = new Set(interests.flatMap((i) => i.tickers));
+  return quotes
+    .filter((q) => mine.has(q.symbol))
+    .sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct))
+    .slice(0, 3)
+    .filter((q) => Math.abs(q.changePct) >= 1)
+    .map((q) => {
+      const re = tickerMatcher(q.symbol);
+      const hit = news.find((n) => re.test(n.title));
+      return { ticker: q.symbol, changePct: q.changePct, why: hit ? `Headline: ${hit.title}` : "No clear news catalyst in today's headlines." };
+    });
 }

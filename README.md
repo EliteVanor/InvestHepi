@@ -2,24 +2,53 @@
 
 A personal news site that catches you up on market news fast and tells you what it likely means for the stocks you follow.
 
+<p align="center">
+  <img src="docs/screenshots/desktop-light.png" width="68%" alt="Desktop, light mode" />
+  <img src="docs/screenshots/mobile-dark.png" width="22%" alt="Phone, dark mode" />
+</p>
+
+<sub>Screenshots use sample data.</sub>
+
 Three sections, each with its own news feed:
 
-1. **My Interests**: Nasdaq, S&P 500 and chip stocks by default. Edit them in the app (⚙ Interests) and the news and analysis follow.
+1. **My Interests**: Nasdaq, S&P 500 and chip stocks by default. Edit them in Settings → Interests and the news and analysis follow.
 2. **World**: geopolitics, foreign economies, central banks, oil, trade.
 3. **US**: Fed, economic data, Congress, the White House, regulation.
 
-Every section opens with an AI briefing:
+Every section opens with an AI briefing, ordered by what helps you act fastest:
 
-- **Summary** of the main events, most important first, plus a risk-on/risk-off mood.
-- **What to do**: for each interest, a direction call (up/down/flat), a confidence %, an action (BUY / ADD / HOLD / WAIT / TRIM / SELL / AVOID), a concrete trigger, and the risks.
-- **Key events and impact**: why each event matters, impact chips per interest, a **past example** of how markets reacted to something similar, and **what could go wrong**.
-- **Watch next**: upcoming catalysts.
+- **Briefing**: the one-line takeaway, a risk-on/risk-off mood, and the main events.
+- **What to do**: for each interest, a direction call, a confidence ring, an action (Buy / Add / Hold / Wait / Trim / Sell / Avoid), a concrete trigger, and the risks.
+- **Movers**: why your biggest movers moved, from the headlines.
+- **Key events**: why each event matters, impact per interest, a **past example** of how markets reacted to something similar, and **what could go wrong**.
+- **Up next**: earnings for your tickers plus FOMC, CPI, jobs and PPI dates, all fed to the AI so its timing advice knows what's coming.
+- **Headlines**: new-since-last-visit dots, "Key" badges on stories the AI used, "+N more" when many outlets ran the story, search, and saved headlines.
+
+Also included:
+
+- light / dark / system theme;
+- 8 interface languages (English, Tiếng Việt, 简体中文, 日本語, 한국어, Español, Français, Deutsch);
+- a separate language setting for the AI briefings;
+- listen to the briefing (text to speech);
+- share / copy the briefing;
+- the last 10 briefings per section;
+- a ticker detail sheet with chart;
+- the macro strip (VIX, 10Y yield, oil, gold, dollar, Bitcoin);
+- a market open/close countdown;
+- keyboard shortcuts;
+- install to your phone's home screen as an app.
+
+Design notes and the reasoning behind each feature: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## The part that keeps the AI honest: the track record
 
+<img src="docs/screenshots/track-record.png" width="60%" align="right" alt="Track record" />
+
 A confidence number means nothing unless you know how often it's right. Every outlook in My Interests is logged as a call on the **next session that hasn't opened yet**, so the AI never gets to peek at the market's reaction. Each call is then graded against the real close ("today" calls on the next close, "this week" calls on the 5th close).
 
-The Track record panel shows the hit rate per confidence bucket. If the 70-79% bucket is only right 55% of the time, the AI is overconfident. These numbers go back into the prompt on every run so the model can recalibrate. Give it a few weeks before you trust the numbers.
+The calibration chart compares what the AI claimed (line) with how often it was right (bar). These numbers go back into the prompt on every run so the model can recalibrate. Give it a few weeks before you trust them.
+
+<br clear="right" />
 
 ## How it works
 
@@ -41,7 +70,7 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
   Upstash Redis (digests, interests, calls) ──► the web page
 ```
 
-- **Provider chain.** Free today, Claude later. With no keys at all you get a rule-based keyword read, which is useful for testing and not much else. Add a free Groq or Gemini key for real analysis. Add `ANTHROPIC_API_KEY` and Claude takes over automatically. If a provider fails (rate limit, outage, bad JSON), the next one runs, and the page shows which one produced the briefing.
+- **Provider chain.** Free today, Claude later. Free providers get a compact prompt (fewer headlines, only the relevant playbook entries, capped output) so a run stays under their tokens-per-minute limits. With no keys at all you get a rule-based keyword read, which is useful for testing and not much else. Add a free Groq or Gemini key for real analysis. Add `ANTHROPIC_API_KEY` and Claude takes over automatically. If a provider fails (rate limit, outage, bad JSON), the next one runs, and the page shows which one produced the briefing.
 - **Historical playbook** (`src/lib/analogs.ts`): a hand-checked list of past events and how markets reacted (CPI surprises, Fed pivots, tariff shocks, DeepSeek, export controls, and more). The AI is told to prefer these over its own memory, which cuts down on invented history. Add your own entries.
 - **Scheduler.** Vercel's free plan only allows one cron per day, so a GitHub Actions workflow calls the app before the open (twice), at midday, after the close, and on Sunday evening. Vercel's daily cron is a backup.
 
@@ -64,6 +93,22 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
 
 Set `ANTHROPIC_API_KEY` in Vercel and redeploy. It defaults to `claude-opus-5-5`. Rough cost: 3 sections × 5 runs a day is about 15 calls a day, roughly $1-2 a day on Opus at the default effort (about $25-40 a month). Set `CLAUDE_MODEL=claude-sonnet-5-5` to cut that roughly in half, or `claude-haiku-5-5` for pennies. Run them side by side for a while and let the track record decide.
 
+## Keyboard shortcuts
+
+| Key | Action |
+|---|---|
+| `1` `2` `3` | Switch section |
+| `R` | Refresh this section |
+| `/` | Search headlines |
+| `L` | Listen to the briefing |
+| `T` | Track record |
+| `D` | Toggle light/dark |
+| `?` | Show shortcuts |
+
+## Install on your phone
+
+Open the site in Safari (iPhone) or Chrome (Android) → Share → **Add to Home Screen**. It opens full screen like an app.
+
 ## Local development
 
 ```bash
@@ -71,7 +116,7 @@ npm install
 cp .env.example .env.local   # fill in at least one AI key
 npm run dev                  # http://localhost:3000
 npm run refresh              # run the pipeline once from the terminal
-npm test                     # offline tests (mocked feeds and LLM)
+npm test                     # offline tests: translations, pipeline, calendar, LLM path and fallback
 ```
 
 Locally, data is stored as JSON in `.data/`.

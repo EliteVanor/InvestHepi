@@ -37,11 +37,17 @@ export async function analyzeWithCompat(p: CompatProvider, system: string, user:
           { role: "user", content: user },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 8000,
+        // Free tiers count max_tokens against tokens-per-minute, so keep it tight.
+        max_tokens: Number(process.env.LLM_MAX_TOKENS) || (p.id === "groq" ? 4096 : 8192),
+        ...(p.id === "groq" && p.model.includes("gpt-oss") ? { reasoning_effort: process.env.GROQ_REASONING || "low" } : {}),
       }),
       signal: ctrl.signal,
     });
-    if (!res.ok) throw new Error(`${p.id} HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) {
+      const body = (await res.text()).slice(0, 300);
+      const hint = res.status === 429 || res.status === 413 ? " (free-tier rate or size limit; the next provider will be tried)" : "";
+      throw new Error(`${p.id} HTTP ${res.status}${hint}: ${body}`);
+    }
     const j = await res.json();
     const content: string = j?.choices?.[0]?.message?.content ?? "";
     const parsed = AnalysisSchema.safeParse(normalizeRaw(extractJSON(content)));

@@ -25,6 +25,8 @@ export interface NewsItem {
   summary?: string;
   /** Interest ids this item matched (only for the interests section). */
   tags?: string[];
+  /** Other outlets that ran the same story (merged by dedupe). */
+  alsoIn?: string[];
 }
 
 export interface Quote {
@@ -84,6 +86,7 @@ export interface Analysis {
   events: KeyEvent[];
   outlook: Outlook[];
   watchNext: string[];
+  movers: { ticker: string; changePct: number; why: string }[];
 }
 
 export interface Digest {
@@ -94,7 +97,32 @@ export interface Digest {
   analysis: Analysis;
   news: NewsItem[];
   quotes: Quote[];
+  /** Macro context: VIX, 10Y yield, oil, gold, dollar, bitcoin. */
+  macro?: Quote[];
   feedErrors: string[];
+  /** Language the AI prose was written in. */
+  language?: string;
+}
+
+export interface DigestMeta {
+  generatedAt: string;
+  provider: string;
+  headline: string;
+  mood: Analysis["mood"];
+}
+
+export interface CalendarEvent {
+  date: string; // YYYY-MM-DD (US/Eastern)
+  time?: string; // e.g. "14:00 ET", "before open"
+  kind: "earnings" | "macro";
+  title: string;
+  ticker?: string;
+  importance: 1 | 2 | 3;
+}
+
+export interface Settings {
+  /** Language code for AI-written briefings (en, vi, zh, ja, ko, es, fr, de). */
+  briefingLanguage: string;
 }
 
 /** A logged call, graded later against real prices. */
