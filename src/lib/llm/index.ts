@@ -6,7 +6,8 @@
  */
 import type { Analysis } from "../types";
 import { CLAUDE_MODEL, analyzeWithClaude, completeWithClaude } from "./claude";
-import { analyzeWithCompat, completeWithCompat, geminiProvider, groqProvider } from "./openai-compat";
+import { analyzeWithCompat, completeWithCompat, estimateTokens, geminiProvider, groqProvider, outputTokens, tokenBudget, type CompatProvider } from "./openai-compat";
+import { SCHEMA_HINT } from "./schema";
 import { buildSystemPrompt, buildUserPrompt, type PromptInput } from "./prompt";
 import { analyzeWithRules } from "./rules";
 import { toAnalysis } from "./schema";
@@ -14,6 +15,7 @@ import { toAnalysis } from "./schema";
 interface Step {
   id: string;
   compact: boolean;
+  provider?: CompatProvider;
   run: (system: string, user: string) => Promise<Analysis>;
 }
 
@@ -23,7 +25,7 @@ export function providerChain(): Step[] {
     steps.push({ id: `claude:${CLAUDE_MODEL}`, compact: false, run: async (s, u) => toAnalysis(await analyzeWithClaude(s, u)) });
   }
   for (const p of [groqProvider(), geminiProvider()]) {
-    if (p) steps.push({ id: `${p.id}:${p.model}`, compact: true, run: async (s, u) => toAnalysis(await analyzeWithCompat(p, s, u)) });
+    if (p) steps.push({ id: `${p.id}:${p.model}`, compact: true, provider: p, run: async (s, u) => toAnalysis(await analyzeWithCompat(p, s, u)) });
   }
   const forced = process.env.LLM_PROVIDER?.toLowerCase();
   if (forced) {
@@ -33,12 +35,33 @@ export function providerChain(): Step[] {
   return steps;
 }
 
+/**
+ * Build the prompt, and for providers with a hard request-size limit (Groq free tier) drop
+ * headlines until input + reserved output fits, with ~6% headroom for estimate error.
+ */
+export function fitPrompt(input: PromptInput, step: { compact: boolean; provider?: CompatProvider }) {
+  const budget = step.provider ? tokenBudget(step.provider) : undefined;
+  const build = (maxHeadlines?: number) => {
+    const opts = { compact: step.compact, maxHeadlines };
+    return { system: buildSystemPrompt(input, opts), user: buildUserPrompt(input, opts), maxHeadlines };
+  };
+  if (!budget || !step.provider) return build();
+  const limit = budget * 0.94 - outputTokens(step.provider);
+  // The schema hint is appended to the system prompt by the compat client, so count it too.
+  const size = (p: { system: string; user: string }) => estimateTokens(p.system + SCHEMA_HINT + p.user);
+  for (const n of [30, 24, 18, 14, 10, 6]) {
+    const p = build(n);
+    if (size(p) <= limit) return p;
+  }
+  return build(4);
+}
+
 export async function analyze(input: PromptInput): Promise<{ analysis: Analysis; provider: string; note?: string }> {
   const failures: string[] = [];
   for (const step of providerChain()) {
     try {
-      const opts = { compact: step.compact };
-      const analysis = await step.run(buildSystemPrompt(input, opts), buildUserPrompt(input, opts));
+      const { system, user } = fitPrompt(input, step);
+      const analysis = await step.run(system, user);
       return { analysis, provider: step.id, note: failures.length ? `Fell back after: ${failures.join("; ")}` : undefined };
     } catch (e) {
       failures.push(`${step.id}: ${(e as Error).message.slice(0, 200)}`);

@@ -371,6 +371,8 @@ const en = {
   "toast.updated": "Briefing updated",
   "cmd.search": "Search results",
   "pf.edit": "Edit",
+  "pw.wrong": "Wrong password. Check APP_PASSWORD in Vercel (Settings \u2192 Environment Variables) and try again.",
+  "pw.network": "Couldn't reach the server. Check your connection and try again.",
 };
 
 export type MsgKey = keyof typeof en;
@@ -743,6 +745,8 @@ const vi: Dict = {
   "set.back": "Quay lại",
   "toast.updated": "Đã cập nhật bản tin",
   "cmd.search": "Kết quả tìm kiếm",
+  "pw.wrong": "Sai mật khẩu. Kiểm tra APP_PASSWORD trong Vercel (Settings → Environment Variables) rồi thử lại.",
+  "pw.network": "Không kết nối được máy chủ. Kiểm tra kết nối rồi thử lại.",
 };
 
 const zh: Dict = {
@@ -1112,6 +1116,8 @@ const zh: Dict = {
   "set.back": "返回",
   "toast.updated": "简报已更新",
   "cmd.search": "搜索结果",
+  "pw.wrong": "密码错误。请检查 Vercel 中的 APP_PASSWORD（Settings → Environment Variables）后重试。",
+  "pw.network": "无法连接服务器。请检查网络后重试。",
 };
 
 const ja: Dict = {
@@ -1481,6 +1487,8 @@ const ja: Dict = {
   "set.back": "戻る",
   "toast.updated": "ブリーフィングを更新しました",
   "cmd.search": "検索結果",
+  "pw.wrong": "パスワードが違います。Vercel の APP_PASSWORD（Settings → Environment Variables）を確認して、もう一度お試しください。",
+  "pw.network": "サーバーに接続できません。接続を確認して、もう一度お試しください。",
 };
 
 const ko: Dict = {
@@ -1850,6 +1858,8 @@ const ko: Dict = {
   "set.back": "뒤로",
   "toast.updated": "브리핑이 업데이트되었습니다",
   "cmd.search": "검색 결과",
+  "pw.wrong": "비밀번호가 틀렸습니다. Vercel의 APP_PASSWORD(Settings → Environment Variables)를 확인하고 다시 시도하세요.",
+  "pw.network": "서버에 연결할 수 없습니다. 연결을 확인하고 다시 시도하세요.",
 };
 
 const es: Dict = {
@@ -2219,6 +2229,8 @@ const es: Dict = {
   "set.back": "Atrás",
   "toast.updated": "Resumen actualizado",
   "cmd.search": "Resultados de búsqueda",
+  "pw.wrong": "Contraseña incorrecta. Revisa APP_PASSWORD en Vercel (Settings → Environment Variables) e inténtalo de nuevo.",
+  "pw.network": "No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.",
 };
 
 const fr: Dict = {
@@ -2588,6 +2600,8 @@ const fr: Dict = {
   "set.back": "Retour",
   "toast.updated": "Synthèse mise à jour",
   "cmd.search": "Résultats de recherche",
+  "pw.wrong": "Mot de passe incorrect. Vérifiez APP_PASSWORD dans Vercel (Settings → Environment Variables) et réessayez.",
+  "pw.network": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
 };
 
 const de: Dict = {
@@ -2957,6 +2971,8 @@ const de: Dict = {
   "set.back": "Zurück",
   "toast.updated": "Briefing aktualisiert",
   "cmd.search": "Suchergebnisse",
+  "pw.wrong": "Falsches Passwort. Prüfe APP_PASSWORD in Vercel (Settings → Environment Variables) und versuche es erneut.",
+  "pw.network": "Server nicht erreichbar. Prüfe deine Verbindung und versuche es erneut.",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

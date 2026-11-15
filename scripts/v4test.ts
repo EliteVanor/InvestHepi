@@ -185,6 +185,20 @@ async function main() {
   assert.ok(ctx.text.includes("The user's positions (weights only)") && ctx.text.includes("NVDA: 100% of portfolio"));
   assert.ok(!buildAskContext([d], [], "n/a").text.includes("positions (weights only)"), "no positions block without holdings");
 
+  // ---- Groq request-size fitting with long, real-world headlines
+  const { fitPrompt } = await import("../src/lib/llm");
+  const { estimateTokens, outputTokens } = await import("../src/lib/llm/openai-compat");
+  const { SCHEMA_HINT } = await import("../src/lib/llm/schema");
+  const longNews = Array.from({ length: 60 }, (_, i) => ({ id: `L${i}`, title: `Jensen Huang's sudden resignation as Nvidia CEO amid a federal probe over alleged chip diversion to China intensifies selling pressure across semiconductors, analysts say (${i})`, link: "", source: "Reuters", publishedAt: new Date().toISOString(), alsoIn: ["CNBC", "Bloomberg", "WSJ"] }));
+  const groqP = { id: "groq", baseUrl: "", model: "openai/gpt-oss-120b", key: "x" };
+  const fit = fitPrompt({ section: "interests", interests: (await import("../src/lib/config")).DEFAULT_INTERESTS, news: longNews, quotes: d.quotes, macro: d.macro ?? [], sectors: d.sectors, technicals: d.technicals, gauge: d.gauge, positions: "NVDA: 100% of portfolio, +50% vs cost", calendar: [], trackRecord: "n/a", language: "vi", now: new Date() } as never, { compact: true, provider: groqP });
+  const total = estimateTokens(fit.system + SCHEMA_HINT + fit.user) + outputTokens(groqP);
+  assert.ok(total <= 8000 * 0.94, `Groq request fits the 8,000-token limit (est. ${total}, ${fit.maxHeadlines} headlines)`);
+  assert.ok((fit.maxHeadlines ?? 0) >= 10, `still keeps a useful number of headlines (${fit.maxHeadlines})`);
+  const claudeFit = fitPrompt({ section: "interests", interests: [], news: longNews, quotes: [], macro: [], calendar: [], trackRecord: "", language: "en", now: new Date() } as never, { compact: false });
+  assert.equal(claudeFit.maxHeadlines, undefined, "providers without a hard limit are not trimmed");
+  console.log(`    groq prompt: ~${total} tokens incl. output, ${fit.maxHeadlines} headlines`);
+
   // ---- ticker search: Yahoo parse, filtering, local fallback
   const S = await import("../src/lib/search");
   const hits = await S.searchTickers("micros");

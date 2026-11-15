@@ -11,6 +11,22 @@ export interface CompatProvider {
   key: string;
 }
 
+/**
+ * Groq's free tier rejects any request whose input + reserved output exceeds the model's
+ * tokens-per-minute limit (8,000 for gpt-oss-120b). Override with GROQ_TPM if your tier differs.
+ */
+export function tokenBudget(p: CompatProvider): number | undefined {
+  if (p.id !== "groq") return undefined;
+  return Number(process.env.GROQ_TPM) || 8000;
+}
+
+export function outputTokens(p: CompatProvider): number {
+  return Number(process.env.LLM_MAX_TOKENS) || (p.id === "groq" ? 3000 : 8192);
+}
+
+/** Conservative token estimate (~3 chars per token for English + JSON; real counts are usually lower). */
+export const estimateTokens = (text: string) => Math.ceil(text.length / 3);
+
 export function groqProvider(): CompatProvider | null {
   const key = process.env.GROQ_API_KEY;
   return key ? { id: "groq", baseUrl: "https://api.groq.com/openai/v1", model: process.env.GROQ_MODEL || "openai/gpt-oss-120b", key } : null;
@@ -38,7 +54,7 @@ export async function analyzeWithCompat(p: CompatProvider, system: string, user:
         ],
         response_format: { type: "json_object" },
         // Free tiers count max_tokens against tokens-per-minute, so keep it tight.
-        max_tokens: Number(process.env.LLM_MAX_TOKENS) || (p.id === "groq" ? 4096 : 8192),
+        max_tokens: outputTokens(p),
         ...(p.id === "groq" && p.model.includes("gpt-oss") ? { reasoning_effort: process.env.GROQ_REASONING || "low" } : {}),
       }),
       signal: ctrl.signal,

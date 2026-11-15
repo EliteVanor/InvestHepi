@@ -121,7 +121,9 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const api = useCallback(async <R,>(path: string, init?: RequestInit): Promise<R> => {
     const res = await fetch(path, {
       ...init,
-      headers: { "Content-Type": "application/json", "x-app-password": pwRef.current, ...(init?.headers ?? {}) },
+      // Read the saved password at call time too: a child component's first request can run
+      // before this provider's mount effect has loaded it, and an empty password would 401.
+      headers: { "Content-Type": "application/json", "x-app-password": encodeURIComponent(pwRef.current || lsGet<string>(K.pw, "")), ...(init?.headers ?? {}) },
     });
     if (res.status === 401) {
       setNeedPassword(true);
@@ -133,8 +135,8 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setPassword = useCallback((pw: string) => {
-    pwRef.current = pw;
-    lsSet(K.pw, pw);
+    pwRef.current = pw.trim();
+    lsSet(K.pw, pw.trim());
     setNeedPassword(false);
   }, []);
   const forgetPassword = useCallback(() => {

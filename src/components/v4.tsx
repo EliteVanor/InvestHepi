@@ -846,7 +846,7 @@ export function TrackExtras({ stats }: { stats: TrackStats }) {
     try {
       // Fetch with the password header, then hand the browser a file.
       const pw = lsGet<string>("ih-password", "");
-      const res = await fetch("/api/track?format=csv", { headers: { "x-app-password": pw } });
+      const res = await fetch("/api/track?format=csv", { headers: { "x-app-password": encodeURIComponent(pw) } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement("a");

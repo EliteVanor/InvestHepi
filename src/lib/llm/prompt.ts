@@ -30,6 +30,8 @@ export interface PromptInput {
  */
 export interface PromptOptions {
   compact: boolean;
+  /** Override the headline count (used to shrink a prompt that's over a provider's size limit). */
+  maxHeadlines?: number;
 }
 
 const SECTION_FOCUS: Record<SectionId, string> = {
@@ -122,7 +124,7 @@ function techFor(p: PromptInput, opts: PromptOptions): Record<string, Technicals
 }
 
 export function buildUserPrompt(p: PromptInput, opts: PromptOptions): string {
-  const maxHeadlines = opts.compact ? 30 : 45;
+  const maxHeadlines = opts.maxHeadlines ?? (opts.compact ? 30 : 45);
   const interests = p.interests
     .map((i) => `- ${i.name} (benchmark ${i.tickers[0]}${i.tickers.length > 1 ? `; also ${i.tickers.slice(1).join(", ")}` : ""})`)
     .join("\n");

@@ -220,7 +220,9 @@ function App() {
     () => (ready ? new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "long", month: "long", day: "numeric" }).format(new Date()) : ""),
     [ready, lang],
   );
-  const loading = ready && !needPassword && active === undefined;
+  // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders
+  // and fires requests early.
+  const loading = !ready || (!needPassword && active === undefined);
 
   // Live prices for the strip (polls only while the market session is active).
   const stripSymbols = useMemo(() => (shown ? [...shown.quotes.map((q) => q.symbol), ...(shown.macro ?? []).map((q) => q.symbol)] : []), [shown]);
