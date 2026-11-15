@@ -6,9 +6,10 @@ import { PrefsProvider, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
 import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
+import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
 import type { MsgKey } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
-import type { CalendarEvent, Digest, Interest, SectionId } from "@/lib/types";
+import type { CalendarEvent, Digest, Holding, Interest, SectionId } from "@/lib/types";
 
 const SECTION_IDS: SectionId[] = ["interests", "world", "us"];
 const TAB_KEY = "ih-tab";
@@ -16,7 +17,9 @@ const TAB_KEY = "ih-tab";
 export default function Page() {
   return (
     <PrefsProvider>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </PrefsProvider>
   );
 }
@@ -28,6 +31,7 @@ type Sheet =
   | { kind: "ticker"; symbol: string }
   | { kind: "history" }
   | { kind: "ask"; q?: string }
+  | { kind: "catchup" }
   | { kind: "palette" };
 
 function App() {
@@ -37,6 +41,18 @@ function App() {
   const [oldDigest, setOldDigest] = useState<{ section: SectionId; key: string; digest: Digest } | null>(null);
   const [calendar, setCalendar] = useState<{ events: CalendarEvent[]; notes: string[] }>({ events: [], notes: [] });
   const [interests, setInterests] = useState<Interest[]>([]);
+  const [holdings, setHoldings] = useState<Holding[]>([]);
+  const [titleHidden, setTitleHidden] = useState(false);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const toast = useToast();
+  // iOS-style collapsing title: once the large title scrolls away, the top bar shows the section name.
+  useEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([e]) => setTitleHidden(!e.isIntersecting), { rootMargin: "-56px 0px 0px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
   const [refreshing, setRefreshing] = useState<SectionId | null>(null);
   const [error, setError] = useState("");
   const [sheet, setSheet] = useState<Sheet>(null);
@@ -83,7 +99,8 @@ function App() {
     });
     loadCalendar();
     loadInterests();
-  }, [ready, needPassword, loadDigest, loadCalendar, loadInterests]);
+    api<{ holdings: Holding[] }>("/api/portfolio").then((j) => setHoldings(j.holdings)).catch(() => {});
+  }, [ready, needPassword, loadDigest, loadCalendar, loadInterests, api]);
 
   // First visit ever on this device: start with everything read, in every section.
   const firstVisit = useRef<boolean | null>(null);
@@ -137,13 +154,14 @@ function App() {
         if (failed) setError(failed.error ?? "Refresh failed");
         setOldDigest(null);
         await Promise.all([loadDigest(s), loadCalendar()]);
+        if (!failed) toast(t("toast.updated"));
       } catch (e) {
         if ((e as Error).message !== "401") setError((e as Error).message);
       } finally {
         setRefreshing(null);
       }
     },
-    [api, loadDigest, loadCalendar],
+    [api, loadDigest, loadCalendar, toast, t],
   );
 
   const pickHistory = async (key: string | null) => {
@@ -187,7 +205,7 @@ function App() {
       else if (k === "a") {
         e.preventDefault();
         setSheet({ kind: "ask" });
-      }
+      } else if (k === "c") setSheet({ kind: "catchup" });
       else if (e.key === "?") setSheet({ kind: "settings", tab: "shortcuts" });
     };
     window.addEventListener("keydown", onKey);
@@ -216,11 +234,16 @@ function App() {
     return list.length ? list.slice(0, 14) : ["SPY", "QQQ", "SOXX"];
   }, [interests]);
   const openTicker = useCallback((symbol: string) => setSheet({ kind: "ticker", symbol }), []);
+  const watchSymbols = useMemo(() => [...new Set([...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)])], [interests, holdings]);
+  const interestsDigest = digests.interests;
+  const interestsLive = useMemo(() => (interestsDigest ? mergeLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
+  const isHome = tab === "interests";
   const paletteActions: PaletteActions = useMemo(
     () => ({
       section: switchTab,
       ticker: openTicker,
       ask: (q?: string) => setSheet({ kind: "ask", q }),
+      catchup: () => setSheet({ kind: "catchup" }),
       searchNews: (q: string) => {
         document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
         window.dispatchEvent(new CustomEvent("ih-search", { detail: q }));
@@ -239,7 +262,7 @@ function App() {
         <div className="topbar-inner">
           <div className="brand">
             <span className="brand-mark" aria-hidden="true" />
-            <span>Invest Helper</span>
+            <span>{isMobile && titleHidden ? t(`sec.${tab}` as MsgKey) : "Invest Helper"}</span>
           </div>
           <span className="spacer" />
           <nav className="segmented desktop-only" aria-label="Sections">
@@ -266,11 +289,17 @@ function App() {
         </div>
       </header>
 
+      {refreshing && (
+        <div className="progress" role="progressbar" aria-label={t("nav.refreshing")}>
+          <i />
+        </div>
+      )}
+
       <main className="page">
         <div className="page-head">
           <div className="page-title">
             <div className="eyebrow" suppressHydrationWarning>{dateStr}</div>
-            <h1 className="large-title">{t(`sec.${tab}` as MsgKey)}</h1>
+            <h1 className="large-title" ref={titleRef}>{t(`sec.${tab}` as MsgKey)}</h1>
           </div>
           <StatusPill />
         </div>
@@ -305,13 +334,22 @@ function App() {
           </div>
         ) : (
           <>
-            <Briefing digest={shown} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} />
+            {interestsDigest && (
+              <div style={{ display: isHome && !oldDigest ? undefined : "none" }}>
+                <SinceLastVisit digest={interestsDigest} quotes={interestsLive} newCount={newSnap.interests?.ids.size ?? 0} onTicker={openTicker} />
+              </div>
+            )}
+            <Briefing digest={shown} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} onCatchUp={() => setSheet({ kind: "catchup" })} />
             <Calls outlook={shown.analysis.outlook} onTicker={openTicker} />
-            <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />
+            <ScenariosCard scenarios={shown.analysis.scenarios} />
+            {isHome && <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />}
+            {isHome && <Watchlist symbols={watchSymbols} quotes={liveQuotes} technicals={shown.technicals} outlook={shown.analysis.outlook} onOpen={openTicker} />}
             <div className="grid">
               <div>
                 {isMobile && (
                   <>
+                    <MoodGaugeCard gauge={shown.gauge} />
+                    {isHome && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                     <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
                     <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
                   </>
@@ -328,6 +366,7 @@ function App() {
                   interests={interests}
                   newIds={newIds}
                   searchRef={searchRef}
+                  onExplain={(title) => setSheet({ kind: "ask", q: t("ask.explain", { title }) })}
                   onMarkRead={() => {
                     markSeen(shown.news.map((n) => n.id));
                     setNewSnap((p) => ({ ...p, [tab]: { at: shown.generatedAt, ids: new Set() } }));
@@ -336,6 +375,8 @@ function App() {
               </div>
               {!isMobile && (
               <aside className="rail">
+                <MoodGaugeCard gauge={shown.gauge} />
+                {isHome && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                 <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
                 <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
                 <UpNext events={calendar.events} notes={calendar.notes} />
@@ -373,7 +414,7 @@ function App() {
       </nav>
 
       <button className="ask-fab" onClick={() => setSheet({ kind: "ask" })} aria-label={t("ask.title")}>
-        <IconSparkles /> {t("ask.title")} <kbd>A</kbd>
+        <IconSparkles /> <span className="fab-text">{t("ask.title")}</span> <kbd>A</kbd>
       </button>
 
       {needPassword && <PasswordSheet />}
@@ -389,6 +430,7 @@ function App() {
             refresh("interests");
           }}
           onBriefingLangSaved={() => refresh(tab)}
+          onHoldingsSaved={setHoldings}
         />
       )}
       {sheet?.kind === "track" && <TrackSheet onClose={() => setSheet(null)} />}
@@ -397,6 +439,9 @@ function App() {
         <TickerSheet symbol={sheet.symbol} quote={quoteFor(sheet.symbol)} digests={allDigests} onClose={() => setSheet(null)} onAlert={(symbol) => setSheet({ kind: "settings", tab: "alerts", symbol })} />
       )}
       {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} tickers={chartSymbols} initial={sheet.q} />}
+      {sheet?.kind === "catchup" && shown && (
+        <CatchUp digest={shown} calendar={calendar.events} onClose={() => setSheet(null)} onAsk={() => setSheet({ kind: "ask" })} />
+      )}
       {sheet?.kind === "palette" && <CommandPalette onClose={() => setSheet(null)} tickers={chartSymbols} actions={paletteActions} />}
     </>
   );

@@ -1,6 +1,9 @@
 import { afterRefresh } from "./alerts";
 import { getCalendar } from "./calendar";
 import { SECTORS } from "./chart";
+import { computeMood } from "./mood";
+import { loadHoldings, positionsAsText } from "./portfolio";
+import { getTechnicals, type Technicals } from "./technicals";
 import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, SECTION_FEEDS } from "./config";
 import { isLang } from "./languages";
 import { analyze } from "./llm";
@@ -54,10 +57,10 @@ async function archive(d: Digest): Promise<void> {
 }
 
 export async function refreshSection(section: SectionId, now = new Date()): Promise<Digest> {
-  const [interests, settings] = await Promise.all([loadInterests(), loadSettings()]);
-  const symbols = [...BENCHMARKS, ...interests.flatMap((i) => i.tickers)];
+  const [interests, settings, holdings] = await Promise.all([loadInterests(), loadSettings(), loadHoldings().catch(() => [])]);
+  const symbols = [...BENCHMARKS, ...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)];
 
-  const [newsRes, quotes, macro, sectors, calendar] = await Promise.all([
+  const [newsRes, quotes, macro, sectors, calendar, technicals] = await Promise.all([
     section === "interests"
       ? fetchInterestNews(interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY)
       : fetchFeeds(SECTION_FEEDS[section]).then((r) => ({ items: dedupe(r.items), errors: r.errors })),
@@ -65,7 +68,9 @@ export async function refreshSection(section: SectionId, now = new Date()): Prom
     getQuotes(MACRO.map((m) => m.symbol)),
     getQuotes(SECTORS.map((x) => x.symbol)),
     getCalendar(interests).catch(() => ({ events: [], notes: [], generatedAt: now.toISOString() })),
+    getTechnicals(symbols).catch(() => ({})),
   ]);
+  const gauge = computeMood({ spy: (technicals as Record<string, Technicals>).SPY, sectors, macro, quotes });
   const news = newsRes.items.slice(0, MAX_ITEMS_PER_SECTION);
 
   const stats = computeStats(await loadCalls());
@@ -76,6 +81,9 @@ export async function refreshSection(section: SectionId, now = new Date()): Prom
     quotes,
     macro,
     sectors,
+    technicals,
+    gauge,
+    positions: positionsAsText(holdings, quotes),
     calendar: calendar.events,
     trackRecord: trackRecordText(stats),
     language: settings.briefingLanguage,
@@ -95,6 +103,8 @@ export async function refreshSection(section: SectionId, now = new Date()): Prom
     quotes,
     macro,
     sectors,
+    technicals,
+    gauge,
     feedErrors: newsRes.errors,
     language: provider === "rules" ? "en" : settings.briefingLanguage,
   };

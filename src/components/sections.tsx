@@ -85,8 +85,8 @@ export function briefingText(d: Digest, t: ReturnType<typeof usePrefs>["t"]): st
 }
 
 export function Briefing({
-  digest, viewingOld, onBackToLatest, onHistory,
-}: { digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void }) {
+  digest, viewingOld, onBackToLatest, onHistory, onCatchUp,
+}: { digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void; onCatchUp: () => void }) {
   const { t, lang } = usePrefs();
   const a = digest.analysis;
   const [speaking, setSpeaking] = useState(false);
@@ -174,6 +174,10 @@ export function Briefing({
         <span>{digest.provider === "rules" ? t("brief.rules") : providerName(digest.provider)}</span>
         <span>{t("brief.stories", { n: digest.news.length })}</span>
         <div className="hero-actions">
+          <button className="pill-btn catch-btn" onClick={onCatchUp} title="C">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>
+            {t("catch.button")}
+          </button>
           {canSpeak && (
             <button className={`pill-btn ${speaking ? "active" : ""}`} onClick={speak} aria-pressed={speaking}>
               {speaking ? <IconStop /> : <IconSpeaker />} {speaking ? t("nav.stop") : t("nav.listen")}
@@ -407,8 +411,9 @@ export function WatchNext({ items }: { items: string[] }) {
 /* ------------------------------------------------------------- Headlines */
 
 export function Headlines({
-  digest, interests, newIds, onMarkRead, searchRef,
+  digest, interests, newIds, onMarkRead, searchRef, onExplain,
 }: {
+  onExplain: (title: string) => void;
   digest: Digest;
   interests: Interest[];
   newIds: Set<string>;
@@ -476,9 +481,14 @@ export function Headlines({
           <a href={n.link} target="_blank" rel="noreferrer">
             {n.title}
           </a>
-          <button className="save-btn" aria-pressed={isSaved(n.id)} onClick={() => toggleSaved(n)} aria-label={isSaved(n.id) ? t("news.unsave") : t("news.save")}>
-            <IconBookmark filled={isSaved(n.id)} />
-          </button>
+          <div className="news-actions">
+            <button className="save-btn" onClick={() => onExplain(n.title)} aria-label={t("news.explain")} title={t("news.explain")}>
+              <IconSparkles />
+            </button>
+            <button className="save-btn" aria-pressed={isSaved(n.id)} onClick={() => toggleSaved(n)} aria-label={isSaved(n.id) ? t("news.unsave") : t("news.save")}>
+              <IconBookmark filled={isSaved(n.id)} />
+            </button>
+          </div>
           <div className="news-meta">
             <span>{n.source}</span>
             <span>·</span>

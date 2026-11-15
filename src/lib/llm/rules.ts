@@ -84,6 +84,7 @@ export function analyzeWithRules(news: NewsItem[], interests: Interest[], quotes
     outlook,
     watchNext: [],
     movers: rulesMovers(news, interests, quotes),
+    scenarios: [],
   };
 }
 

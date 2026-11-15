@@ -1,5 +1,5 @@
 /** Company names for common tickers, so "NVDA" also matches headlines that say "Nvidia". */
-const ALIASES: Record<string, string[]> = {
+export const ALIASES: Record<string, string[]> = {
   NVDA: ["Nvidia"], AMD: ["AMD", "Advanced Micro"], TSM: ["TSMC", "Taiwan Semiconductor"], AVGO: ["Broadcom"], ASML: ["ASML"],
   MU: ["Micron"], INTC: ["Intel"], QCOM: ["Qualcomm"], ARM: ["Arm Holdings"], SMCI: ["Super Micro", "Supermicro"], MRVL: ["Marvell"],
   AMAT: ["Applied Materials"], LRCX: ["Lam Research"], KLAC: ["KLA"], TXN: ["Texas Instruments"], AAPL: ["Apple"], MSFT: ["Microsoft"],

@@ -62,6 +62,22 @@ export const AnalysisSchema = z.object({
       }),
     )
     .describe("1-4 of the user's tickers that moved most last session. Empty outside the interests section."),
+  scenarios: z
+    .array(
+      z.object({
+        catalyst: z.string().describe("The scheduled event, e.g. 'October CPI'"),
+        when: z.string().describe("Date and time, e.g. 'Thu Nov 26, 8:30 ET'"),
+        cases: z.array(
+          z.object({
+            label: z.string().describe("e.g. 'Hot', 'In line', 'Cool'"),
+            probability: z.number().describe("0-100; the cases sum to about 100"),
+            reaction: z.string().describe("Expected reaction of the user's interests"),
+            action: z.string().describe("What to do if this case happens"),
+          }),
+        ),
+      }),
+    )
+    .describe("At most ONE scenario set, only if a major catalyst is within ~7 days. Otherwise empty."),
 });
 
 export type RawAnalysis = z.infer<typeof AnalysisSchema>;
@@ -96,6 +112,15 @@ export function toAnalysis(r: RawAnalysis): Analysis {
     })),
     watchNext: r.watch_next ?? [],
     movers: (r.movers ?? []).map((m) => ({ ticker: m.ticker.toUpperCase(), changePct: Number(m.change_pct) || 0, why: m.why })),
+    scenarios: (r.scenarios ?? [])
+      .filter((s) => s.catalyst && s.cases?.length >= 2)
+      .slice(0, 1)
+      .map((s) => {
+        const cases = s.cases.slice(0, 4).map((c) => ({ label: c.label, probability: clamp(c.probability, 0, 100), reaction: c.reaction, action: c.action }));
+        // Rescale so the estimates sum to 100.
+        const sum = cases.reduce((a, c) => a + c.probability, 0) || 1;
+        return { catalyst: s.catalyst, when: s.when, cases: cases.map((c) => ({ ...c, probability: Math.round((c.probability / sum) * 100) })) };
+      }),
   };
 }
 
@@ -124,7 +149,8 @@ export const SCHEMA_HINT = `Return ONLY a JSON object with exactly this shape:
   }],
   "outlook": [{ "interest": string, "ticker": string, "direction": "up"|"down"|"flat", "confidence": 0-100, "horizon": "today"|"this week", "action": "BUY"|"ADD"|"HOLD"|"WAIT"|"TRIM"|"SELL"|"AVOID", "action_trigger": string, "rationale": string, "risks": string }],
   "watch_next": string[],
-  "movers": [{ "ticker": string, "change_pct": number, "why": string }]
+  "movers": [{ "ticker": string, "change_pct": number, "why": string }],
+  "scenarios": [{ "catalyst": string, "when": string, "cases": [{ "label": string, "probability": 0-100, "reaction": string, "action": string }] }]
 }`;
 
 /** Repair common free-model JSON slips (string numbers, wrong case, missing arrays) before validation. */
@@ -174,5 +200,10 @@ export function normalizeRaw(input: unknown): unknown {
     })),
     watch_next: arr(o.watch_next).map(str),
     movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why) })),
+    scenarios: arr(o.scenarios).map((s: any) => ({
+      catalyst: str(s?.catalyst),
+      when: str(s?.when),
+      cases: arr(s?.cases).map((c: any) => ({ label: str(c?.label), probability: num(String(c?.probability ?? "").replace("%", ""), 0), reaction: str(c?.reaction), action: str(c?.action) })),
+    })),
   };
 }

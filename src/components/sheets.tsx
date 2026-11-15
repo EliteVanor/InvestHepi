@@ -1,49 +1,80 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { relTime, type MsgKey } from "@/lib/i18n";
 import { LANGUAGES, langInfo, type LangCode } from "@/lib/languages";
 import type { AlertSettings } from "@/lib/alerts";
 import type { ChartData } from "@/lib/chart";
 import { tickerMatcher } from "@/lib/tickers";
 import type { TrackStats } from "@/lib/track";
-import type { Call, Digest, Interest, Quote, SectionId, Settings } from "@/lib/types";
-import { IconCheck, IconPlus, IconX } from "./Icons";
+import type { Call, Digest, Holding, Interest, Quote, SectionId, Settings } from "@/lib/types";
+import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart } from "./LiveChart";
 import { Ring, Sheet, arrow, fmtPct, fmtPrice } from "./primitives";
 import { AlertsTab } from "./v3";
+import { HoldingsEditor, TickerSearch, TrackExtras } from "./v4";
 
 /* -------------------------------------------------------------- Settings */
 
-export type Tab = "general" | "interests" | "alerts" | "status" | "shortcuts";
+export type Tab = "general" | "interests" | "holdings" | "alerts" | "status" | "shortcuts";
 
+/** iOS-style settings: a root list that drills into pages. */
 export function SettingsSheet({
-  onClose, initialTab = "general", onInterestsSaved, onBriefingLangSaved, prefillSymbol,
-}: { onClose: () => void; initialTab?: Tab; onInterestsSaved: () => void; onBriefingLangSaved: () => void; prefillSymbol?: string }) {
-  const { t } = usePrefs();
-  const [tab, setTab] = useState<Tab>(initialTab);
-  const tabs: [Tab, MsgKey][] = [
-    ["general", "set.general"],
-    ["interests", "set.interests"],
-    ["alerts", "set.alerts"],
-    ["status", "set.status"],
-    ["shortcuts", "set.shortcuts"],
+  onClose, initialTab, onInterestsSaved, onBriefingLangSaved, onHoldingsSaved, prefillSymbol,
+}: {
+  onClose: () => void;
+  initialTab?: Tab;
+  onInterestsSaved: () => void;
+  onBriefingLangSaved: () => void;
+  onHoldingsSaved: (h: Holding[]) => void;
+  prefillSymbol?: string;
+}) {
+  const { t, theme, lang } = usePrefs();
+  const [page, setPage] = useState<Tab | null>(initialTab ?? null);
+  const pages: { id: Tab; label: MsgKey; icon: ReactNode; tint: string; value?: string; desktopOnly?: boolean }[] = [
+    { id: "general", label: "set.root.appearance", icon: <IconMoon />, tint: "#5e5ce6", value: `${t(`set.${theme}` as MsgKey)} · ${langInfo(lang).native}` },
+    { id: "interests", label: "set.interests", icon: <IconStar />, tint: "#ff9f0a" },
+    { id: "holdings", label: "pf.title", icon: <IconChart />, tint: "#30b0c7" },
+    { id: "alerts", label: "set.alerts", icon: <IconBolt />, tint: "#ff453a" },
+    { id: "status", label: "set.status", icon: <IconCheck />, tint: "#34c759" },
+    { id: "shortcuts", label: "set.shortcuts", icon: <IconGear />, tint: "#8e8e93", desktopOnly: true },
   ];
+  const current = pages.find((p) => p.id === page);
   return (
-    <Sheet title={t("set.title")} onClose={onClose}>
-      <div className="segmented" role="tablist" style={{ width: "100%", display: "flex" }}>
-        {tabs.map(([id, key]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{ flex: 1, padding: "6px 2px", fontSize: 12.5 }} className={id === "shortcuts" ? "desktop-only" : undefined}>
-            {t(key)}
-          </button>
-        ))}
-      </div>
-      {tab === "general" && <GeneralTab onBriefingLangSaved={onBriefingLangSaved} />}
-      {tab === "interests" && <InterestsTab onSaved={onInterestsSaved} />}
-      {tab === "alerts" && <AlertsTab prefillSymbol={prefillSymbol} />}
-      {tab === "status" && <StatusTab />}
-      {tab === "shortcuts" && <ShortcutsTab />}
+    <Sheet
+      title={
+        current ? (
+          <span className="set-title">
+            <button className="set-back" onClick={() => setPage(null)} aria-label={t("set.back")}>
+              <IconArrow style={{ transform: "rotate(180deg)" }} /> {t("set.title")}
+            </button>
+            <span>{t(current.label)}</span>
+          </span>
+        ) : (
+          t("set.title")
+        )
+      }
+      onClose={onClose}
+    >
+      {!page && (
+        <div className="group set-root" role="list">
+          {pages.map((p) => (
+            <button key={p.id} role="listitem" className={`row set-row ${p.desktopOnly ? "desktop-only" : ""}`} onClick={() => setPage(p.id)}>
+              <span className="set-icon" style={{ background: p.tint }}>{p.icon}</span>
+              <span className="label">{t(p.label)}</span>
+              {p.value && <span className="value">{p.value}</span>}
+              <IconArrow className="set-chev" />
+            </button>
+          ))}
+        </div>
+      )}
+      {page === "general" && <GeneralTab onBriefingLangSaved={onBriefingLangSaved} />}
+      {page === "interests" && <InterestsTab onSaved={onInterestsSaved} />}
+      {page === "holdings" && <HoldingsEditor onSaved={onHoldingsSaved} />}
+      {page === "alerts" && <AlertsTab prefillSymbol={prefillSymbol} />}
+      {page === "status" && <StatusTab />}
+      {page === "shortcuts" && <ShortcutsTab />}
     </Sheet>
   );
 }
@@ -207,6 +238,9 @@ function InterestsTab({ onSaved }: { onSaved: () => void }) {
             </label>
             <input className="input num" value={x.tickerText} onChange={(e) => update(i, { tickerText: e.target.value })} placeholder="XLE, XOM, CVX" />
           </div>
+          <div className="int-search">
+            <TickerSearch onPick={(sym) => update(i, { tickerText: [...new Set([...x.tickerText.split(/[\s,]+/).filter(Boolean), sym])].join(", ") })} />
+          </div>
           <button className="icon-btn" onClick={() => setList((l) => l.filter((_, j) => j !== i))} aria-label={t("int.remove")}>
             <IconX />
           </button>
@@ -305,6 +339,7 @@ function ShortcutsTab() {
     [["/"], "sc.search"],
     [["⌘", "K"], "sc.palette"],
     [["A"], "sc.ask"],
+    [["C"], "sc.catchup"],
     [["L"], "sc.listen"],
     [["T"], "sc.track"],
     [["D"], "sc.theme"],
@@ -377,6 +412,7 @@ export function TrackSheet({ onClose }: { onClose: () => void }) {
             </div>
             <p className="hint">{t("track.calibrationHint")}</p>
           </div>
+          <TrackExtras stats={s} />
           <div className="sheet-section">
             <h3>{t("track.recent")}</h3>
             <div style={{ overflowX: "auto" }}>
@@ -431,6 +467,7 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symb
   const [alertMsg, setAlertMsg] = useState("");
   const call = digests.flatMap((d) => d.analysis.outlook).find((o) => o.ticker === symbol);
   const mover = digests.flatMap((d) => d.analysis.movers ?? []).find((m) => m.ticker === symbol);
+  const tech = digests.map((d) => d.technicals?.[symbol]).find(Boolean);
   const related = useMemo(() => {
     const re = tickerMatcher(symbol);
     const seen = new Set<string>();
@@ -470,6 +507,46 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symb
         <div className="stat"><small>{t("tk.52w")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : "–"}</b></div>
         <div className="stat"><small>{t("tk.volume")}</small><b className="num">{fmtVol(cd?.volume)}</b></div>
       </div>
+      {tech && (
+        <div className="sheet-section">
+          <h3>
+            {t("tk.levels")} · <span className={tech.trend === "up" ? "up" : tech.trend === "down" ? "down" : "flat"}>{t(`trend.${tech.trend}` as MsgKey)}</span>
+          </h3>
+          <div className="levels">
+            {(
+              [
+                ["tk.resistance", tech.resistance20],
+                ["tk.sma20", tech.sma20],
+                ["tk.sma50", tech.sma50],
+                ["tk.sma200", tech.sma200],
+                ["tk.support", tech.support20],
+              ] as [MsgKey, number | undefined][]
+            )
+              .filter(([, v]) => v != null)
+              .map(([k, v]) => (
+                <div className="level" key={k}>
+                  <span>{t(k)}</span>
+                  <b className="num">{fmtPrice(v!)}</b>
+                  <small className={`num ${price != null && price >= v! ? "up" : "down"}`}>{price != null ? fmtPct(((price - v!) / v!) * 100, 1) : ""}</small>
+                </div>
+              ))}
+            {tech.rsi14 != null && (
+              <div className="level">
+                <span>{t("tk.rsi")}</span>
+                <b className={`num ${tech.rsi14 >= 70 ? "down" : tech.rsi14 <= 30 ? "up" : ""}`}>{tech.rsi14.toFixed(0)}</b>
+                <small />
+              </div>
+            )}
+            {tech.atrPct != null && (
+              <div className="level">
+                <span>{t("tk.atr")}</span>
+                <b className="num">±{tech.atrPct.toFixed(1)}%</b>
+                <small />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       {price != null && (
         <div className="sheet-actions" style={{ justifyContent: "flex-start" }}>
           <button className="pill-btn" onClick={() => quickAlert("above")}>↑ {t("tk.alertAbove", { p: fmtPrice(Number((price * 1.05).toFixed(price >= 100 ? 0 : 2))) })}</button>

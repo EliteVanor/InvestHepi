@@ -8,14 +8,34 @@
  * - Re-themes itself when light/dark changes
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { IChartApi, ISeriesApi, IPriceLine, UTCTimestamp } from "lightweight-charts";
+import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, IPriceLine, SeriesMarker, Time, UTCTimestamp } from "lightweight-charts";
 import type { ChartData, ChartRange } from "@/lib/chart";
 import { langInfo } from "@/lib/languages";
 import { marketClock } from "@/lib/marketTime";
-import { usePrefs } from "./prefs";
+import type { Call } from "@/lib/types";
+import { lsGet, lsSet, usePrefs } from "./prefs";
 import { fmtPct, fmtPrice } from "./primitives";
 
 const RANGES: ChartRange[] = ["1d", "5d", "1mo", "6mo", "1y"];
+const OPTS_KEY = "ih-chart";
+interface ChartOpts {
+  candles: boolean;
+  ma: boolean;
+  calls: boolean;
+}
+const DEFAULT_OPTS: ChartOpts = { candles: false, ma: false, calls: true };
+const etDay = (sec: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sec * 1000));
+
+function smaSeries(bars: { t: number; c: number }[], n: number) {
+  const out: { time: UTCTimestamp; value: number }[] = [];
+  let sum = 0;
+  for (let i = 0; i < bars.length; i++) {
+    sum += bars[i].c;
+    if (i >= n) sum -= bars[i - n].c;
+    if (i >= n - 1) out.push({ time: bars[i].t as UTCTimestamp, value: sum / n });
+  }
+  return out;
+}
 const POLL_MS = 20_000;
 
 function cssVar(name: string): string {
@@ -37,11 +57,18 @@ function alpha(color: string, a: number): string {
   return color;
 }
 
-function useLiveFlash(value: number | undefined) {
+/** Flash on live ticks only: switching symbol or range (a new `scope`) resets the baseline. */
+function useLiveFlash(value: number | undefined, scope: string) {
   const prev = useRef<number | undefined>(undefined);
+  const prevScope = useRef(scope);
   const [flash, setFlash] = useState<"" | "flash-up" | "flash-down">("");
   useEffect(() => {
     if (value == null) return;
+    if (prevScope.current !== scope) {
+      prevScope.current = scope;
+      prev.current = value;
+      return;
+    }
     if (prev.current != null && value !== prev.current) {
       setFlash(value > prev.current ? "flash-up" : "flash-down");
       const id = setTimeout(() => setFlash(""), 900);
@@ -49,7 +76,7 @@ function useLiveFlash(value: number | undefined) {
       return () => clearTimeout(id);
     }
     prev.current = value;
-  }, [value]);
+  }, [value, scope]);
   return flash;
 }
 
@@ -59,6 +86,25 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   const chartRef = useRef<IChartApi | null>(null);
   const areaRef = useRef<ISeriesApi<"Area"> | null>(null);
   const volRef = useRef<ISeriesApi<"Histogram"> | null>(null);
+  const candleRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const ma20Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const ma50Ref = useRef<ISeriesApi<"Line"> | null>(null);
+  const areaMarks = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const candleMarks = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const [opts, setOpts] = useState<ChartOpts>(DEFAULT_OPTS);
+  const [calls, setCalls] = useState<Call[]>([]);
+  useEffect(() => setOpts({ ...DEFAULT_OPTS, ...lsGet<Partial<ChartOpts>>(OPTS_KEY, {}) }), []);
+  const toggle = (k: keyof ChartOpts) => setOpts((o) => (lsSet(OPTS_KEY, { ...o, [k]: !o[k] }), { ...o, [k]: !o[k] }));
+  // Past AI calls for this ticker, drawn as markers.
+  useEffect(() => {
+    let stop = false;
+    api<{ calls: Call[] }>(`/api/track?ticker=${encodeURIComponent(symbol)}`)
+      .then((j) => !stop && setCalls(j.calls.filter((c) => c.id.endsWith(":d"))))
+      .catch(() => {});
+    return () => {
+      stop = true;
+    };
+  }, [api, symbol]);
   const prevLineRef = useRef<IPriceLine | null>(null);
   const [range, setRange] = useState<ChartRange>(initialRange);
   const [data, setData] = useState<ChartData | null>(null);
@@ -66,7 +112,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   const [hover, setHover] = useState<{ price: number; time: number } | null>(null);
   const [live, setLive] = useState(false);
   const [readyTick, setReadyTick] = useState(0);
-  const flash = useLiveFlash(data?.price);
+  const flash = useLiveFlash(data?.price, data ? `${data.symbol}|${data.range}` : "");
   const onDataRef = useRef(onData);
   onDataRef.current = onData;
 
@@ -100,12 +146,20 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
         handleScale: false,
       });
       const area = chart.addSeries(lc.AreaSeries, { lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerRadius: 4 });
+      const candle = chart.addSeries(lc.CandlestickSeries, { visible: false, priceLineVisible: false, borderVisible: false, upColor: cssVar("--green"), downColor: cssVar("--red"), wickUpColor: cssVar("--green"), wickDownColor: cssVar("--red") });
+      const lineOpts = { lineWidth: 1 as const, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+      ma20Ref.current = chart.addSeries(lc.LineSeries, { ...lineOpts, color: "#ff9f0a" });
+      ma50Ref.current = chart.addSeries(lc.LineSeries, { ...lineOpts, color: "#bf5af2" });
+      candleRef.current = candle;
+      areaMarks.current = lc.createSeriesMarkers(area, []);
+      candleMarks.current = lc.createSeriesMarkers(candle, []);
       const vol = chart.addSeries(lc.HistogramSeries, { priceScaleId: "vol", priceFormat: { type: "volume" }, lastValueVisible: false, priceLineVisible: false });
       chart.priceScale("vol").applyOptions({ scaleMargins: { top: 0.84, bottom: 0 } });
       chart.subscribeCrosshairMove((p) => {
-        const v = p.seriesData.get(area) as { value?: number } | undefined;
-        if (!p.time || v?.value == null) setHover(null);
-        else setHover({ price: v.value, time: p.time as number });
+        const v = (p.seriesData.get(area) ?? p.seriesData.get(candle)) as { value?: number; close?: number } | undefined;
+        const price = v?.value ?? v?.close;
+        if (!p.time || price == null) setHover(null);
+        else setHover({ price, time: p.time as number });
       });
       chartRef.current = chart;
       areaRef.current = area;
@@ -133,6 +187,34 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       const color = cssVar(up ? "--green" : "--red");
       area.applyOptions({ lineColor: color, topColor: alpha(color, 0.26), bottomColor: alpha(color, 0) });
       area.setData(d.bars.map((b) => ({ time: b.t as UTCTimestamp, value: b.c })));
+      const candle = candleRef.current;
+      candle?.setData(d.bars.map((b) => ({ time: b.t as UTCTimestamp, open: b.o, high: b.h, low: b.l, close: b.c })));
+      area.applyOptions({ visible: !opts.candles });
+      candle?.applyOptions({ visible: opts.candles });
+      // Moving averages only make sense on daily bars.
+      const daily = d.range === "6mo" || d.range === "1y";
+      ma20Ref.current?.setData(opts.ma && daily ? smaSeries(d.bars, 20) : []);
+      ma50Ref.current?.setData(opts.ma && daily ? smaSeries(d.bars, 50) : []);
+      // AI call markers: one per session, on the first bar of that day.
+      const firstBar = new Map<string, number>();
+      for (const b of d.bars) {
+        const day = etDay(b.t);
+        if (!firstBar.has(day)) firstBar.set(day, b.t);
+      }
+      const marks: SeriesMarker<Time>[] = opts.calls
+        ? calls
+            .filter((c) => firstBar.has(c.date) && c.direction !== "flat")
+            .map((c) => ({
+              time: firstBar.get(c.date)! as UTCTimestamp,
+              position: c.direction === "up" ? ("belowBar" as const) : ("aboveBar" as const),
+              shape: c.direction === "up" ? ("arrowUp" as const) : ("arrowDown" as const),
+              color: c.correct === undefined ? cssVar("--label-3") : c.correct ? cssVar("--green") : cssVar("--red"),
+              size: 1,
+            }))
+            .sort((a, b) => (a.time as number) - (b.time as number))
+        : [];
+      areaMarks.current?.setMarkers(opts.candles ? [] : marks);
+      candleMarks.current?.setMarkers(opts.candles ? marks : []);
       const volColor = alpha(cssVar("--label-3"), 0.3);
       vol.setData(d.bars.map((b) => ({ time: b.t as UTCTimestamp, value: b.v, color: volColor })));
       if (prevLineRef.current) area.removePriceLine(prevLineRef.current);
@@ -152,7 +234,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       });
       chart.timeScale().fitContent();
     },
-    [fmtTime, locale],
+    [fmtTime, locale, opts, calls],
   );
 
   const load = useCallback(async () => {
@@ -241,7 +323,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
           {data && (
             <span className="chart-live">
               <span className={`dot ${live && !stale ? "live" : ""}`} />
-              {live && !stale ? t("chart.live") : stale ? t("chart.delayed") : t("chart.asOf", { t: fmtTime(data.asOf, true) })}
+              {live && !stale ? t("chart.live") : stale ? t("chart.delayed") : t("chart.asOf", { t: new Intl.DateTimeFormat(locale, { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(data.asOf * 1000)) })}
             </span>
           )}
         </div>
@@ -250,12 +332,24 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
         {!data && !err && <div className="skeleton chart-skel" />}
         {err && <div className="chart-err">{t("chart.error")}</div>}
       </div>
-      <div className="segmented chart-ranges" role="tablist">
-        {RANGES.map((r) => (
-          <button key={r} role="tab" aria-selected={range === r} onClick={() => setRange(r)}>
-            {rangeLabel[r]}
+      <div className="chart-foot">
+        <div className="segmented chart-ranges" role="tablist">
+          {RANGES.map((r) => (
+            <button key={r} role="tab" aria-selected={range === r} onClick={() => setRange(r)}>
+              {rangeLabel[r]}
+            </button>
+          ))}
+        </div>
+        <span className="spacer" />
+        <div className="chart-tools">
+          <button className="filter" aria-pressed={opts.candles} onClick={() => toggle("candles")}>{t("chart.candles")}</button>
+          <button className="filter" aria-pressed={opts.ma} onClick={() => toggle("ma")} title="20 / 50">
+            {t("chart.ma")}
           </button>
-        ))}
+          {calls.length > 0 && (
+            <button className="filter" aria-pressed={opts.calls} onClick={() => toggle("calls")}>{t("chart.calls")}</button>
+          )}
+        </div>
       </div>
     </div>
   );

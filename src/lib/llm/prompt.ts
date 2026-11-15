@@ -3,6 +3,8 @@ import { calendarAsText } from "../calendar";
 import { sectorsAsText } from "../chart";
 import { langInfo } from "../languages";
 import { macroAsText, quotesAsText } from "../market";
+import { moodAsText, type MoodGauge } from "../mood";
+import { technicalsAsText, type Technicals } from "../technicals";
 import type { CalendarEvent, Interest, NewsItem, Quote, SectionId } from "../types";
 
 export interface PromptInput {
@@ -12,6 +14,10 @@ export interface PromptInput {
   quotes: Quote[];
   macro: Quote[];
   sectors?: Quote[];
+  technicals?: Record<string, Technicals>;
+  gauge?: MoodGauge;
+  /** Position weights, e.g. "NVDA 34% of portfolio (+12% vs cost)". Never dollar amounts. */
+  positions?: string;
   calendar: CalendarEvent[];
   trackRecord: string;
   language: string;
@@ -40,6 +46,10 @@ How to think:
 - Separate signal from noise. Most headlines don't matter. Rank by expected price impact, not drama. A story covered by many outlets ("+N outlets") is usually bigger.
 - Be decisive. Give a direction and an action for every interest. "It depends" is not an answer; put the conditions in action_trigger.
 - Confidence is a calibrated probability that your direction call is right (50 = coin flip, 65 = solid edge, 80+ = rare). Use your track record to recalibrate: if you've been overconfident, lower your numbers.
+- Use TECHNICALS to make triggers concrete: name the level (20/50/200-day average, 20-day range, 52-week high) instead of "on weakness". They are context, not signals: news and positioning come first. RSI above 70 or below 30 and a stretched distance from the 50-day average argue against chasing.
+- MOOD is a 0-100 composite (0 fear, 100 greed). Extremes cut both ways: extreme greed raises the bar for new buys, extreme fear often marks short-term lows.
+- If POSITIONS are given, word each action for this investor: for something they hold use HOLD/ADD/TRIM/SELL; for something they don't hold use BUY/WAIT/AVOID. Flag concentration if one position is over ~30%.
+- SCENARIOS: if a major scheduled catalyst (FOMC, CPI, jobs report, or earnings of a followed ticker) falls within the next 7 days, return ONE scenario set for the nearest one with 2-3 cases (e.g. hot / in line / cool), probabilities that sum to 100, the expected reaction of the user's interests, and what to do in each case. Probabilities are your estimates; keep them sober. Otherwise return an empty array.
 - Use the UPCOMING catalysts: a pending CPI print, FOMC decision or earnings report often argues for WAIT or smaller size until it passes. Put dated catalysts in watch_next.
 - Historical analogs: prefer entries from the PLAYBOOK. If you use one from memory, keep numbers approximate and only cite events you are sure happened. Never invent precise figures.
 - what_could_go_wrong must be specific (a data release, a level, a counter-narrative), not a generic disclaimer.
@@ -103,6 +113,14 @@ export function marketPhase(d: Date): string {
   return "after the close (next session tomorrow)";
 }
 
+/** Free tiers only get technicals for each interest's benchmark ticker (plus SPY) to save tokens. */
+function techFor(p: PromptInput, opts: PromptOptions): Record<string, Technicals> {
+  const all = p.technicals ?? {};
+  if (!opts.compact) return all;
+  const keep = new Set(["SPY", ...p.interests.map((i) => i.tickers[0])]);
+  return Object.fromEntries(Object.entries(all).filter(([s]) => keep.has(s)));
+}
+
 export function buildUserPrompt(p: PromptInput, opts: PromptOptions): string {
   const maxHeadlines = opts.compact ? 30 : 45;
   const interests = p.interests
@@ -136,6 +154,11 @@ ${macroAsText(p.macro)}
 SECTORS (last session, best to worst):
 ${sectorsAsText(p.sectors ?? [])}
 
+TECHNICALS:
+${technicalsAsText(techFor(p, opts))}
+
+MOOD GAUGE: ${moodAsText(p.gauge)}
+${p.positions ? `\nPOSITIONS (weights only):\n${p.positions}\n` : ""}
 UPCOMING CATALYSTS (next 3 weeks):
 ${calendarAsText(p.calendar)}
 

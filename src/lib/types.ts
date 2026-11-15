@@ -87,6 +87,28 @@ export interface Analysis {
   outlook: Outlook[];
   watchNext: string[];
   movers: { ticker: string; changePct: number; why: string }[];
+  /** "If hot / in line / cool" playbook for the next major catalyst (may be empty or missing on old digests). */
+  scenarios?: Scenario[];
+}
+
+export interface ScenarioCase {
+  label: string;
+  probability: number; // 0-100, an estimate
+  reaction: string;
+  action: string;
+}
+
+export interface Scenario {
+  catalyst: string;
+  when: string;
+  cases: ScenarioCase[];
+}
+
+export interface Holding {
+  symbol: string;
+  shares: number;
+  /** Average cost per share. */
+  cost: number;
 }
 
 export interface Digest {
@@ -101,6 +123,10 @@ export interface Digest {
   macro?: Quote[];
   /** Sector ETF moves (last session). */
   sectors?: Quote[];
+  /** Moving averages, RSI, support/resistance per ticker. */
+  technicals?: Record<string, import("./technicals").Technicals>;
+  /** Market mood composite, 0 (fear) to 100 (greed). */
+  gauge?: import("./mood").MoodGauge;
   feedErrors: string[];
   /** Language the AI prose was written in. */
   language?: string;

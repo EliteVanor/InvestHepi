@@ -7,6 +7,8 @@ import { sectorsAsText } from "./chart";
 import { langInfo } from "./languages";
 import { complete, type ChatMessage } from "./llm";
 import { macroAsText, quotesAsText } from "./market";
+import { moodAsText } from "./mood";
+import { technicalsAsText } from "./technicals";
 import type { CalendarEvent, Digest, NewsItem } from "./types";
 
 export interface AskSource {
@@ -40,6 +42,12 @@ ${main?.macro ? macroAsText(main.macro) : "(n/a)"}
 ## Sectors
 ${main?.sectors ? sectorsAsText(main.sectors) : "(n/a)"}
 
+## Technicals
+${main?.technicals ? technicalsAsText(main.technicals) : "(n/a)"}
+
+## Mood gauge
+${moodAsText(main?.gauge)}
+${main?.analysis.scenarios?.length ? `\n## Scenarios\n${main.analysis.scenarios.map((s) => `${s.catalyst} (${s.when}): ${s.cases.map((c) => `${c.label} ${c.probability}% → ${c.reaction}; do: ${c.action}`).join(" | ")}`).join("\n")}\n` : ""}
 ## Upcoming
 ${calendarAsText(calendar)}
 

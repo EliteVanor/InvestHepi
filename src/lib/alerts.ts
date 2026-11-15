@@ -455,10 +455,15 @@ export function renderMorning(ctx: RefreshContext, t: T, lang: LangCode, now: Da
     .filter((x): x is Digest => !!x)
     .map((x) => row(`<span class="mu" style="color:#6e6e73;font-size:13px">${esc(t(`sec.${x.section}` as MsgKey))}</span><br>${esc(x.analysis.headline)}`))
     .join("");
+  const sc = a.scenarios?.[0];
+  const scenarios = sc
+    ? section(`${t("scen.title")}: ${sc.catalyst} · ${sc.when}`, table(sc.cases.map((c) => row(`<b style="font-weight:600">${esc(c.label)}</b> <span class="mu" style="color:#6e6e73;font-size:14px">${esc(c.reaction)}</span><br><span style="font-size:14px">${esc(c.action)}</span>`, `${c.probability}%`)).join("")))
+    : "";
+  const mood = d.gauge ? ` · ${esc(t("mood.title"))} ${d.gauge.score}/100 (${esc(t(`mood.${d.gauge.label}` as MsgKey))})` : "";
   const cal = ctx.calendar.slice(0, 5).map((e) => row(esc(e.title), esc(calWhen(e, lang)))).join("");
-  const body = `<div class="mu" style="color:#6e6e73;font-size:14px;margin:-8px 0 14px">${esc(dateStr)} · ${esc(t(`mood.${a.mood}` as MsgKey))}</div>
+  const body = `<div class="mu" style="color:#6e6e73;font-size:14px;margin:-8px 0 14px">${esc(dateStr)} · ${esc(t(`mood.${a.mood}` as MsgKey))}${mood}</div>
 <div class="tx" style="font-size:18px;line-height:1.4;font-weight:600;margin:0 0 14px">${esc(a.headline)}</div>
-${summary}${section(t("calls.title"), calls)}${movers}${events}${others ? section(t("mail.worldUs"), table(others)) : ""}${cal ? section(t("cal.title"), table(cal)) : ""}`;
+${summary}${section(t("calls.title"), calls)}${scenarios}${movers}${events}${others ? section(t("mail.worldUs"), table(others)) : ""}${cal ? section(t("cal.title"), table(cal)) : ""}`;
   const subject = t("mail.morningSubject", { headline: a.headline.length > 90 ? a.headline.slice(0, 88) + "…" : a.headline });
   const text = [a.headline, "", ...a.summary.map((s) => `• ${s}`), "", ...a.outlook.map((o) => `${o.interest} (${o.ticker}): ${t(`act.${o.action}` as MsgKey)} ${o.confidence}%: ${o.actionTrigger}`)].join("\n");
   return { subject, html: shell({ lang, preheader: a.summary[0] ?? a.headline, title: t("mail.morningTitle"), body, t }), text };

@@ -125,6 +125,31 @@ export interface TrackStats {
   hitRate: number | null;
   buckets: Bucket[];
   recent: Call[];
+  /** Cumulative % return of following every daily call vs holding the same tickers (before costs). */
+  equity: { date: string; ai: number; hold: number }[];
+  byTicker: { ticker: string; n: number; hits: number; avgReturn: number }[];
+}
+
+/** Return of acting on a call: long if up, short/avoid-gain if down, nothing if flat. */
+export function strategyReturn(c: Call): number {
+  const r = c.returnPct ?? 0;
+  return c.direction === "up" ? r : c.direction === "down" ? -r : 0;
+}
+
+export function equityCurve(calls: Call[]): TrackStats["equity"] {
+  const daily = calls.filter((c) => c.correct !== undefined && c.id.endsWith(":d"));
+  const byDate = new Map<string, Call[]>();
+  for (const c of daily) byDate.set(c.date, [...(byDate.get(c.date) ?? []), c]);
+  let ai = 1;
+  let hold = 1;
+  return [...byDate.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([date, cs]) => {
+      // Equal weight across that day's calls.
+      ai *= 1 + cs.reduce((s, c) => s + strategyReturn(c), 0) / cs.length / 100;
+      hold *= 1 + cs.reduce((s, c) => s + (c.returnPct ?? 0), 0) / cs.length / 100;
+      return { date, ai: (ai - 1) * 100, hold: (hold - 1) * 100 };
+    });
 }
 
 export function computeStats(calls: Call[]): TrackStats {
@@ -150,6 +175,14 @@ export function computeStats(calls: Call[]): TrackStats {
     hitRate: graded.length ? graded.filter((c) => c.correct).length / graded.length : null,
     buckets,
     recent: [...calls].sort((a, b) => b.madeAt.localeCompare(a.madeAt)).slice(0, 40),
+    equity: equityCurve(calls),
+    byTicker: [...new Set(graded.map((c) => c.ticker))]
+      .map((ticker) => {
+        const cs = graded.filter((c) => c.ticker === ticker);
+        return { ticker, n: cs.length, hits: cs.filter((c) => c.correct).length, avgReturn: cs.reduce((s, c) => s + strategyReturn(c), 0) / cs.length };
+      })
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 20),
   };
 }
 

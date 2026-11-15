@@ -492,11 +492,12 @@ export interface PaletteActions {
   section: (s: SectionId) => void;
   ticker: (s: string) => void;
   ask: (q?: string) => void;
+  catchup: () => void;
   searchNews: (q: string) => void;
   refresh: () => void;
   theme: () => void;
   track: () => void;
-  settings: (tab?: "general" | "interests" | "status" | "alerts") => void;
+  settings: (tab?: "general" | "interests" | "holdings" | "status" | "alerts") => void;
 }
 
 interface Item {
@@ -514,6 +515,20 @@ export function CommandPalette({ onClose, tickers, actions }: { onClose: () => v
   const [q, setQ] = useState("");
   const [sel, setSel] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
+  // Company-name search (e.g. "micro" → MSFT, AMD, MU), debounced.
+  const { api } = usePrefs();
+  const [hits, setHits] = useState<{ symbol: string; name: string }[]>([]);
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) {
+      setHits([]);
+      return;
+    }
+    const id = setTimeout(() => {
+      api<{ hits: { symbol: string; name: string }[] }>(`/api/search?q=${encodeURIComponent(query)}`).then((j) => setHits(j.hits)).catch(() => setHits([]));
+    }, 220);
+    return () => clearTimeout(id);
+  }, [q, api]);
 
   const items = useMemo<Item[]>(() => {
     const query = q.trim();
@@ -523,11 +538,13 @@ export function CommandPalette({ onClose, tickers, actions }: { onClose: () => v
       { id: "s-w", group: g.sec, label: t("sec.world"), sub: "2", icon: <IconGlobe />, run: () => actions.section("world") },
       { id: "s-u", group: g.sec, label: t("sec.us"), sub: "3", icon: <IconFlag />, run: () => actions.section("us") },
       ...tickers.map((s) => ({ id: `t-${s}`, group: g.tk, label: t("cmd.chart", { s }), sub: s, icon: <IconChart />, run: () => actions.ticker(s), keywords: s })),
+      { id: "a-catch", group: g.act, label: t("sc.catchup"), sub: "C", icon: <IconBolt />, run: actions.catchup },
       { id: "a-ask", group: g.act, label: t("ask.title"), sub: "A", icon: <IconSparkles />, run: () => actions.ask() },
       { id: "a-refresh", group: g.act, label: t("nav.refresh"), sub: "R", icon: <IconRefresh />, run: actions.refresh },
       { id: "a-track", group: g.act, label: t("nav.track"), sub: "T", icon: <IconTarget />, run: actions.track },
       { id: "a-alerts", group: g.act, label: t("set.alerts"), icon: <IconBolt />, run: () => actions.settings("alerts") },
       { id: "a-int", group: g.act, label: t("set.interests"), icon: <IconStar />, run: () => actions.settings("interests") },
+      { id: "a-hold", group: g.act, label: t("pf.title"), icon: <IconChart />, run: () => actions.settings("holdings") },
       { id: "a-theme", group: g.act, label: t("cmd.theme"), sub: "D", icon: <IconMoon />, run: actions.theme },
       { id: "a-set", group: g.act, label: t("nav.settings"), icon: <IconGear />, run: () => actions.settings() },
     ];
@@ -535,14 +552,22 @@ export function CommandPalette({ onClose, tickers, actions }: { onClose: () => v
     const needle = query.toLowerCase();
     const matches = base.filter((i) => `${i.label} ${i.keywords ?? ""}`.toLowerCase().includes(needle));
     const extra: Item[] = [];
-    if (/^[A-Za-z.^=\-]{1,10}$/.test(query) && !tickers.includes(query.toUpperCase())) {
+    const shownSyms = new Set(matches.map((m) => m.keywords));
+    for (const h of hits) {
+      if (shownSyms.has(h.symbol)) continue;
+      shownSyms.add(h.symbol);
+      extra.push({ id: `h-${h.symbol}`, group: t("cmd.search"), label: h.name, sub: h.symbol, icon: <IconChart />, run: () => actions.ticker(h.symbol) });
+    }
+    if (/^[A-Za-z.^=\-]{1,10}$/.test(query) && !shownSyms.has(query.toUpperCase())) {
       const s = query.toUpperCase();
       extra.push({ id: `t-any-${s}`, group: g.tk, label: t("cmd.chart", { s }), sub: s, icon: <IconChart />, run: () => actions.ticker(s) });
     }
     extra.push({ id: "q-ask", group: g.act, label: t("cmd.ask", { q: query }), icon: <IconSparkles />, run: () => actions.ask(query) });
     extra.push({ id: "q-news", group: g.act, label: t("cmd.searchNews", { q: query }), icon: <IconSearch />, run: () => actions.searchNews(query) });
-    return [...matches, ...extra];
-  }, [q, t, tickers, actions]);
+    // Keep one header per group: sections, tickers, search results, actions.
+    const order = [g.sec, g.tk, t("cmd.search"), g.act];
+    return [...matches, ...extra].map((it, i) => ({ it, i })).sort((a, b) => order.indexOf(a.it.group) - order.indexOf(b.it.group) || a.i - b.i).map((x) => x.it);
+  }, [q, t, tickers, actions, hits]);
 
   useEffect(() => setSel(0), [q]);
   useEffect(() => {
