@@ -5,6 +5,7 @@ import { getCalendar } from "@/lib/calendar";
 import { isLang } from "@/lib/languages";
 import { hit, limits } from "@/lib/ratelimit";
 import { loadDigest, loadInterests } from "@/lib/pipeline";
+import { loadHoldings, positionsAsText } from "@/lib/portfolio";
 import { computeStats, loadCalls, trackRecordText } from "@/lib/track";
 import type { Digest } from "@/lib/types";
 
@@ -35,7 +36,9 @@ export async function POST(req: Request) {
   if (!ds.length) return Response.json({ error: "No briefings yet. Refresh a section first." }, { status: 409 });
   const cal = await getCalendar(interests).catch(() => ({ events: [] }));
   try {
-    return Response.json(await ask(question, history, ds, cal.events, trackRecordText(computeStats(calls)), isLang(lang) ? lang : "en"));
+    const main = ds.find((d) => d.section === "interests") ?? ds[0];
+    const positions = positionsAsText(await loadHoldings().catch(() => []), main.quotes);
+    return Response.json(await ask(question, history, ds, cal.events, trackRecordText(computeStats(calls)), isLang(lang) ? lang : "en", positions));
   } catch (e) {
     const msg = (e as Error).message;
     return Response.json({ error: msg === "NO_PROVIDER" ? "NO_PROVIDER" : msg }, { status: msg === "NO_PROVIDER" ? 412 : 502 });

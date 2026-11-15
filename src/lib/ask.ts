@@ -18,7 +18,7 @@ export interface AskSource {
   source: string;
 }
 
-export function buildAskContext(digests: Digest[], calendar: CalendarEvent[], trackRecord: string) {
+export function buildAskContext(digests: Digest[], calendar: CalendarEvent[], trackRecord: string, positions?: string) {
   const seen = new Set<string>();
   const headlines: NewsItem[] = [];
   for (const d of digests) for (const n of d.news.slice(0, 25)) if (!seen.has(n.id) && (seen.add(n.id), true)) headlines.push(n);
@@ -51,7 +51,7 @@ ${main?.analysis.scenarios?.length ? `\n## Scenarios\n${main.analysis.scenarios.
 ## Upcoming
 ${calendarAsText(calendar)}
 
-## Track record
+${positions ? `## The user's positions (weights only)\n${positions}\n\n` : ""}## Track record
 ${trackRecord}
 
 ## Headlines (cite as [n])
@@ -63,6 +63,7 @@ ${list.map((n, i) => `[${i + 1}] ${n.title} (${n.source})`).join("\n")}`;
 export function askSystemPrompt(lang: string): string {
   return `You are the analyst inside "Invest Helper", answering one investor's follow-up questions about today's market news.
 Rules:
+- If the user's positions are listed, answer for someone who holds them (hold/add/trim), and for tickers they don't hold answer as a potential buyer.
 - Use ONLY the context below plus well-known general market knowledge. If the context doesn't cover it, say so plainly.
 - Lead with a direct answer and a stance (e.g. "Lean: wait until after Thursday's CPI"), then 2-4 short supporting points citing headlines as [n].
 - Give a confidence % and one specific thing that would change your view.
@@ -70,8 +71,8 @@ Rules:
 - Reply in ${langInfo(lang).english}.`;
 }
 
-export async function ask(question: string, history: ChatMessage[], digests: Digest[], calendar: CalendarEvent[], trackRecord: string, lang: string) {
-  const ctx = buildAskContext(digests, calendar, trackRecord);
+export async function ask(question: string, history: ChatMessage[], digests: Digest[], calendar: CalendarEvent[], trackRecord: string, lang: string, positions?: string) {
+  const ctx = buildAskContext(digests, calendar, trackRecord, positions);
   const system = `${askSystemPrompt(lang)}\n\n# CONTEXT\n${ctx.text}`;
   const messages: ChatMessage[] = [...history.slice(-6), { role: "user", content: question }];
   const { text, provider } = await complete(system, messages);

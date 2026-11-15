@@ -11,7 +11,7 @@ import { MACRO, getQuotes } from "./market";
 import { dedupe, fetchFeeds, fetchInterestNews } from "./news";
 import { delJSON, getJSON, setJSON } from "./store";
 import { computeStats, gradeCalls, loadCalls, recordCalls, trackRecordText } from "./track";
-import type { Digest, DigestMeta, Interest, SectionId, Settings } from "./types";
+import type { Digest, DigestMeta, Interest, Quote, SectionId, Settings } from "./types";
 
 const HISTORY_SIZE = 10;
 export const DEFAULT_SETTINGS: Settings = { briefingLanguage: "en" };
@@ -56,21 +56,49 @@ async function archive(d: Digest): Promise<void> {
   await setJSON(`history:${d.section}`, list.slice(0, HISTORY_SIZE));
 }
 
+interface MarketData {
+  key: string;
+  at: number;
+  quotes: Quote[];
+  macro: Quote[];
+  sectors: Quote[];
+  technicals: Record<string, Technicals>;
+}
+const MARKET_TTL_MS = 10 * 60_000;
+
+/**
+ * Prices, macro, sectors and technicals are the same for all three sections, and a scheduled run
+ * refreshes them a minute apart. Sharing one fetch for 10 minutes cuts calls to the (unofficial,
+ * rate-limited) price source by two thirds.
+ */
+async function marketData(symbols: string[]): Promise<MarketData> {
+  const key = [...new Set(symbols.map((s) => s.toUpperCase()))].sort().join(",");
+  const cached = await getJSON<MarketData>("market").catch(() => null);
+  if (cached && cached.key === key && Date.now() - cached.at < MARKET_TTL_MS && cached.quotes.length) return cached;
+  const [quotes, macro, sectors, technicals] = await Promise.all([
+    getQuotes(symbols),
+    getQuotes(MACRO.map((m) => m.symbol)),
+    getQuotes(SECTORS.map((x) => x.symbol)),
+    getTechnicals(symbols).catch(() => ({}) as Record<string, Technicals>),
+  ]);
+  const data: MarketData = { key, at: Date.now(), quotes, macro, sectors, technicals };
+  if (quotes.length) await setJSON("market", data).catch(() => {});
+  return data;
+}
+
 export async function refreshSection(section: SectionId, now = new Date()): Promise<Digest> {
   const [interests, settings, holdings] = await Promise.all([loadInterests(), loadSettings(), loadHoldings().catch(() => [])]);
   const symbols = [...BENCHMARKS, ...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)];
 
-  const [newsRes, quotes, macro, sectors, calendar, technicals] = await Promise.all([
+  const [newsRes, market, calendar] = await Promise.all([
     section === "interests"
       ? fetchInterestNews(interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY)
       : fetchFeeds(SECTION_FEEDS[section]).then((r) => ({ items: dedupe(r.items), errors: r.errors })),
-    getQuotes(symbols),
-    getQuotes(MACRO.map((m) => m.symbol)),
-    getQuotes(SECTORS.map((x) => x.symbol)),
+    marketData(symbols),
     getCalendar(interests).catch(() => ({ events: [], notes: [], generatedAt: now.toISOString() })),
-    getTechnicals(symbols).catch(() => ({})),
   ]);
-  const gauge = computeMood({ spy: (technicals as Record<string, Technicals>).SPY, sectors, macro, quotes });
+  const { quotes, macro, sectors, technicals } = market;
+  const gauge = computeMood({ spy: technicals.SPY, sectors, macro, quotes });
   const news = newsRes.items.slice(0, MAX_ITEMS_PER_SECTION);
 
   const stats = computeStats(await loadCalls());
@@ -132,6 +160,13 @@ export async function refreshAll(sections: SectionId[] = ["interests", "world", 
   return { graded, results, alerts };
 }
 
+/** Adds held tickers (not already followed) as one extra group so alerts cover them too. */
+export function withHoldings(interests: Interest[], held: string[]): Interest[] {
+  const have = new Set(interests.flatMap((i) => i.tickers));
+  const extra = held.filter((s) => !have.has(s));
+  return extra.length ? [...interests, { id: "holdings", name: "Holdings", query: "", tickers: extra }] : interests;
+}
+
 /** Email alerts that depend on fresh briefings (call changes, catalysts, morning and weekly emails). */
 async function runAlerts(prevInterests: Digest | null | undefined) {
   const interests = await loadInterests();
@@ -145,8 +180,10 @@ async function runAlerts(prevInterests: Digest | null | undefined) {
   const stats = computeStats(calls);
   const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
   const week = calls.filter((c) => c.correct !== undefined && (c.gradedAt ?? "") >= weekAgo);
+  // Positions you hold count as followed tickers for alerts.
+  const held = await loadHoldings().catch(() => []);
   return afterRefresh({
-    interests,
+    interests: withHoldings(interests, held.map((h) => h.symbol)),
     digests: { interests: i, world: w, us: u },
     prevInterests: prevInterests === undefined ? undefined : prevInterests,
     calendar: cal.events,

@@ -160,6 +160,31 @@ async function main() {
   assert.equal(sc.length, 1, "only one scenario set kept; malformed ones dropped");
   assert.deepEqual(sc[0].cases.map((c) => c.probability), [20, 60, 20], "probabilities rescaled to sum to 100 ('30%' string handled)");
 
+  // ---- market data is fetched once and shared by the other sections
+  let chartCalls = 0;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    if (String(input).includes("query1.finance.yahoo.com")) chartCalls++;
+    return realFetch(input, init);
+  }) as typeof fetch;
+  const w = await refreshSection("world");
+  assert.equal(chartCalls, 0, "second section reuses the cached market data (no new price requests)");
+  assert.ok(w.quotes.length > 0 && w.technicals?.SPY, "cached data lands on the digest");
+  assert.deepEqual(w.gauge, d.gauge, "same mood gauge for every section in one run");
+  globalThis.fetch = realFetch;
+
+  // ---- holdings count as followed tickers for alerts
+  const { withHoldings } = await import("../src/lib/pipeline");
+  const base = [{ id: "a", name: "A", query: "a", tickers: ["SOXX", "NVDA"] }];
+  assert.equal(withHoldings(base, ["NVDA"]), base, "already-followed holdings add nothing");
+  assert.deepEqual(withHoldings(base, ["NVDA", "TSLA"]).at(-1)!.tickers, ["TSLA"], "held-only tickers are added for alerts");
+
+  // ---- Ask AI sees position weights (never amounts)
+  const { buildAskContext } = await import("../src/lib/ask");
+  const ctx = buildAskContext([d], [], "n/a", "NVDA: 100% of portfolio, +50% vs cost");
+  assert.ok(ctx.text.includes("The user's positions (weights only)") && ctx.text.includes("NVDA: 100% of portfolio"));
+  assert.ok(!buildAskContext([d], [], "n/a").text.includes("positions (weights only)"), "no positions block without holdings");
+
   // ---- ticker search: Yahoo parse, filtering, local fallback
   const S = await import("../src/lib/search");
   const hits = await S.searchTickers("micros");
