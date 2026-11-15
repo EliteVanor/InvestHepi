@@ -65,3 +65,16 @@ Cut after stress test: analyst data, social sentiment, web push (email already c
 - `GET /api/search?q=`, `GET/PUT /api/portfolio`.
 - `lib/ratelimit.ts`: per-day counters in the store.
 - Client: `CatchUp`, `SinceLastVisit`, `Watchlist`, `MoodGauge`, `Scenarios`, `Portfolio`, toasts, settings navigation.
+
+## 5. Status
+
+Everything marked ✅ is built on the `v4` branch.
+
+- **Offline tests** (`npm test`, six suites): moving averages, RSI, support/resistance, mood gauge extremes, equity-curve math, scenario normalization (one set, probabilities rescaled to 100), holdings P&L, the privacy rule that no share counts or dollar amounts reach the AI, ticker search with local fallback, rate limits, CSV export.
+- **Browser tests** (39 new checks, all v2 and v3 checks still pass): since-last-visit card, catch-up navigation by keys and clicks, watchlist sorting, chart toggles, holdings editor and privacy toggle, settings drill-down, company search in ⌘K, Explain-this, CSV download, focus trap in sheets.
+- **Found and fixed along the way:** a layout overflow on phones when the "new" headline filter appeared (also present in v3), and the Ask AI button covering content at laptop widths.
+
+## 6. Decisions left for you
+
+1. **Holdings** are optional. Add them in Settings → Holdings if you want position-aware advice.
+2. Merge `v4` into `main` when you've looked at it (it contains v2 and v3).

@@ -24,6 +24,27 @@ Every section opens with an AI briefing, ordered by what helps you act fastest:
 - **Up next**: earnings for your tickers plus FOMC, CPI, jobs and PPI dates, all fed to the AI so its timing advice knows what's coming.
 - **Headlines**: new-since-last-visit dots, "Key" badges on stories the AI used, "+N more" when many outlets ran the story, search, and saved headlines.
 
+**New in v4: decide faster, trust for the right reasons**
+
+- **Catch-up mode**: the whole briefing as full-screen cards, one idea each (headline → each call → movers → each event → scenarios → what's next). Tap, swipe or use the arrow keys. Press `C`.
+- **Since you were last here**: calls that flipped, the biggest moves since then, and new key events, on top of the page.
+- **Scenarios**: before CPI, FOMC, jobs or a followed company's earnings, an "if hot / in line / cool" playbook with probabilities, the expected reaction, and what to do in each case.
+- **Technicals**: 20/50/200-day averages, RSI, 20-day range, typical daily move for every ticker. Shown on the quote page and the **watchlist table**, and given to the AI so triggers name real levels.
+- **Market mood gauge**: a transparent 0-100 composite (momentum, strength, breadth, volatility, safe-haven demand). Tap it to see each part.
+- **"If you followed the AI"**: an equity curve of acting on every daily call vs simply holding the same tickers, a per-ticker scorecard, and CSV export.
+- **Holdings (optional)**: enter shares and cost for a live P&L card. The AI only ever sees position weights and gain %, never amounts, and words its advice for what you actually hold.
+- **Chart upgrades**: candles, 20/50-day average overlays, and past AI calls marked on the chart (green = right, red = wrong).
+- **Smaller things**: find tickers by company name, "Explain this" on any headline, iOS-style settings, toasts, a refresh progress bar, daily caps on Ask AI and manual refreshes.
+
+<p align="center">
+  <img src="docs/screenshots/catch-up-desktop.png" width="62%" alt="Catch-up mode" />
+  <img src="docs/screenshots/catch-up.png" width="20%" alt="Catch-up mode on a phone" />
+</p>
+<p align="center">
+  <img src="docs/screenshots/watchlist.png" width="49%" alt="Watchlist and events" />
+  <img src="docs/screenshots/desktop-dark.png" width="49%" alt="Scenarios and chart" />
+</p>
+
 **New in v3**
 
 - **Live chart** on every ticker: 1D · 5D · 1M · 6M · 1Y, crosshair readout, previous-close line, volume. Updates every ~20s while the market is open, at no cost (TradingView's open-source Lightweight Charts + Yahoo's public chart data).
@@ -58,7 +79,7 @@ Every section opens with an AI briefing, ordered by what helps you act fastest:
 - keyboard shortcuts;
 - install to your home screen as an app.
 
-Design notes and the reasoning behind each feature: [`docs/PLAN.md`](docs/PLAN.md) (v2) and [`docs/PLAN-v3.md`](docs/PLAN-v3.md) (v3).
+Design notes and the reasoning behind each feature: [`docs/PLAN.md`](docs/PLAN.md) (v2), [`docs/PLAN-v3.md`](docs/PLAN-v3.md) (v3) and [`docs/PLAN-v4.md`](docs/PLAN-v4.md) (v4).
 
 ## The part that keeps the AI honest: the track record
 
@@ -66,7 +87,7 @@ Design notes and the reasoning behind each feature: [`docs/PLAN.md`](docs/PLAN.m
 
 A confidence number means nothing unless you know how often it's right. Every outlook in My Interests is logged as a call on the **next session that hasn't opened yet**, so the AI never gets to peek at the market's reaction. Each call is then graded against the real close ("today" calls on the next close, "this week" calls on the 5th close).
 
-The calibration chart compares what the AI claimed (line) with how often it was right (bar). These numbers go back into the prompt on every run so the model can recalibrate. Give it a few weeks before you trust them.
+The calibration chart compares what the AI claimed (line) with how often it was right (bar). Below it, the equity curve shows what acting on every daily call would have returned next to simply holding the same tickers (before costs). These numbers go back into the prompt on every run so the model can recalibrate. Give it a few weeks before you trust them.
 
 <br clear="right" />
 
@@ -127,6 +148,7 @@ Set `ANTHROPIC_API_KEY` in Vercel and redeploy. It defaults to `claude-opus-5-5`
 | `/` | Search headlines |
 | `⌘K` / `Ctrl+K` | Command palette |
 | `A` | Ask AI |
+| `C` | Catch-up mode |
 | `L` | Listen to the briefing |
 | `T` | Track record |
 | `D` | Toggle light/dark |
@@ -162,5 +184,8 @@ Locally, data is stored as JSON in `.data/`.
 - Price alerts are as fresh as the check interval (~20 min by default).
 - Free feeds and the Yahoo price endpoint are unofficial and can change or rate-limit. Failures show up under "feed(s) failed", and the app keeps going with whatever loaded.
 - Free LLM tiers change their limits and models often. If one starts failing, the fallback note on the page will say so. Swap the model via `GROQ_MODEL` / `GEMINI_MODEL`.
+- Technical levels and the mood gauge are context computed from price history. They are not signals on their own.
+- Scenario probabilities are the AI's estimates, not market-implied odds.
+- The "followed the AI" curve ignores trading costs and assumes equal weight per call.
 - The grading is a simple direction check. It doesn't measure how big a move was or whether a trade would have made money after costs.
 - AI predictions from public news. They will be wrong regularly. Not financial advice.

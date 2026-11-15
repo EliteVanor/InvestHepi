@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "refresh": "tsx scripts/refresh.ts",
-    "test": "tsx scripts/i18ntest.ts && tsx scripts/selftest.ts && tsx scripts/llmtest.ts && tsx scripts/v3test.ts && tsx scripts/securitytest.ts"
+    "test": "tsx scripts/i18ntest.ts && tsx scripts/selftest.ts && tsx scripts/llmtest.ts && tsx scripts/v3test.ts && tsx scripts/v4test.ts && tsx scripts/securitytest.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",
