@@ -341,7 +341,8 @@ export async function refreshScheduled(section: SectionId, opts: { batch?: numbe
     return { results };
   }
   const batch = opts.batch ?? (Number(process.env.INTEREST_BATCH) || 2);
-  const minAge = (opts.minAgeMin ?? 90) * 60_000;
+  // 60 min: the closest scheduled runs are 80 min apart (11:50 and 13:10 UTC), so each run still refreshes.
+  const minAge = (opts.minAgeMin ?? 60) * 60_000;
   const groups = [...(await interestGroups()).entries()];
   const ages = await Promise.all(groups.map(async ([h]) => (await getJSON<{ at: string }>(`ib:${h}:last`))?.at ?? "1970-01-01"));
   const due = groups
