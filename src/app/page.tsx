@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconStar, IconTarget, IconAlert } from "@/components/Icons";
+import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, IconStar, IconTarget, IconAlert } from "@/components/Icons";
 import { PrefsProvider, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
-import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet } from "@/components/sheets";
+import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
+import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
 import type { MsgKey } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
 import type { CalendarEvent, Digest, Interest, SectionId } from "@/lib/types";
@@ -20,7 +21,14 @@ export default function Page() {
   );
 }
 
-type Sheet = null | { kind: "settings"; tab?: "general" | "interests" | "status" | "shortcuts" } | { kind: "track" } | { kind: "ticker"; symbol: string } | { kind: "history" };
+type Sheet =
+  | null
+  | { kind: "settings"; tab?: SettingsTab; symbol?: string }
+  | { kind: "track" }
+  | { kind: "ticker"; symbol: string }
+  | { kind: "history" }
+  | { kind: "ask"; q?: string }
+  | { kind: "palette" };
 
 function App() {
   const { ready, t, lang, api, needPassword, seen, markSeen, toggleTheme } = usePrefs();
@@ -34,6 +42,15 @@ function App() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [newSnap, setNewSnap] = useState<Partial<Record<SectionId, { at: string; ids: Set<string> }>>>({});
   const searchRef = useRef<HTMLInputElement>(null);
+  // Render only the layout that matches the viewport so widgets don't mount (and poll) twice.
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 719px)");
+    const on = () => setIsMobile(mq.matches);
+    on();
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
 
   // Restore last tab.
   useEffect(() => {
@@ -149,6 +166,11 @@ function App() {
   // Keyboard shortcuts.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setSheet((cur) => (cur?.kind === "palette" ? null : { kind: "palette" }));
+        return;
+      }
       const el = e.target as HTMLElement;
       if (e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable) return;
       if (sheet && e.key !== "Escape") return;
@@ -162,6 +184,10 @@ function App() {
       } else if (k === "t") setSheet({ kind: "track" });
       else if (k === "d") toggleTheme();
       else if (k === "l") window.dispatchEvent(new Event("ih-listen"));
+      else if (k === "a") {
+        e.preventDefault();
+        setSheet({ kind: "ask" });
+      }
       else if (e.key === "?") setSheet({ kind: "settings", tab: "shortcuts" });
     };
     window.addEventListener("keydown", onKey);
@@ -177,6 +203,35 @@ function App() {
     [ready, lang],
   );
   const loading = ready && !needPassword && active === undefined;
+
+  // Live prices for the strip (polls only while the market session is active).
+  const stripSymbols = useMemo(() => (shown ? [...shown.quotes.map((q) => q.symbol), ...(shown.macro ?? []).map((q) => q.symbol)] : []), [shown]);
+  const live = useLiveQuotes(stripSymbols);
+  const liveQuotes = useMemo(() => (shown ? mergeLive(shown.quotes, live) : []), [shown, live]);
+  const liveMacro = useMemo(() => (shown ? mergeLive(shown.macro ?? [], live) : []), [shown, live]);
+  const chartSymbols = useMemo(() => {
+    const bench = interests.map((i) => i.tickers[0]).filter(Boolean);
+    const rest = interests.flatMap((i) => i.tickers.slice(1));
+    const list = [...new Set([...bench, ...rest])];
+    return list.length ? list.slice(0, 14) : ["SPY", "QQQ", "SOXX"];
+  }, [interests]);
+  const openTicker = useCallback((symbol: string) => setSheet({ kind: "ticker", symbol }), []);
+  const paletteActions: PaletteActions = useMemo(
+    () => ({
+      section: switchTab,
+      ticker: openTicker,
+      ask: (q?: string) => setSheet({ kind: "ask", q }),
+      searchNews: (q: string) => {
+        document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
+        window.dispatchEvent(new CustomEvent("ih-search", { detail: q }));
+      },
+      refresh: () => refresh(tab),
+      theme: toggleTheme,
+      track: () => setSheet({ kind: "track" }),
+      settings: (tabName?: SettingsTab) => setSheet({ kind: "settings", tab: tabName }),
+    }),
+    [switchTab, openTicker, refresh, tab, toggleTheme],
+  );
 
   return (
     <>
@@ -196,18 +251,10 @@ function App() {
             ))}
           </nav>
           <span className="spacer desktop-only" />
-          <button
-            className="icon-btn"
-            aria-label={t("nav.search")}
-            title={`${t("nav.search")} (/)`}
-            onClick={() => {
-              document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
-              setTimeout(() => searchRef.current?.focus(), 300);
-            }}
-          >
+          <button className="icon-btn" aria-label={t("sc.palette")} title={`${t("sc.palette")} (⌘K)`} onClick={() => setSheet({ kind: "palette" })}>
             <IconSearch />
           </button>
-          <button className="icon-btn desktop-only" aria-label={t("nav.track")} title={`${t("nav.track")} (T)`} onClick={() => setSheet({ kind: "track" })}>
+          <button className="icon-btn" aria-label={t("nav.track")} title={`${t("nav.track")} (T)`} onClick={() => setSheet({ kind: "track" })}>
             <IconTarget />
           </button>
           <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing}>
@@ -228,7 +275,7 @@ function App() {
           <StatusPill />
         </div>
 
-        {shown && <MarketStrip quotes={shown.quotes} macro={shown.macro ?? []} onOpen={(symbol) => setSheet({ kind: "ticker", symbol })} />}
+        {shown && <MarketStrip quotes={liveQuotes} macro={liveMacro} onOpen={openTicker} />}
 
         {error && (
           <div className="banner">
@@ -258,17 +305,23 @@ function App() {
         ) : (
           <>
             <Briefing digest={shown} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} />
-            <Calls outlook={shown.analysis.outlook} onTicker={(symbol) => setSheet({ kind: "ticker", symbol })} />
+            <Calls outlook={shown.analysis.outlook} onTicker={openTicker} />
+            <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />
             <div className="grid">
               <div>
-                <div className="mobile-only">
-                  <Movers movers={shown.analysis.movers} quotes={shown.quotes} onTicker={(symbol) => setSheet({ kind: "ticker", symbol })} />
-                </div>
+                {isMobile && (
+                  <>
+                    <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
+                    <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
+                  </>
+                )}
                 <Events events={shown.analysis.events} news={shown.news} />
-                <div className="mobile-only">
-                  <UpNext events={calendar.events} notes={calendar.notes} />
-                  <WatchNext items={shown.analysis.watchNext} />
-                </div>
+                {isMobile && (
+                  <>
+                    <UpNext events={calendar.events} notes={calendar.notes} />
+                    <WatchNext items={shown.analysis.watchNext} />
+                  </>
+                )}
                 <Headlines
                   digest={shown}
                   interests={interests}
@@ -280,16 +333,25 @@ function App() {
                   }}
                 />
               </div>
-              <aside className="rail desktop-only">
-                <Movers movers={shown.analysis.movers} quotes={shown.quotes} onTicker={(symbol) => setSheet({ kind: "ticker", symbol })} />
+              {!isMobile && (
+              <aside className="rail">
+                <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
+                <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />
                 <UpNext events={calendar.events} notes={calendar.notes} />
                 <WatchNext items={shown.analysis.watchNext} />
               </aside>
+              )}
             </div>
           </>
         )}
 
-        <footer className="foot">{t("foot.disclaimer")}</footer>
+        <footer className="foot">
+          {t("foot.disclaimer")}
+          <br />
+          <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
+            {t("foot.charts")}
+          </a>
+        </footer>
       </main>
 
       <nav className="tabbar" role="tablist" aria-label="Sections">
@@ -303,16 +365,21 @@ function App() {
             </button>
           );
         })}
-        <button role="tab" aria-selected={false} onClick={() => setSheet({ kind: "track" })}>
-          <IconTarget />
-          <span>{t("nav.track")}</span>
+        <button role="tab" aria-selected={sheet?.kind === "ask"} onClick={() => setSheet({ kind: "ask" })}>
+          <IconSparkles />
+          <span>{t("ask.title")}</span>
         </button>
       </nav>
+
+      <button className="ask-fab" onClick={() => setSheet({ kind: "ask" })} aria-label={t("ask.title")}>
+        <IconSparkles /> {t("ask.title")} <kbd>A</kbd>
+      </button>
 
       {needPassword && <PasswordSheet />}
       {sheet?.kind === "settings" && (
         <SettingsSheet
           initialTab={sheet.tab}
+          prefillSymbol={sheet.symbol}
           onClose={() => setSheet(null)}
           onInterestsSaved={() => {
             setSheet(null);
@@ -325,7 +392,11 @@ function App() {
       )}
       {sheet?.kind === "track" && <TrackSheet onClose={() => setSheet(null)} />}
       {sheet?.kind === "history" && <HistorySheet section={tab} current={oldDigest?.key ?? null} onPick={pickHistory} onClose={() => setSheet(null)} />}
-      {sheet?.kind === "ticker" && <TickerSheet symbol={sheet.symbol} quote={quoteFor(sheet.symbol)} digests={allDigests} onClose={() => setSheet(null)} />}
+      {sheet?.kind === "ticker" && (
+        <TickerSheet symbol={sheet.symbol} quote={quoteFor(sheet.symbol)} digests={allDigests} onClose={() => setSheet(null)} onAlert={(symbol) => setSheet({ kind: "settings", tab: "alerts", symbol })} />
+      )}
+      {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} tickers={chartSymbols} initial={sheet.q} />}
+      {sheet?.kind === "palette" && <CommandPalette onClose={() => setSheet(null)} tickers={chartSymbols} actions={paletteActions} />}
     </>
   );
 }

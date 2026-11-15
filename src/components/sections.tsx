@@ -418,6 +418,15 @@ export function Headlines({
   const { t, lang, saved, toggleSaved, isSaved } = usePrefs();
   const [filter, setFilter] = useState<string>("all");
   const [q, setQ] = useState("");
+  useEffect(() => {
+    const on = (e: Event) => {
+      setFilter("all");
+      setQ(String((e as CustomEvent).detail ?? ""));
+      setTimeout(() => searchRef.current?.focus(), 300);
+    };
+    window.addEventListener("ih-search", on);
+    return () => window.removeEventListener("ih-search", on);
+  }, [searchRef]);
   const keyIds = useMemo(() => new Set(digest.analysis.events.flatMap((e) => e.sourceIds.map((i) => digest.news[i]?.id)).filter(Boolean)), [digest]);
   const tags = useMemo(() => [...new Set(digest.news.flatMap((n) => n.tags ?? []))], [digest.news]);
   const tagName = (id: string) => interests.find((i) => i.id === id)?.name ?? id;

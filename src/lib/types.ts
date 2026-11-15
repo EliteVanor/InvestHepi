@@ -99,6 +99,8 @@ export interface Digest {
   quotes: Quote[];
   /** Macro context: VIX, 10Y yield, oil, gold, dollar, bitcoin. */
   macro?: Quote[];
+  /** Sector ETF moves (last session). */
+  sectors?: Quote[];
   feedErrors: string[];
   /** Language the AI prose was written in. */
   language?: string;

@@ -16,3 +16,19 @@ export function authorized(req: Request, { allowCron = false } = {}): boolean {
 }
 
 export const unauthorized = () => Response.json({ error: "unauthorized" }, { status: 401 });
+
+/**
+ * Safe by default on a public URL: endpoints that cost money (AI calls, emails) or change settings
+ * refuse to run on Vercel until APP_PASSWORD is set. Local dev stays open.
+ */
+export function passwordRequired(): Response | null {
+  if (process.env.VERCEL && !process.env.APP_PASSWORD) {
+    return Response.json({ error: "Set APP_PASSWORD in Vercel before using this on a public URL." }, { status: 403 });
+  }
+  return null;
+}
+
+export function isCron(req: Request): boolean {
+  const cron = process.env.CRON_SECRET;
+  return !!cron && req.headers.get("authorization") === `Bearer ${cron}`;
+}

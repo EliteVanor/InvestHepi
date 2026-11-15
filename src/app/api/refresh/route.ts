@@ -1,4 +1,4 @@
-import { authorized, unauthorized } from "@/lib/auth";
+import { authorized, isCron, passwordRequired, unauthorized } from "@/lib/auth";
 import { refreshAll } from "@/lib/pipeline";
 import type { SectionId } from "@/lib/types";
 
@@ -7,6 +7,10 @@ export const maxDuration = 300;
 
 async function handle(req: Request) {
   if (!authorized(req, { allowCron: true })) return unauthorized();
+  if (!isCron(req)) {
+    const locked = passwordRequired();
+    if (locked) return locked;
+  }
   const s = new URL(req.url).searchParams.get("section");
   const sections: SectionId[] = s && ["interests", "world", "us"].includes(s) ? [s as SectionId] : ["interests", "world", "us"];
   return Response.json(await refreshAll(sections));

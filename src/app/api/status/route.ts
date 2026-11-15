@@ -1,4 +1,5 @@
 import { authorized, unauthorized } from "@/lib/auth";
+import { emailProvider } from "@/lib/email";
 import { providerChain } from "@/lib/llm";
 import { getJSON, storeKind } from "@/lib/store";
 
@@ -16,6 +17,7 @@ export async function GET(req: Request) {
     finnhub: Boolean(process.env.FINNHUB_API_KEY),
     password: Boolean(process.env.APP_PASSWORD),
     cronSecret: Boolean(process.env.CRON_SECRET),
+    email: emailProvider(),
     lastRefresh: last,
   });
 }

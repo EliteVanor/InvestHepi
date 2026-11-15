@@ -2,26 +2,31 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { relTime, type MsgKey } from "@/lib/i18n";
-import { LANGUAGES, type LangCode } from "@/lib/languages";
+import { LANGUAGES, langInfo, type LangCode } from "@/lib/languages";
+import type { AlertSettings } from "@/lib/alerts";
+import type { ChartData } from "@/lib/chart";
 import { tickerMatcher } from "@/lib/tickers";
 import type { TrackStats } from "@/lib/track";
 import type { Call, Digest, Interest, Quote, SectionId, Settings } from "@/lib/types";
 import { IconCheck, IconPlus, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
-import { Ring, Sheet, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
+import { LiveChart } from "./LiveChart";
+import { Ring, Sheet, arrow, fmtPct, fmtPrice } from "./primitives";
+import { AlertsTab } from "./v3";
 
 /* -------------------------------------------------------------- Settings */
 
-type Tab = "general" | "interests" | "status" | "shortcuts";
+export type Tab = "general" | "interests" | "alerts" | "status" | "shortcuts";
 
 export function SettingsSheet({
-  onClose, initialTab = "general", onInterestsSaved, onBriefingLangSaved,
-}: { onClose: () => void; initialTab?: Tab; onInterestsSaved: () => void; onBriefingLangSaved: () => void }) {
+  onClose, initialTab = "general", onInterestsSaved, onBriefingLangSaved, prefillSymbol,
+}: { onClose: () => void; initialTab?: Tab; onInterestsSaved: () => void; onBriefingLangSaved: () => void; prefillSymbol?: string }) {
   const { t } = usePrefs();
   const [tab, setTab] = useState<Tab>(initialTab);
   const tabs: [Tab, MsgKey][] = [
     ["general", "set.general"],
     ["interests", "set.interests"],
+    ["alerts", "set.alerts"],
     ["status", "set.status"],
     ["shortcuts", "set.shortcuts"],
   ];
@@ -29,13 +34,14 @@ export function SettingsSheet({
     <Sheet title={t("set.title")} onClose={onClose}>
       <div className="segmented" role="tablist" style={{ width: "100%", display: "flex" }}>
         {tabs.map(([id, key]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{ flex: 1, padding: "6px 4px" }} className={id === "shortcuts" ? "desktop-only" : undefined}>
+          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} style={{ flex: 1, padding: "6px 2px", fontSize: 12.5 }} className={id === "shortcuts" ? "desktop-only" : undefined}>
             {t(key)}
           </button>
         ))}
       </div>
       {tab === "general" && <GeneralTab onBriefingLangSaved={onBriefingLangSaved} />}
       {tab === "interests" && <InterestsTab onSaved={onInterestsSaved} />}
+      {tab === "alerts" && <AlertsTab prefillSymbol={prefillSymbol} />}
       {tab === "status" && <StatusTab />}
       {tab === "shortcuts" && <ShortcutsTab />}
     </Sheet>
@@ -228,6 +234,7 @@ interface Status {
   finnhub: boolean;
   password: boolean;
   cronSecret: boolean;
+  email: "resend" | "smtp" | "none";
   lastRefresh: Record<SectionId, { at: string; ok: boolean; provider?: string; error?: string } | null>;
 }
 
@@ -267,6 +274,7 @@ function StatusTab() {
           <div className="row"><span className="label">{t("st.finnhub")}</span>{onOff(s.finnhub)}</div>
           <div className="row"><span className="label">{t("st.password")}</span>{onOff(s.password)}</div>
           <div className="row"><span className="label">{t("st.cron")}</span>{onOff(s.cronSecret)}</div>
+          <div className="row"><span className="label">{t("st.email")}</span>{s.email === "none" ? onOff(false) : <span className="ok">{s.email === "resend" ? "Resend" : "SMTP"}</span>}</div>
         </div>
       </div>
       <div className="sheet-section">
@@ -295,6 +303,8 @@ function ShortcutsTab() {
     [["1", "2", "3"], "sc.sections"],
     [["R"], "sc.refresh"],
     [["/"], "sc.search"],
+    [["⌘", "K"], "sc.palette"],
+    [["A"], "sc.ask"],
     [["L"], "sc.listen"],
     [["T"], "sc.track"],
     [["D"], "sc.theme"],
@@ -415,8 +425,10 @@ export function TrackSheet({ onClose }: { onClose: () => void }) {
 
 /* ---------------------------------------------------------------- Ticker */
 
-export function TickerSheet({ symbol, quote, digests, onClose }: { symbol: string; quote?: Quote; digests: Digest[]; onClose: () => void }) {
-  const { t, lang } = usePrefs();
+export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symbol: string; quote?: Quote; digests: Digest[]; onClose: () => void; onAlert: (symbol: string) => void }) {
+  const { t, lang, api } = usePrefs();
+  const [cd, setCd] = useState<ChartData | null>(null);
+  const [alertMsg, setAlertMsg] = useState("");
   const call = digests.flatMap((d) => d.analysis.outlook).find((o) => o.ticker === symbol);
   const mover = digests.flatMap((d) => d.analysis.movers ?? []).find((m) => m.ticker === symbol);
   const related = useMemo(() => {
@@ -429,29 +441,43 @@ export function TickerSheet({ symbol, quote, digests, onClose }: { symbol: strin
       .slice(0, 10);
   }, [digests, symbol]);
   const h = quote?.history ?? [];
-  const chg5 = h.length > 5 && quote ? ((quote.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : null;
-  const chg1m = h.length > 1 && quote ? ((quote.price - h[0][1]) / h[0][1]) * 100 : null;
+  const price = cd?.price ?? quote?.price;
+  const chg5 = h.length > 5 && price ? ((price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : null;
+  const chg1m = h.length > 1 && price ? ((price - h[0][1]) / h[0][1]) * 100 : null;
+  const fmtVol = (v?: number) => (v == null ? "–" : new Intl.NumberFormat(langInfo(lang).locale, { notation: "compact", maximumFractionDigits: 1 }).format(v));
+
+  const quickAlert = async (op: "above" | "below") => {
+    if (!price) return;
+    const value = Number((price * (op === "above" ? 1.05 : 0.95)).toFixed(price >= 100 ? 0 : 2));
+    try {
+      const j = await api<{ settings: AlertSettings }>("/api/alerts");
+      const settings = j.settings;
+      settings.priceAlerts = [...settings.priceAlerts, { id: Math.random().toString(36).slice(2, 10), symbol, op, value, repeat: false, active: true, createdAt: new Date().toISOString() }];
+      await api("/api/alerts", { method: "PUT", body: JSON.stringify(settings) });
+      setAlertMsg(`${t("tk.alertSet")} · ${t(op === "above" ? "tk.alertAbove" : "tk.alertBelow", { p: fmtPrice(value) })}${settings.enabled ? "" : ` · ${t("al.enabled")}: ${t("st.off")}`}`);
+    } catch (e) {
+      setAlertMsg((e as Error).message);
+    }
+  };
 
   return (
-    <Sheet title={symbol} onClose={onClose}>
-      {quote && (
-        <>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <span className="big-stat num">{fmtPrice(quote.price)}</span>
-            <span className={`num ${quote.changePct >= 0 ? "up" : "down"}`} style={{ fontSize: 18, fontWeight: 600 }}>
-              {fmtPct(quote.changePct)}
-            </span>
-          </div>
-          <div className="tk-chart">
-            <Sparkline values={h.map((x) => x[1])} width={600} height={160} strokeWidth={2} />
-          </div>
-          <div className="stats">
-            <div className="stat"><small>{t("tk.change")}</small><b className={`num ${quote.changePct >= 0 ? "up" : "down"}`}>{fmtPct(quote.changePct)}</b></div>
-            <div className="stat"><small>{t("tk.5d")}</small><b className={`num ${(chg5 ?? 0) >= 0 ? "up" : "down"}`}>{chg5 == null ? "–" : fmtPct(chg5, 1)}</b></div>
-            <div className="stat"><small>{t("tk.1m")}</small><b className={`num ${(chg1m ?? 0) >= 0 ? "up" : "down"}`}>{chg1m == null ? "–" : fmtPct(chg1m, 1)}</b></div>
-          </div>
-        </>
+    <Sheet title={<span>{symbol}{cd?.name ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide>
+      <LiveChart symbol={symbol} height={300} onData={(d) => d.range === "1d" && setCd(d)} />
+      <div className="stats stats-5" style={{ marginTop: 14 }}>
+        <div className="stat"><small>{t("tk.5d")}</small><b className={`num ${(chg5 ?? 0) >= 0 ? "up" : "down"}`}>{chg5 == null ? "–" : fmtPct(chg5, 1)}</b></div>
+        <div className="stat"><small>{t("tk.1m")}</small><b className={`num ${(chg1m ?? 0) >= 0 ? "up" : "down"}`}>{chg1m == null ? "–" : fmtPct(chg1m, 1)}</b></div>
+        <div className="stat"><small>{t("tk.dayRange")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.dayLow != null && cd.dayHigh != null ? `${fmtPrice(cd.dayLow)} – ${fmtPrice(cd.dayHigh)}` : "–"}</b></div>
+        <div className="stat"><small>{t("tk.52w")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : "–"}</b></div>
+        <div className="stat"><small>{t("tk.volume")}</small><b className="num">{fmtVol(cd?.volume)}</b></div>
+      </div>
+      {price != null && (
+        <div className="sheet-actions" style={{ justifyContent: "flex-start" }}>
+          <button className="pill-btn" onClick={() => quickAlert("above")}>↑ {t("tk.alertAbove", { p: fmtPrice(Number((price * 1.05).toFixed(price >= 100 ? 0 : 2))) })}</button>
+          <button className="pill-btn" onClick={() => quickAlert("below")}>↓ {t("tk.alertBelow", { p: fmtPrice(Number((price * 0.95).toFixed(price >= 100 ? 0 : 2))) })}</button>
+          <button className="pill-btn" onClick={() => onAlert(symbol)}>{t("set.alerts")} →</button>
+        </div>
       )}
+      {alertMsg && <p className="hint ok">{alertMsg}</p>}
       {mover && (
         <div className="sheet-section">
           <h3>{t("movers.title")}</h3>

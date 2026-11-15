@@ -24,21 +24,41 @@ Every section opens with an AI briefing, ordered by what helps you act fastest:
 - **Up next**: earnings for your tickers plus FOMC, CPI, jobs and PPI dates, all fed to the AI so its timing advice knows what's coming.
 - **Headlines**: new-since-last-visit dots, "Key" badges on stories the AI used, "+N more" when many outlets ran the story, search, and saved headlines.
 
-Also included:
+**New in v3**
+
+- **Live chart** on every ticker: 1D · 5D · 1M · 6M · 1Y, crosshair readout, previous-close line, volume. Updates every ~20s while the market is open, at no cost (TradingView's open-source Lightweight Charts + Yahoo's public chart data).
+- **Email alerts**:
+  - a morning briefing in your inbox before the open, and a Sunday weekly recap;
+  - price targets (above / below / % move), big moves in your tickers;
+  - AI call changes (e.g. Hold → Sell), high-confidence calls;
+  - catalyst reminders the evening before earnings, CPI, jobs or FOMC.
+  - Alerts are de-duplicated, bundled into one email per check, and capped per day.
+- **Ask AI**: follow-up questions answered from today's briefings, headlines, prices and calendar, with cited headlines.
+- **Sector heatmap**: where money is rotating today. Also fed to the AI.
+- **⌘K command palette**: jump to any ticker, section, setting, or ask a question.
+- **Live prices** in the market strip, and a **quote page** per ticker with day / 52-week range, volume, the AI call and one-tap price alerts.
+
+<p align="center">
+  <img src="docs/screenshots/ticker.png" width="49%" alt="Ticker page with live chart" />
+  <img src="docs/screenshots/ask-ai.png" width="49%" alt="Ask AI" />
+  <img src="docs/screenshots/command-palette.png" width="49%" alt="Command palette" />
+  <img src="docs/screenshots/email-morning.png" width="32%" alt="Morning briefing email" />
+</p>
+
+**Also included**
 
 - light / dark / system theme;
 - 8 interface languages (English, Tiếng Việt, 简体中文, 日本語, 한국어, Español, Français, Deutsch);
-- a separate language setting for the AI briefings;
-- listen to the briefing (text to speech);
-- share / copy the briefing;
+- a separate AI briefing language, which emails follow too;
+- listen to the briefing;
+- share;
 - the last 10 briefings per section;
-- a ticker detail sheet with chart;
-- the macro strip (VIX, 10Y yield, oil, gold, dollar, Bitcoin);
+- the macro strip;
 - a market open/close countdown;
 - keyboard shortcuts;
-- install to your phone's home screen as an app.
+- install to your home screen as an app.
 
-Design notes and the reasoning behind each feature: [`docs/PLAN.md`](docs/PLAN.md).
+Design notes and the reasoning behind each feature: [`docs/PLAN.md`](docs/PLAN.md) (v2) and [`docs/PLAN-v3.md`](docs/PLAN-v3.md) (v3).
 
 ## The part that keeps the AI honest: the track record
 
@@ -86,8 +106,13 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
    - optional `FINNHUB_API_KEY` ([free](https://finnhub.io)) for extra ticker-tagged company news
 
    Then redeploy.
-5. **Turn on the scheduler**: GitHub repo → Settings → Secrets and variables → Actions → add `APP_URL` (your Vercel URL, e.g. `https://invest-helper-xyz.vercel.app`) and `CRON_SECRET` (same value as in Vercel). Run it once by hand from the Actions tab → "Refresh briefings" → Run workflow.
-6. Open the site, enter your password, and press **↻ Refresh** on any section.
+5. **Email alerts (optional, free)**: pick one.
+   - **Resend** (simplest): sign up at [resend.com](https://resend.com) with the email you want alerts at, create an API key, and add `RESEND_API_KEY` in Vercel. Without your own domain, Resend sends from `onboarding@resend.dev` to your own address, which is all you need here.
+   - **Gmail**: turn on 2-step verification, create an [app password](https://myaccount.google.com/apppasswords), and set `SMTP_URL=smtps://you%40gmail.com:APP_PASSWORD@smtp.gmail.com:465`.
+
+   Then in the app go to Settings → Alerts: turn alerts on, enter your email, press **Send test email**.
+6. **Turn on the scheduler**: GitHub repo → Settings → Secrets and variables → Actions → add `APP_URL` (your Vercel URL, e.g. `https://invest-helper-xyz.vercel.app`) and `CRON_SECRET` (same value as in Vercel). Run it once by hand from the Actions tab → "Refresh briefings" → Run workflow. A second workflow, "Price alerts", checks prices every 20 minutes during US market hours (no AI, ~600 of the 2,000 free monthly Action minutes on a private repo). Want it every minute? Create a free job at [cron-job.org](https://cron-job.org) that calls `GET https://YOUR-APP/api/alerts/check` with the header `Authorization: Bearer YOUR_CRON_SECRET`.
+7. Open the site, enter your password, and press **↻ Refresh** on any section.
 
 ### Adding Claude later
 
@@ -100,6 +125,8 @@ Set `ANTHROPIC_API_KEY` in Vercel and redeploy. It defaults to `claude-opus-5-5`
 | `1` `2` `3` | Switch section |
 | `R` | Refresh this section |
 | `/` | Search headlines |
+| `⌘K` / `Ctrl+K` | Command palette |
+| `A` | Ask AI |
 | `L` | Listen to the briefing |
 | `T` | Track record |
 | `D` | Toggle light/dark |
@@ -131,6 +158,8 @@ Locally, data is stored as JSON in `.data/`.
 ## Known limits, stated plainly
 
 - Headlines only, no full articles. The AI sees what a fast reader would see, not paywalled analysis.
+- "Live" means polled every ~20 seconds, not tick-by-tick streaming. Good for a daily-trend tool. True streaming needs a paid data feed.
+- Price alerts are as fresh as the check interval (~20 min by default).
 - Free feeds and the Yahoo price endpoint are unofficial and can change or rate-limit. Failures show up under "feed(s) failed", and the app keeps going with whatever loaded.
 - Free LLM tiers change their limits and models often. If one starts failing, the fallback note on the page will say so. Swap the model via `GROQ_MODEL` / `GEMINI_MODEL`.
 - The grading is a simple direction check. It doesn't measure how big a move was or whether a trade would have made money after costs.

@@ -57,3 +57,29 @@ export async function analyzeWithCompat(p: CompatProvider, system: string, user:
     clearTimeout(t);
   }
 }
+
+/** Plain-text answer (used by Ask AI). */
+export async function completeWithCompat(p: CompatProvider, system: string, messages: { role: "user" | "assistant"; content: string }[], maxTokens = 1500): Promise<string> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 60_000);
+  try {
+    const res = await fetch(`${p.baseUrl}/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${p.key}` },
+      body: JSON.stringify({
+        model: p.model,
+        messages: [{ role: "system", content: system }, ...messages],
+        max_tokens: maxTokens,
+        ...(p.id === "groq" && p.model.includes("gpt-oss") ? { reasoning_effort: "low" } : {}),
+      }),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error(`${p.id} HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    const j = await res.json();
+    const text: string = (j?.choices?.[0]?.message?.content ?? "").trim();
+    if (!text) throw new Error(`${p.id} returned an empty answer`);
+    return text;
+  } finally {
+    clearTimeout(t);
+  }
+}

@@ -1,5 +1,6 @@
 import { EVENT_KEYWORDS, PLAYBOOK, type EventType } from "../analogs";
 import { calendarAsText } from "../calendar";
+import { sectorsAsText } from "../chart";
 import { langInfo } from "../languages";
 import { macroAsText, quotesAsText } from "../market";
 import type { CalendarEvent, Interest, NewsItem, Quote, SectionId } from "../types";
@@ -10,6 +11,7 @@ export interface PromptInput {
   news: NewsItem[];
   quotes: Quote[];
   macro: Quote[];
+  sectors?: Quote[];
   calendar: CalendarEvent[];
   trackRecord: string;
   language: string;
@@ -34,7 +36,7 @@ const RULES = `You are the analyst inside "Invest Helper", a personal tool that 
 Your job: turn today's headlines into a clear read on how the user's followed stocks will likely trade over the next session and the coming week.
 
 How to think:
-- Start from what moves prices: changes in expected rates and yields, earnings and guidance, AI and data center spending, export controls and tariffs, liquidity and risk appetite. Ask what is NEW versus already priced in. Use the market and macro snapshot to judge what has already moved.
+- Start from what moves prices: changes in expected rates and yields, earnings and guidance, AI and data center spending, export controls and tariffs, liquidity and risk appetite. Ask what is NEW versus already priced in. Use the market, macro and sector snapshots to judge what has already moved and where money is rotating.
 - Separate signal from noise. Most headlines don't matter. Rank by expected price impact, not drama. A story covered by many outlets ("+N outlets") is usually bigger.
 - Be decisive. Give a direction and an action for every interest. "It depends" is not an answer; put the conditions in action_trigger.
 - Confidence is a calibrated probability that your direction call is right (50 = coin flip, 65 = solid edge, 80+ = rare). Use your track record to recalibrate: if you've been overconfident, lower your numbers.
@@ -130,6 +132,9 @@ ${quotesAsText(p.quotes)}
 
 MACRO:
 ${macroAsText(p.macro)}
+
+SECTORS (last session, best to worst):
+${sectorsAsText(p.sectors ?? [])}
 
 UPCOMING CATALYSTS (next 3 weeks):
 ${calendarAsText(p.calendar)}
