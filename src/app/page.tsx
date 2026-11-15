@@ -5,7 +5,7 @@ import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, I
 import { PrefsProvider, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
-import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
+import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
 import type { MsgKey } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
 import type { CalendarEvent, Digest, Interest, SectionId } from "@/lib/types";
@@ -301,6 +301,7 @@ function App() {
             <button className="btn-primary" onClick={() => refresh(tab)} disabled={!!refreshing}>
               {refreshing ? t("empty.working") : t("empty.cta")}
             </button>
+            <SetupChecklist />
           </div>
         ) : (
           <>

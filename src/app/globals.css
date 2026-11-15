@@ -517,3 +517,17 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .stats-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .stats-5 .stat b { font-size: 15px; }
 @media (max-width: 719px) { .stats-5 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .stats-5 .stat:last-child { grid-column: 1 / -1; } }
+
+/* ---------- Setup checklist ---------- */
+.checklist { text-align: left; max-width: 520px; margin: 28px auto 0; padding: 18px; border-radius: 16px; background: var(--surface-2); border: 0.5px solid var(--sep); }
+.checklist-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 15px; }
+.checklist-head span { color: var(--label-2); font-size: 13px; }
+.checklist-bar { height: 6px; border-radius: 3px; background: var(--fill); margin-top: 10px; overflow: hidden; }
+.checklist-bar i { display: block; height: 100%; background: linear-gradient(90deg, #0a84ff, #5e5ce6); border-radius: 3px; transition: width 0.4s ease; }
+.checklist ul { list-style: none; margin: 14px 0 0; padding: 0; display: grid; gap: 12px; }
+.checklist li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; font-size: 14px; }
+.checklist li b { font-weight: 600; display: block; }
+.checklist li small { display: block; color: var(--label-2); font-size: 13px; margin-top: 2px; line-height: 1.4; }
+.checklist .ck { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--label-3); display: inline-flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700; color: #fff; }
+.checklist li.done .ck { background: #34c759; border-color: #34c759; }
+.checklist li.done b { color: var(--label-2); }

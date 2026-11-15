@@ -282,6 +282,18 @@ const en = {
   "sc.ask": "Ask AI",
   "foot.charts": "Charts by TradingView",
   "st.email": "Email alerts",
+  "onb.title": "Setup checklist",
+  "onb.ai": "AI provider",
+  "onb.aiHint": "Add a free GROQ_API_KEY (or GEMINI_API_KEY) in Vercel → Settings → Environment Variables.",
+  "onb.store": "Database",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis (free), connect it to this project.",
+  "onb.pw": "App password",
+  "onb.pwHint": "Set APP_PASSWORD in Vercel. Required before AI and email features work on a public URL.",
+  "onb.cron": "Scheduler",
+  "onb.cronHint": "Set CRON_SECRET in Vercel, then APP_URL + CRON_SECRET as GitHub repo secrets.",
+  "onb.email": "Email alerts (optional)",
+  "onb.emailHint": "Add RESEND_API_KEY or SMTP_URL, then turn alerts on in Settings → Alerts.",
+  "onb.ready": "Ready. Generate your first briefing.",
 };
 
 export type MsgKey = keyof typeof en;
@@ -565,6 +577,18 @@ const vi: Dict = {
   "sc.ask": "Hỏi AI",
   "foot.charts": "Biểu đồ bởi TradingView",
   "st.email": "Cảnh báo email",
+  "onb.title": "Danh sách cài đặt",
+  "onb.ai": "Nhà cung cấp AI",
+  "onb.aiHint": "Thêm GROQ_API_KEY miễn phí (hoặc GEMINI_API_KEY) trong Vercel → Settings → Environment Variables.",
+  "onb.store": "Cơ sở dữ liệu",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis (miễn phí), kết nối với dự án này.",
+  "onb.pw": "Mật khẩu ứng dụng",
+  "onb.pwHint": "Đặt APP_PASSWORD trong Vercel. Bắt buộc để dùng AI và email trên địa chỉ công khai.",
+  "onb.cron": "Bộ hẹn giờ",
+  "onb.cronHint": "Đặt CRON_SECRET trong Vercel, rồi thêm APP_URL + CRON_SECRET vào GitHub repo secrets.",
+  "onb.email": "Cảnh báo email (tùy chọn)",
+  "onb.emailHint": "Thêm RESEND_API_KEY hoặc SMTP_URL, rồi bật cảnh báo trong Cài đặt → Cảnh báo.",
+  "onb.ready": "Sẵn sàng. Tạo bản tin đầu tiên của bạn.",
 };
 
 const zh: Dict = {
@@ -845,6 +869,18 @@ const zh: Dict = {
   "sc.ask": "问 AI",
   "foot.charts": "图表由 TradingView 提供",
   "st.email": "邮件提醒",
+  "onb.title": "设置清单",
+  "onb.ai": "AI 服务",
+  "onb.aiHint": "在 Vercel → Settings → Environment Variables 中添加免费的 GROQ_API_KEY（或 GEMINI_API_KEY）。",
+  "onb.store": "数据库",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis（免费），并连接到此项目。",
+  "onb.pw": "应用密码",
+  "onb.pwHint": "在 Vercel 设置 APP_PASSWORD。公开网址上使用 AI 和邮件功能前必须设置。",
+  "onb.cron": "定时任务",
+  "onb.cronHint": "在 Vercel 设置 CRON_SECRET，再把 APP_URL 和 CRON_SECRET 添加为 GitHub 仓库密钥。",
+  "onb.email": "邮件提醒（可选）",
+  "onb.emailHint": "添加 RESEND_API_KEY 或 SMTP_URL，然后在 设置 → 提醒 中开启。",
+  "onb.ready": "已就绪。生成你的第一份简报。",
 };
 
 const ja: Dict = {
@@ -1125,6 +1161,18 @@ const ja: Dict = {
   "sc.ask": "AI に質問",
   "foot.charts": "チャート提供: TradingView",
   "st.email": "メール通知",
+  "onb.title": "セットアップチェックリスト",
+  "onb.ai": "AI プロバイダー",
+  "onb.aiHint": "Vercel → Settings → Environment Variables に無料の GROQ_API_KEY（または GEMINI_API_KEY）を追加します。",
+  "onb.store": "データベース",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis（無料）をこのプロジェクトに接続します。",
+  "onb.pw": "アプリのパスワード",
+  "onb.pwHint": "Vercel で APP_PASSWORD を設定します。公開 URL で AI とメール機能を使うには必須です。",
+  "onb.cron": "スケジューラー",
+  "onb.cronHint": "Vercel で CRON_SECRET を設定し、APP_URL と CRON_SECRET を GitHub のシークレットに追加します。",
+  "onb.email": "メール通知（任意）",
+  "onb.emailHint": "RESEND_API_KEY か SMTP_URL を追加し、設定 → アラートで有効にします。",
+  "onb.ready": "準備完了。最初のブリーフィングを作成しましょう。",
 };
 
 const ko: Dict = {
@@ -1405,6 +1453,18 @@ const ko: Dict = {
   "sc.ask": "AI에게 묻기",
   "foot.charts": "차트 제공: TradingView",
   "st.email": "이메일 알림",
+  "onb.title": "설정 체크리스트",
+  "onb.ai": "AI 제공자",
+  "onb.aiHint": "Vercel → Settings → Environment Variables에 무료 GROQ_API_KEY(또는 GEMINI_API_KEY)를 추가하세요.",
+  "onb.store": "데이터베이스",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis(무료)를 이 프로젝트에 연결하세요.",
+  "onb.pw": "앱 비밀번호",
+  "onb.pwHint": "Vercel에서 APP_PASSWORD를 설정하세요. 공개 URL에서 AI와 이메일 기능을 쓰려면 필수입니다.",
+  "onb.cron": "스케줄러",
+  "onb.cronHint": "Vercel에 CRON_SECRET을 설정한 뒤 APP_URL과 CRON_SECRET을 GitHub 저장소 시크릿에 추가하세요.",
+  "onb.email": "이메일 알림 (선택)",
+  "onb.emailHint": "RESEND_API_KEY 또는 SMTP_URL을 추가하고 설정 → 알림에서 켜세요.",
+  "onb.ready": "준비 완료. 첫 브리핑을 만들어 보세요.",
 };
 
 const es: Dict = {
@@ -1685,6 +1745,18 @@ const es: Dict = {
   "sc.ask": "Preguntar a la IA",
   "foot.charts": "Gráficos de TradingView",
   "st.email": "Alertas por email",
+  "onb.title": "Lista de configuración",
+  "onb.ai": "Proveedor de IA",
+  "onb.aiHint": "Añade una GROQ_API_KEY gratuita (o GEMINI_API_KEY) en Vercel → Settings → Environment Variables.",
+  "onb.store": "Base de datos",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis (gratis) y conéctalo a este proyecto.",
+  "onb.pw": "Contraseña de la app",
+  "onb.pwHint": "Define APP_PASSWORD en Vercel. Es obligatoria para usar la IA y el email en una URL pública.",
+  "onb.cron": "Programador",
+  "onb.cronHint": "Define CRON_SECRET en Vercel y añade APP_URL + CRON_SECRET como secretos del repo en GitHub.",
+  "onb.email": "Alertas por email (opcional)",
+  "onb.emailHint": "Añade RESEND_API_KEY o SMTP_URL y activa las alertas en Ajustes → Alertas.",
+  "onb.ready": "Listo. Genera tu primer resumen.",
 };
 
 const fr: Dict = {
@@ -1965,6 +2037,18 @@ const fr: Dict = {
   "sc.ask": "Demander à l'IA",
   "foot.charts": "Graphiques par TradingView",
   "st.email": "Alertes e-mail",
+  "onb.title": "Liste de configuration",
+  "onb.ai": "Fournisseur d'IA",
+  "onb.aiHint": "Ajoutez une GROQ_API_KEY gratuite (ou GEMINI_API_KEY) dans Vercel → Settings → Environment Variables.",
+  "onb.store": "Base de données",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis (gratuit), puis connectez-le à ce projet.",
+  "onb.pw": "Mot de passe de l'app",
+  "onb.pwHint": "Définissez APP_PASSWORD dans Vercel. Obligatoire pour utiliser l'IA et les e-mails sur une URL publique.",
+  "onb.cron": "Planificateur",
+  "onb.cronHint": "Définissez CRON_SECRET dans Vercel, puis APP_URL + CRON_SECRET comme secrets du dépôt GitHub.",
+  "onb.email": "Alertes e-mail (facultatif)",
+  "onb.emailHint": "Ajoutez RESEND_API_KEY ou SMTP_URL, puis activez les alertes dans Réglages → Alertes.",
+  "onb.ready": "Prêt. Générez votre première synthèse.",
 };
 
 const de: Dict = {
@@ -2245,6 +2329,18 @@ const de: Dict = {
   "sc.ask": "KI fragen",
   "foot.charts": "Charts von TradingView",
   "st.email": "E-Mail-Alerts",
+  "onb.title": "Einrichtungs-Checkliste",
+  "onb.ai": "KI-Anbieter",
+  "onb.aiHint": "Füge in Vercel → Settings → Environment Variables einen kostenlosen GROQ_API_KEY (oder GEMINI_API_KEY) hinzu.",
+  "onb.store": "Datenbank",
+  "onb.storeHint": "Vercel → Storage → Upstash for Redis (kostenlos) mit diesem Projekt verbinden.",
+  "onb.pw": "App-Passwort",
+  "onb.pwHint": "Setze APP_PASSWORD in Vercel. Pflicht, bevor KI- und E-Mail-Funktionen auf einer öffentlichen URL laufen.",
+  "onb.cron": "Scheduler",
+  "onb.cronHint": "Setze CRON_SECRET in Vercel und lege APP_URL + CRON_SECRET als GitHub-Repo-Secrets an.",
+  "onb.email": "E-Mail-Alerts (optional)",
+  "onb.emailHint": "Füge RESEND_API_KEY oder SMTP_URL hinzu und aktiviere Alerts unter Einstellungen → Alerts.",
+  "onb.ready": "Bereit. Erstelle dein erstes Briefing.",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };
