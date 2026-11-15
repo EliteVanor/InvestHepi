@@ -70,7 +70,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   assert.ok(d2.providerNote?.includes("429"), "fallback note mentions the 429");
   assert.equal(d2.analysis.movers.length, 1, "movers parsed");
   const { loadCalls } = await import("../src/lib/track");
-  const calls = await loadCalls();
+  const { currentCallsKey } = await import("../src/lib/pipeline");
+  const calls = await loadCalls(await currentCallsKey());
   assert.deepEqual(calls.map((c) => c.id.split(":").slice(1).join(":")).sort(), ["QQQ:w", "SOXX:d"]);
   console.log("LLM PATH OK", calls.map((c) => c.id));
 })().catch((e) => { console.error(e); process.exit(1); });

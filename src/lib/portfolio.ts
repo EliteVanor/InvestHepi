@@ -1,13 +1,14 @@
 /** Optional holdings. Stored in the user's own database; only weights and gain % ever go to the AI. */
+import { ukey } from "./context";
 import { getJSON, setJSON } from "./store";
 import type { Holding, Quote } from "./types";
 
 export async function loadHoldings(): Promise<Holding[]> {
-  return (await getJSON<Holding[]>("portfolio")) ?? [];
+  return (await getJSON<Holding[]>(ukey("portfolio"))) ?? [];
 }
 
 export async function saveHoldings(h: Holding[]): Promise<void> {
-  await setJSON("portfolio", h);
+  await setJSON(ukey("portfolio"), h);
 }
 
 export { summarize, type PortfolioSummary, type Position } from "./portfolioMath";

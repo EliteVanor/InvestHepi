@@ -1,3 +1,4 @@
+import { multiUser } from "./mode";
 /**
  * Access control for a personal app on a public URL.
  * - APP_PASSWORD: required for every API call (UI asks once and remembers it in your browser).
@@ -5,6 +6,8 @@
  * If neither is set (local dev), everything is open.
  */
 export function authorized(req: Request, { allowCron = false } = {}): boolean {
+  // Multi-user mode: reads are public and accounts decide the rest (see users.ts gate()).
+  if (multiUser()) return true;
   const pw = process.env.APP_PASSWORD?.trim();
   const cron = process.env.CRON_SECRET?.trim();
   if (allowCron && cron && (req.headers.get("authorization") ?? "") === `Bearer ${cron}`) return true;
@@ -22,6 +25,7 @@ export type Role = "owner" | "viewer";
  * read-only briefings, no holdings, alerts, Ask AI, refresh or edits. No password configured = owner.
  */
 export function role(req: Request): Role | null {
+  if (multiUser()) return null;
   const pw = process.env.APP_PASSWORD?.trim();
   if (!pw) return "owner";
   const given = passwordFrom(req);
@@ -53,7 +57,7 @@ export const unauthorized = () => Response.json({ error: "unauthorized" }, { sta
  * refuse to run on Vercel until APP_PASSWORD is set. Local dev stays open.
  */
 export function passwordRequired(): Response | null {
-  if (process.env.VERCEL && !process.env.APP_PASSWORD?.trim()) {
+  if (process.env.VERCEL && !process.env.APP_PASSWORD?.trim() && !multiUser()) {
     return Response.json({ error: "Set APP_PASSWORD in Vercel before using this on a public URL." }, { status: 403 });
   }
   return null;

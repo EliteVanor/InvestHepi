@@ -125,7 +125,7 @@ async function main() {
   for (let i = 0; i < 11; i++) await refreshSection("us", new Date(now + i * 60_000));
   const hist = await loadHistory("us");
   assert.equal(hist.length, 10, "history capped at 10");
-  const files = (await fs.readdir(".data")).filter((f) => f.startsWith("digest_us_"));
+  const files = (await fs.readdir(".data")).filter((f) => /^digest_us_en_\d+\.json$/.test(f));
   assert.equal(files.length, 10, "old archived digests deleted");
 
   // Track record: rules calls are not logged; simulate an AI call and grade it.

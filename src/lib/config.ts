@@ -24,8 +24,27 @@ export const DEFAULT_INTERESTS: Interest[] = [
 /** Index proxies always shown in the market strip. */
 export const BENCHMARKS = ["SPY", "QQQ", "SOXX"];
 
+/**
+ * Vietnam market symbols (Yahoo): VanEck Vietnam ETF (US-listed, the most reliable proxy) plus
+ * large HOSE names. Yahoo uses the .VN suffix for Ho Chi Minh City listings.
+ */
+export const VN_SYMBOLS = ["VNM", "E1VFVN30.VN", "VCB.VN", "FPT.VN", "HPG.VN", "VIC.VN", "MWG.VN"];
+
+/** One-tap preset for Vietnamese users. */
+export const VN_PRESET: Interest = {
+  id: "vn-stocks",
+  name: "Vietnam stocks",
+  query: '"VN-Index" OR "chứng khoán" OR HOSE OR "cổ phiếu"',
+  tickers: ["VNM", "FPT.VN", "VCB.VN", "HPG.VN", "VIC.VN"],
+};
+
+/** The pseudo-interest the shared Vietnam section analyzes against. */
+export const VN_INTEREST: Interest = { ...VN_PRESET, id: "vn", name: "Vietnam market" };
+
 const gnewsSearch = (q: string) =>
   `https://news.google.com/rss/search?q=${encodeURIComponent(q + " when:1d")}&hl=en-US&gl=US&ceid=US:en`;
+const gnewsSearchVi = (q: string) =>
+  `https://news.google.com/rss/search?q=${encodeURIComponent(q + " when:1d")}&hl=vi&gl=VN&ceid=VN:vi`;
 const gnewsTopic = (topic: string) =>
   `https://news.google.com/rss/headlines/section/topic/${topic}?hl=en-US&gl=US&ceid=US:en`;
 
@@ -58,6 +77,14 @@ export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
       name: "US policy",
       url: gnewsSearch('"Federal Reserve" OR inflation OR "jobs report" OR Congress OR "White House" economy OR Treasury yields'),
     },
+  ],
+  vn: [
+    { name: "VnExpress Kinh doanh", url: "https://vnexpress.net/rss/kinh-doanh.rss" },
+    { name: "CafeF Chứng khoán", url: "https://cafef.vn/thi-truong-chung-khoan.rss" },
+    { name: "Vietstock", url: "https://vietstock.vn/830/chung-khoan/co-phieu.rss" },
+    { name: "Tuổi Trẻ Kinh doanh", url: "https://tuoitre.vn/rss/kinh-doanh.rss" },
+    { name: "Google News VN", url: gnewsSearchVi('"VN-Index" OR "chứng khoán" OR "Ngân hàng Nhà nước" OR "tỷ giá" OR "FDI"') },
+    { name: "Vietnam markets (EN)", url: gnewsSearch('"Vietnam stock" OR "VN-Index" OR "Vietnam economy" OR "State Bank of Vietnam"') },
   ],
 };
 

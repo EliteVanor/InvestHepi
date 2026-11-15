@@ -38,6 +38,7 @@ const SECTION_FOCUS: Record<SectionId, string> = {
   interests: "news directly about the user's followed markets and stocks",
   world: "global news (geopolitics, foreign economies, central banks, commodities, trade)",
   us: "US news (Fed, economic data, fiscal policy, politics, regulation)",
+  vn: "Vietnam market news (VN-Index, HOSE/HNX listings, State Bank of Vietnam policy, dong exchange rate, FDI, exports, foreign flows). Headlines may be in Vietnamese",
 };
 
 const RULES = `You are the analyst inside "Invest Helper", a personal tool that helps one investor catch up on news fast and act on it.

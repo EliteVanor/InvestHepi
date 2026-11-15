@@ -1,5 +1,5 @@
+import { gate } from "@/lib/users";
 import { z } from "zod";
-import { authorized, passwordRequired, unauthorized, ownerOnly } from "@/lib/auth";
 import { loadHoldings, saveHoldings } from "@/lib/portfolio";
 
 export const dynamic = "force-dynamic";
@@ -15,28 +15,24 @@ const Holdings = z
   .max(40);
 
 export async function GET(req: Request) {
-  if (!authorized(req)) return unauthorized();
-  const ro = ownerOnly(req);
-  if (ro) return ro;
-  return Response.json({ holdings: await loadHoldings() });
+  return gate(req, { user: true }, async () => {
+    return Response.json({ holdings: await loadHoldings() });
+  });
 }
 
 export async function PUT(req: Request) {
-  if (!authorized(req)) return unauthorized();
-  const ro = ownerOnly(req);
-  if (ro) return ro;
-  const locked = passwordRequired();
-  if (locked) return locked;
-  const parsed = Holdings.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
-  // Merge duplicate symbols into one position with a blended cost.
-  const merged = new Map<string, { symbol: string; shares: number; cost: number }>();
-  for (const h of parsed.data) {
-    const cur = merged.get(h.symbol);
-    if (!cur) merged.set(h.symbol, { ...h });
-    else merged.set(h.symbol, { symbol: h.symbol, shares: cur.shares + h.shares, cost: (cur.cost * cur.shares + h.cost * h.shares) / (cur.shares + h.shares) });
-  }
-  const holdings = [...merged.values()];
-  await saveHoldings(holdings);
-  return Response.json({ holdings });
+  return gate(req, { user: true }, async () => {
+    const parsed = Holdings.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
+    // Merge duplicate symbols into one position with a blended cost.
+    const merged = new Map<string, { symbol: string; shares: number; cost: number }>();
+    for (const h of parsed.data) {
+      const cur = merged.get(h.symbol);
+      if (!cur) merged.set(h.symbol, { ...h });
+      else merged.set(h.symbol, { symbol: h.symbol, shares: cur.shares + h.shares, cost: (cur.cost * cur.shares + h.cost * h.shares) / (cur.shares + h.shares) });
+    }
+    const holdings = [...merged.values()];
+    await saveHoldings(holdings);
+    return Response.json({ holdings });
+  });
 }

@@ -1,4 +1,5 @@
 /** Per-day counters in the store. Not atomic, which is fine for a single-user app. */
+import { ukey } from "./context";
 import { getJSON, setJSON } from "./store";
 
 function etDay(now = new Date()): string {
@@ -6,7 +7,7 @@ function etDay(now = new Date()): string {
 }
 
 export async function hit(name: string, limitPerDay: number, now = new Date()): Promise<{ ok: boolean; used: number; limit: number }> {
-  const key = `rl:${name}`;
+  const key = ukey(`rl:${name}`);
   const day = etDay(now);
   const cur = await getJSON<{ day: string; n: number }>(key);
   const used = cur && cur.day === day ? cur.n : 0;
