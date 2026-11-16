@@ -155,8 +155,18 @@ export function flatBand(closes: number[], weekly: boolean): number {
 
 export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
   const calls = await loadCalls(key);
-  const pending = calls.filter((c) => c.correct === undefined && sessionClosed(c.date, gradeTz(c.ticker), now));
-  if (!pending.length) return 0;
+  // Up/down calls graded before v17 with a move inside the band become "no result" (one-time, cheap).
+  let fixed = 0;
+  for (const c of calls) if (c.correct !== undefined && c.direction !== "flat" && c.band != null && c.returnPct != null && Math.abs(c.returnPct) < c.band) {
+    c.correct = undefined;
+    c.noResult = true;
+    fixed++;
+  }
+  const pending = calls.filter((c) => c.correct === undefined && !c.gradedAt && sessionClosed(c.date, gradeTz(c.ticker), now));
+  if (!pending.length) {
+    if (fixed) await setJSON(key, calls);
+    return 0;
+  }
   const tickers = [...new Set(pending.map((c) => c.ticker))];
   // Fresh prices only (never the stale fallback), fetched in one batch.
   const quotes = new Map((await getQuotes(tickers, { allowStale: false })).map((q) => [q.symbol, q]));
@@ -180,11 +190,13 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     c.outcomeClose = out[1];
     c.returnPct = r;
     c.band = band;
-    c.correct = c.direction === "up" ? r > 0 : c.direction === "down" ? r < 0 : Math.abs(r) < band;
+    // A move inside the band says nothing about an up/down call: graded, but "no result" (not a miss).
+    if (c.direction !== "flat" && Math.abs(r) < band) c.noResult = true;
+    else c.correct = c.direction === "up" ? r > 0 : c.direction === "down" ? r < 0 : Math.abs(r) < band;
     c.gradedAt = now.toISOString();
     graded++;
   }
-  if (graded) await setJSON(key, calls);
+  if (graded || fixed) await setJSON(key, calls);
   return graded;
 }
 
@@ -213,7 +225,7 @@ export interface TrackStats {
    * Up/down calls only: the headline. `base` is how often an "always up" call would have been right
    * on the same calls (markets rise more often than not), `skill` the hit rate minus that.
    */
-  direction: Rate & { base: number | null; skill: number | null };
+  direction: Rate & { base: number | null; skill: number | null; noResult: number };
   /** Flat calls: right when the move stayed inside the ticker's band. */
   flat: Rate;
   /** Mean (confidence - outcome)^2 over graded calls; 0 is perfect, 0.25 is a coin flip at 50%. */
@@ -291,14 +303,14 @@ export function computeStats(calls: Call[]): TrackStats {
   });
   const actions = [...new Set(graded.map((c) => String(c.action).toUpperCase()))];
   const pending = calls
-    .filter((c) => c.correct === undefined)
+    .filter((c) => c.correct === undefined && !c.gradedAt)
     .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: (c.id.endsWith(":w") ? "w" : "d") as "d" | "w", direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c) }))
     .sort((a, b) => a.gradesAfter.localeCompare(b.gradesAfter));
   return {
     total: calls.length,
     graded: graded.length,
     hitRate: graded.length ? hits(graded) / graded.length : null,
-    direction: { ...dir, base, skill: dir.rate != null && base != null ? dir.rate - base : null },
+    direction: { ...dir, base, skill: dir.rate != null && base != null ? dir.rate - base : null, noResult: calls.filter((c) => c.noResult).length },
     flat: rate(flat.length, hits(flat)),
     brier: graded.length ? graded.reduce((s, c) => s + (c.confidence / 100 - (c.correct ? 1 : 0)) ** 2, 0) / graded.length : null,
     buckets,
@@ -313,7 +325,7 @@ export function computeStats(calls: Call[]): TrackStats {
       })
       .sort((a, b) => b.n - a.n),
     pending: pending.slice(0, 60),
-    recent: [...graded].sort((a, b) => (b.gradedAt ?? "").localeCompare(a.gradedAt ?? "") || b.date.localeCompare(a.date)).slice(0, 40),
+    recent: [...graded, ...calls.filter((c) => c.noResult)].sort((a, b) => (b.gradedAt ?? "").localeCompare(a.gradedAt ?? "") || b.date.localeCompare(a.date)).slice(0, 40),
     equity: equityCurve(calls),
     byTicker: [...new Set(graded.map((c) => c.ticker))]
       .map((ticker) => {
@@ -349,6 +361,7 @@ export function trackRecordText(stats: TrackStats): string {
   if (stats.graded < 5) return `Not enough graded calls yet (${stats.graded}). Default to moderate confidence (55-70).`;
   const d = stats.direction;
   const lines = [`${stats.graded} graded calls.`];
+  if (d.noResult) lines.push(`${d.noResult} up/down calls moved less than the ticker's usual range and were not counted.`);
   if (d.n) lines.push(`Up/down calls: right ${pct(d.rate)} (n=${d.n}, likely range ${pct(d.low)}-${pct(d.high)}); "always up" would have been right ${pct(d.base)}, so your edge is ${d.skill == null ? "n/a" : `${d.skill >= 0 ? "+" : ""}${(d.skill * 100).toFixed(0)} pts`}.`);
   if (stats.flat.n) lines.push(`Flat calls: right ${pct(stats.flat.rate)} (n=${stats.flat.n}).`);
   for (const b of stats.buckets) if (b.n) lines.push(`When you said ${b.label} (avg ${b.avgConfidence.toFixed(0)}): right ${pct(b.hits / b.n)} (n=${b.n}).`);

@@ -501,4 +501,5 @@ export const ko: Dict = {
   "track.actionHint": "양수는 그 행동이 이득이었다는 뜻입니다. 매수/추가 매수/보유: 변동폭. 매도/일부 매도/회피/관망: 피한 하락(또는 놓친 상승).",
   "track.waiting": "종가 대기",
   "track.gradesAt": "{when} 채점",
+  "track.noResult": "{n}건은 평소 변동폭보다 작게 움직여 집계 제외",
 };

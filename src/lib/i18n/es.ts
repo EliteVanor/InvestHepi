@@ -501,4 +501,5 @@ export const es: Dict = {
   "track.actionHint": "Positivo significa que la acción salió bien. Comprar/Aumentar/Mantener: el movimiento. Vender/Reducir/Evitar/Esperar: la caída evitada (o la subida perdida).",
   "track.waiting": "Esperando el cierre",
   "track.gradesAt": "se califica {when}",
+  "track.noResult": "{n} se movieron menos que el rango habitual: no cuentan",
 };

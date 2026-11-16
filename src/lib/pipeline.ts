@@ -26,7 +26,7 @@ import { multiUser } from "./users";
 import { fold, vnNameSync } from "./vnlist";
 import { symLabel } from "./symbols";
 import { ALIASES } from "./tickers";
-import type { Digest, Interest, NewsItem, Quote, SectionId } from "./types";
+import type { Action, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
 import { callsKeyFor, currentCallsKey, currentInterestSet, interestHash, loadInterests, withHoldings } from "./interests";
 import { basePrefix, interestBriefingStale, loadDigest, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
 
@@ -188,7 +188,8 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
   // model's own number is kept (aiConfidence) and is what gets recorded and graded.
   analysis.outlook = (analysis.outlook ?? []).map((x) => {
     const c = calibrate(x.confidence, stats);
-    return { ...x, aiConfidence: x.confidence, confidence: c.confidence, ...(c.record ? { record: c.record } : {}) };
+    const action = alignAction(x.direction, x.action, !!o.positions);
+    return { ...x, action, ...(action !== x.action ? { aiAction: x.action } : {}), aiConfidence: x.confidence, confidence: c.confidence, ...(c.record ? { record: c.record } : {}) };
   });
   return {
     section: o.section,
@@ -215,6 +216,18 @@ function namesFor(symbol: string): string[] {
   const code = symbol.replace(/\.VN$/i, "").replace(/^\^/, "");
   const names = [code, symLabel(symbol), vnNameSync(code) ?? "", ...(ALIASES[symbol] ?? [])];
   return [...new Set(names.map((n) => fold(n)).filter((n) => n.length >= 2))];
+}
+
+/**
+ * An action that contradicts its call's direction is replaced: "up" with Sell/Trim/Avoid becomes
+ * Hold, "down" with Buy/Add becomes Wait, and "down" with Hold becomes Wait unless the investor holds
+ * positions (then holding through an expected dip is a real choice). The prompt asks for this too.
+ */
+export function alignAction(direction: Direction, action: Action, hasPositions = false): Action {
+  if (direction === "up" && (action === "SELL" || action === "TRIM" || action === "AVOID")) return "HOLD";
+  if (direction === "down" && (action === "BUY" || action === "ADD")) return "WAIT";
+  if (direction === "down" && action === "HOLD" && !hasPositions) return "WAIT";
+  return action;
 }
 
 /** Whether a headline mentions the company (code as a whole word, names as substrings; accents ignored). */

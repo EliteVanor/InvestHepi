@@ -165,6 +165,16 @@ Signed-in views checked too (multi-user build, fake sessions): the admin and a r
 
 **Not verified:** Windows' native select popup itself (headless Chromium can't screenshot OS popups; the computed option colors are what Chrome on Windows uses); real graded calls (the first arrive after the Nov 16 US close is posted and the Nov 17 HOSE close).
 
+## v17 (branch `v17`, Nov 16 2026): no-result moves, actions that match the call
+
+From the first real grades (7 Vietnam calls, Nov 16): HPG "up" moved exactly 0.00% and was marked wrong; VHM was called "down" with the action "Hold".
+- An up/down call whose move stays inside the ticker's flat band is now graded as **no result** (`noResult`): not a hit, not a miss, not pending. The sheet shows "–" and "{n} moved less than the ticker's usual range: not counted"; the prompt is told the count. Calls graded before v17 are converted on the next grading pass (production's HPG call included).
+- **Actions must agree with the direction.** Prompt rule: up → Buy/Add/Hold/Wait, down → Sell/Trim/Avoid/Wait (Hold only for a position the investor holds), flat → Hold/Wait. Code backstop `alignAction` in `pipeline.ts`: up + Sell/Trim/Avoid → Hold, down + Buy/Add → Wait, down + Hold → Wait unless positions were given; the model's own action is kept in `aiAction`, and the shown action is what gets recorded and graded.
+
+**Verified:** `npm test` (18 suites, new `v17test`: no result for a 0.00% move, the retroactive fix, never stuck pending, stats and prompt text, `alignAction` cases, a full refresh where the mocked model answers "down + Buy" and readers see Wait), typecheck, unused-code check, both builds.
+
+**Not verified:** on production until merged (the HPG call should flip to no result at the first hourly grading after deploy).
+
 ## Open items / known gaps
 
 - BLS release dates (CPI, jobs) return 403 to Vercel, so the calendar has no US macro releases; the AI was inventing dates (now told not to). Options: hardcode the BLS schedule yearly like FOMC (needs dates checked on bls.gov), or fetch it from GitHub Actions.

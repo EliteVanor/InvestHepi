@@ -501,4 +501,5 @@ export const de: Dict = {
   "track.actionHint": "Positiv heißt, die Aktion hat sich gelohnt. Kaufen/Aufstocken/Halten: die Bewegung. Verkaufen/Reduzieren/Meiden/Abwarten: der vermiedene Rückgang (oder der verpasste Anstieg).",
   "track.waiting": "Warten auf den Schluss",
   "track.gradesAt": "bewertet {when}",
+  "track.noResult": "{n} bewegten sich weniger als üblich: nicht gezählt",
 };

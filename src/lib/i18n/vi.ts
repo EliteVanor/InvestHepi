@@ -501,4 +501,5 @@ export const vi: Dict = {
   "track.actionHint": "Số dương nghĩa là hành động có lợi. Mua/Mua thêm/Giữ: mức biến động. Bán/Giảm/Tránh/Chờ: mức giảm đã tránh (hoặc mức tăng bỏ lỡ).",
   "track.waiting": "Chờ phiên đóng cửa",
   "track.gradesAt": "chấm {when}",
+  "track.noResult": "{n} nhận định biến động ít hơn biên độ thường ngày: không tính",
 };
