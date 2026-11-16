@@ -140,6 +140,7 @@ const MIN = 60_000;
   assert.equal(s1230.state, "partial", "finished, with a section that failed twice");
   assert.deepEqual(s1230.failed, ["us"]);
   assert.equal(rep.slots.find((x) => x.slot === "wd-0115")!.state, "done");
+  assert.deepEqual(rep.slots.find((x) => x.slot === "wd-0115")!.sets, { ran: 1, ok: 1 }, "set counts, no hashes");
 
   /* ---------------- a unit cut off by the time limit counts as a try (no endless paid re-runs) */
   await setJSON("sched:2026-11-17:wd-0115", { items: { vn: { at: "2026-11-17T01:16:00.000Z", n: 1, ok: false, note: "started" } }, sets: {} });

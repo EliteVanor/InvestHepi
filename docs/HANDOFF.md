@@ -89,7 +89,9 @@ Checked against production. Fixed on the branch (not deployed yet):
 
 **Rejected:** an external cron dispatching the GitHub workflow (a third party holding a repo-write token, still GitHub's queue and minutes); QStash (works, but no failure emails and an unverified free schedule count, and Vercel Schedules does the same without a new account); one Vercel schedule per slot (15-min jitter would collide sections on Groq's per-minute limit, and the times would be duplicated); making the repo public (doesn't make GitHub's scheduler reliable, would publish the prompts and these notes).
 
-**Verified:** `npm test` (new `v13test.ts`: timetable math, order, 65 s gap, skip rules, retry and give-up, lock, late/missed, alerts window, route auth and 503, public report), v5test now runs the multi-user grouping through the tick; typecheck; build with and without `AUTH_*`. A production build run locally: the tick answered in 36 ms, then one poke ran a whole slot (us, world, vn, the interest set) 65 s apart through the self-chain and stopped on its own.
+**Verified on production (Nov 16):** the first Vercel Schedule tick fired at 16:35:02 UTC (the 16:30 run, 5 min of jitter) and, through the chain alone, wrote US 16:35:14, World 16:36:20, Vietnam 16:37:25 (all 120b, 65 s apart), then the interest set(s); the slot was marked done at 16:38:43. Only one set ran there (others fresh or not active); the report now shows set counts to confirm on the next slot.
+
+**Verified offline:** `npm test` (new `v13test.ts`: timetable math, order, 65 s gap, skip rules, retry and give-up, lock, late/missed, alerts window, route auth and 503, public report), v5test now runs the multi-user grouping through the tick; typecheck; build with and without `AUTH_*`. A production build run locally: the tick answered in 36 ms, then one poke ran a whole slot (us, world, vn, the interest set) 65 s apart through the self-chain and stopped on its own.
 
 **Not verified yet:** Vercel accepting the `schedules` block on Hobby and the chain on Vercel (checked after the merge with `/api/status?schedule=1`); cron-job.org until the owner sets it up.
 
