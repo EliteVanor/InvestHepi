@@ -16,6 +16,7 @@ import { exchangeTz, priceDigits } from "@/lib/symbols";
 import type { Call } from "@/lib/types";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { fmtPct, fmtPrice } from "./primitives";
+import { dayIn } from "@/lib/dates";
 
 const RANGES: ChartRange[] = ["1d", "5d", "1mo", "6mo", "1y"];
 const OPTS_KEY = "ih-chart";
@@ -25,7 +26,6 @@ interface ChartOpts {
   calls: boolean;
 }
 const DEFAULT_OPTS: ChartOpts = { candles: false, ma: false, calls: true };
-const dayIn = (sec: number, timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sec * 1000));
 
 /** Session clock for the symbol's exchange: HOSE for Vietnam, NYSE/Nasdaq for US, weekdays elsewhere. */
 function clockFor(symbol: string) {
@@ -208,7 +208,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       // AI call markers: one per session, on the first bar of that day.
       const firstBar = new Map<string, number>();
       for (const b of d.bars) {
-        const day = dayIn(b.t, tz);
+        const day = dayIn(tz, b.t * 1000);
         if (!firstBar.has(day)) firstBar.set(day, b.t);
       }
       const marks: SeriesMarker<Time>[] = opts.calls
@@ -315,7 +315,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   const stale = data ? Date.now() / 1000 - data.asOf > 20 * 60 && clockFor(symbol).phase === "open" : false;
   // Daily-only data is never "live"; and a 1-day view of an earlier session says which day it is.
   const isLive = live && !stale && !data?.dailyOnly;
-  const dayOf = (sec: number) => dayIn(sec, tz);
+  const dayOf = (sec: number) => dayIn(tz, sec * 1000);
   const sessionLabel = data
     ? dayOf(data.asOf) === dayOf(Date.now() / 1000)
       ? t("chart.today")

@@ -78,6 +78,18 @@ const until = async (cond: () => Promise<boolean>, ms = 8000) => {
     "api/status", "api/track", "api/translate",
   ], "API surface unchanged (add new routes here on purpose)");
 
+  /* ---------------- one date helper (dates.ts) replaces 8 copies */
+  const { dayIn, NY } = await import("../src/lib/dates");
+  const t0 = Date.parse("2026-11-17T03:00:00Z"); // 22:00 the evening before in New York, 10:00 in Hanoi
+  assert.equal(dayIn(NY, t0), "2026-11-16");
+  assert.equal(dayIn("Asia/Ho_Chi_Minh", new Date(t0)), "2026-11-17", "Date or epoch ms");
+  assert.equal(dayIn("UTC", t0), "2026-11-17");
+  const { ictDay } = await import("../src/lib/vnmarket");
+  for (const h of [0, 6, 16, 17, 23]) {
+    const sec = Date.parse(`2026-11-16T${String(h).padStart(2, "0")}:30:00Z`) / 1000;
+    assert.equal(ictDay(sec), dayIn("Asia/Ho_Chi_Minh", sec * 1000), `ictDay's fixed +7 h shortcut agrees at ${h}:30 UTC`);
+  }
+
   /* ---------------- storage-key contract */
   await P.refreshShared("world", "en");
   for (const k of ["digest:world:en", "digest:world:en:last", "digest:world:en:history"]) assert.ok(await getJSON(k), `${k} written`);

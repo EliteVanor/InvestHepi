@@ -9,6 +9,7 @@ import { getJSON, setJSON } from "./store";
 import { PROXIES, exchangeTz, symLabel } from "./symbols";
 import { SAME_HOURS_ETF, estimateFromEtf, hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooCooling, yahooJson, yahooSpark } from "./yahoo";
+import { dayIn } from "./dates";
 
 export type ChartRange = "1d" | "5d" | "1mo" | "6mo" | "1y";
 export const CHART_RANGES: ChartRange[] = ["1d", "5d", "1mo", "6mo", "1y"];
@@ -275,7 +276,7 @@ async function vndirectChart(symbol: string, range: ChartRange): Promise<ChartDa
 /* ------------------------------------------------------- world (VNDirect) */
 
 const SESSIONS: Record<ChartRange, number> = { "1d": 5, "5d": 10, "1mo": 22, "6mo": 126, "1y": 252 };
-const etfDate = (s: string, t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: exchangeTz(s), year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t * 1000));
+const etfDate = (s: string, t: number) => dayIn(exchangeTz(s), t * 1000);
 
 /**
  * Real index / futures / FX levels from VNDirect's daily closes. For US-hours markets with a same-hours
@@ -434,7 +435,7 @@ export interface LiveQuote {
 
 /** Exchange-local date of a timestamp (Hanoi for Vietnamese symbols, the exchange's zone otherwise). */
 function sessionDate(symbol: string, t: number): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: exchangeTz(symbol), year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t * 1000));
+  return dayIn(exchangeTz(symbol), t * 1000);
 }
 
 /** A live quote from a 1-day chart: identical numbers to the chart sheet, by construction. */

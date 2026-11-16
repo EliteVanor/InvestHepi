@@ -1,14 +1,12 @@
 /** Per-day counters in the store. Not atomic, which is fine for a single-user app. */
 import { ukey } from "./context";
 import { getJSON, setJSON } from "./store";
+import { dayIn, NY } from "./dates";
 
-function etDay(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-}
 
 export async function hit(name: string, limitPerDay: number, now = new Date()): Promise<{ ok: boolean; used: number; limit: number }> {
   const key = ukey(`rl:${name}`);
-  const day = etDay(now);
+  const day = dayIn(NY, now);
   const cur = await getJSON<{ day: string; n: number }>(key);
   const used = cur && cur.day === day ? cur.n : 0;
   if (used >= limitPerDay) return { ok: false, used, limit: limitPerDay };
@@ -19,7 +17,7 @@ export async function hit(name: string, limitPerDay: number, now = new Date()): 
 /** Today's count without spending one. */
 export async function peek(name: string, limitPerDay: number, now = new Date()): Promise<{ used: number; limit: number; left: number }> {
   const cur = await getJSON<{ day: string; n: number }>(ukey(`rl:${name}`));
-  const used = cur && cur.day === etDay(now) ? cur.n : 0;
+  const used = cur && cur.day === dayIn(NY, now) ? cur.n : 0;
   return { used, limit: limitPerDay, left: Math.max(0, limitPerDay - used) };
 }
 

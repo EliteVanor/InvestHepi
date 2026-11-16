@@ -13,6 +13,7 @@ import { usePrefs } from "./prefs";
 import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
 import { isPercentQuote, priceDigits } from "@/lib/symbols";
 import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";
+import { dayIn } from "@/lib/dates";
 
 
 /* ---------------------------------------------------------------- Market */
@@ -497,7 +498,7 @@ function QuoteTag({ q }: { q: Quote }) {
 export function UpNext({ events, notes, timeZone = "America/New_York" }: { events: CalendarEvent[]; notes: string[]; timeZone?: string }) {
   const { t, lang } = usePrefs();
   // "Today" in the tab's market (Hanoi for Vietnam), not always New York.
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  const today = dayIn(timeZone);
   const tomorrow = new Date(new Date(today + "T12:00:00Z").getTime() + 86400_000).toISOString().slice(0, 10);
   const byDay = useMemo(() => {
     const m = new Map<string, CalendarEvent[]>();

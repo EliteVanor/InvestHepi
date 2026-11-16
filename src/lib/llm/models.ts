@@ -20,6 +20,7 @@
 import { getJSON, setJSON } from "../store";
 import { plannedPerDay } from "../timetable";
 import { geminiProvider, groqProvider, type CompatProvider } from "./openai-compat";
+import { dayIn } from "../dates";
 
 export type ModelKey = "groq120" | "groq20" | "qwen" | "gem35" | "gem31";
 export type Route = "shared" | "adminAuto" | "adminManual" | "userAuto" | "userManual" | "translate" | "ask";
@@ -78,10 +79,6 @@ export interface ModelUsage {
   byRoute: Partial<Record<Route, number>>;
   cooldownUntil?: number;
   lastError?: string;
-}
-
-export function dayIn(tz: string, now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
 }
 
 const usageKey = (k: ModelKey) => `llm:usage:${k}`;
