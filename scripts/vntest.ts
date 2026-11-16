@@ -17,6 +17,7 @@ process.env.GROQ_API_KEY = "x";
 const hits: string[] = [];
 const down = { yahoo: false, dnse: false, vietcap: false, vndirect: false };
 let lastPrompt = { sys: "", user: "" };
+let translateCalls = 0;
 const NOW = Math.floor(Date.now() / 1000);
 const dayTs = (i: number) => NOW - (40 - i) * 86400; // 40 daily bars ending today
 const isoDay = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
@@ -70,8 +71,21 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     ]);
     return new Response(JSON.stringify({ data: rows }), { status: 200 });
   }
+  if (url.includes("api.nasdaq.com")) {
+    // US-listed ETFs/ADRs (stand-ins for Yahoo-only symbols): two daily closes.
+    const sym = url.split("/api/quote/")[1].split("/")[0];
+    if (!/^(SPY|EWJ|GLD|FEZ|QQQ|DIA|IWM)$/.test(sym)) return new Response(JSON.stringify({ data: null }), { status: 200 });
+    if (url.includes("assetclass=stocks")) return new Response(JSON.stringify({ data: null }), { status: 200 }); // ETFs: etf class only
+    const d = (i: number) => { const x = new Date((NOW - i * 86400) * 1000); return `${String(x.getUTCMonth() + 1).padStart(2, "0")}/${String(x.getUTCDate()).padStart(2, "0")}/${x.getUTCFullYear()}`; };
+    return new Response(JSON.stringify({ data: { tradesTable: { rows: [{ date: d(1), close: "$102.00" }, { date: d(2), close: "$100.00" }] }, chart: [] } }), { status: 200 });
+  }
   if (url.includes("api.groq.com")) {
     const msgs = JSON.parse(String(init?.body)).messages;
+    if (msgs[0].content.startsWith("You translate")) {
+      translateCalls++;
+      const arr: string[] = JSON.parse(msgs[1].content);
+      return new Response(JSON.stringify({ choices: [{ message: { content: "```json\n" + JSON.stringify(arr.map((s) => `vi:${s}`)) + "\n```" } }] }), { status: 200 });
+    }
     lastPrompt = { sys: msgs[0].content, user: msgs[1].content };
     const names = [...lastPrompt.user.matchAll(/^- (.+?) \(benchmark (\S+?)[;)]/gm)].map((m) => [m[1], m[2]]);
     const outlook = names.map(([n, t]) => ({ interest: n, ticker: t, direction: "up", confidence: 60, horizon: "today", action: "HOLD", action_trigger: "t", rationale: "r", risks: "k" }));
@@ -158,6 +172,17 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   assert.ok(during.find((q) => q.symbol === "T1")?.stale, "last good price filled in, flagged stale");
   assert.ok(!during.some((q) => q.symbol === "NEVERSEEN"), "nothing invented for symbols never seen");
   assert.equal(await M.getQuote("T1"), null, "grading never uses stale prices");
+  // Yahoo-only symbols get a tracking ETF priced by Nasdaq, labeled as such (never mixed with the index level).
+  const px = await M.getQuotes(["^GSPC", "^N225", "GC=F", "^TNX"]);
+  const spx = px.find((q) => q.symbol === "^GSPC");
+  assert.equal(spx?.proxy, "SPY", "S&P 500 priced via SPY when Yahoo refuses");
+  assert.ok(Math.abs(spx!.changePct - 2) < 1e-9, "the ETF's own move (102 vs 100)");
+  assert.equal(px.find((q) => q.symbol === "^N225")?.proxy, "EWJ");
+  assert.equal(px.find((q) => q.symbol === "GC=F")?.proxy, "GLD");
+  assert.ok(!px.some((q) => q.symbol === "^TNX"), "no stand-in for yields (an ETF price isn't a yield)");
+  const cpx = await C.getChart("^N225", "6mo");
+  assert.equal(cpx.proxy, "EWJ");
+  assert.ok(cpx.name?.includes("EWJ"), "chart says it's the ETF");
   down.yahoo = false;
   Y.resetYahoo();
 
@@ -196,6 +221,34 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   assert.ok(tv.total >= 6, "track record API per shared section");
   const csv = await (await track.GET(new Request("http://x/api/track?section=world&format=csv"))).text();
   assert.ok(csv.includes("^STOXX50E"), "CSV export per section");
+
+  // ---- translation instead of regeneration: one cheap call per briefing version and language
+  const T = await import("../src/lib/translate");
+  assert.deepEqual(T.parseTranslations('ok ["a","b"]', 2), ["a", "b"]);
+  assert.equal(T.parseTranslations('["a"]', 2), null, "wrong length rejected");
+  const base = await P.refreshShared("us", "en");
+  translateCalls = 0;
+  const tv1 = await P.translateLatest("us", "vi");
+  assert.equal(translateCalls, 1);
+  assert.equal(tv1!.language, "vi");
+  assert.equal(tv1!.translatedFrom, "en");
+  assert.equal(tv1!.analysis.headline, `vi:${base.analysis.headline}`);
+  assert.deepEqual(tv1!.analysis.outlook.map((o) => [o.ticker, o.direction, o.confidence, o.action]), base.analysis.outlook.map((o) => [o.ticker, o.direction, o.confidence, o.action]), "calls, numbers and tickers unchanged");
+  assert.ok(tv1!.analysis.outlook.every((o) => o.rationale.startsWith("vi:")), "call text translated");
+  await P.translateLatest("us", "vi");
+  assert.equal(translateCalls, 1, "cached: the second reader costs nothing");
+  assert.equal((await P.loadDigest("us", undefined, "vi"))!.analysis.headline, tv1!.analysis.headline, "readers get the cached translation");
+  assert.equal((await P.loadDigest("us", undefined, "en"))!.language, "en");
+  await new Promise((r) => setTimeout(r, 1100));
+  await P.refreshShared("us", "en");
+  assert.equal((await P.loadDigest("us", undefined, "vi"))!.language, "en", "a newer briefing isn't hidden behind an old translation");
+  await P.translateLatest("us", "vi");
+  assert.equal(translateCalls, 2, "new briefing version → one new translation");
+  const tr = await import("../src/app/api/translate/route");
+  assert.equal((await tr.POST(new Request("http://x/api/translate?section=us&lang=xx", { method: "POST" }))).status, 400);
+  const ok = await (await tr.POST(new Request("http://x/api/translate?section=us&lang=vi", { method: "POST" }))).json();
+  assert.equal(ok.translated, true);
+  assert.equal(translateCalls, 2);
 
   // My Interests is unchanged: the user's tickers plus the benchmarks.
   const { DEFAULT_INTERESTS } = await import("../src/lib/config");

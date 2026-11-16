@@ -53,7 +53,8 @@ export function useLiveQuotes(symbols: string[], market: "us" | "vn" | "world" =
 export function mergeLive(quotes: Quote[], live: Map<string, LiveQuote>): Quote[] {
   return quotes.map((q) => {
     const l = live.get(q.symbol);
-    return l ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct } : q;
+    // Never mix an index level with its tracking ETF's price.
+    return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct } : q;
   });
 }
 

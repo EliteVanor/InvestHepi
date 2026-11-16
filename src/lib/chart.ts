@@ -6,6 +6,7 @@
  */
 import { VN_INDEXES, dnseBars, ictDay, isVnSymbol, pool, vietcapBars, vndirectDaily, type DnseRes, type VietcapFrame } from "./vnmarket";
 import { getJSON, setJSON } from "./store";
+import { PROXIES, symLabel } from "./symbols";
 import { yahooCooling, yahooJson, yahooSpark } from "./yahoo";
 
 export type ChartRange = "1d" | "5d" | "1mo" | "6mo" | "1y";
@@ -40,6 +41,8 @@ export interface ChartData {
   source: PriceSource;
   /** Every source failed; this is the last good daily data we saved. */
   stale?: boolean;
+  /** Priced from this tracking ETF (see PROXIES). */
+  proxy?: string;
 }
 
 const INTERVAL: Record<ChartRange, string> = { "1d": "1m", "5d": "5m", "1mo": "60m", "6mo": "1d", "1y": "1d" };
@@ -265,6 +268,17 @@ export async function getChart(symbol: string, range: ChartRange): Promise<Chart
     }
   }
   if (hit) return hit.data; // serve stale rather than nothing
+  const px = PROXIES[symbol];
+  if (px) {
+    try {
+      const d = await getChart(px, range);
+      const data: ChartData = { ...d, symbol, proxy: px, name: `${px} ETF · ${symLabel(symbol)}` };
+      cache.set(key, { at: Date.now(), data });
+      return data;
+    } catch (e) {
+      errors.push(`${px}: ${(e as Error).message.slice(0, 60)}`);
+    }
+  }
   const saved = await savedDaily(symbol, range).catch(() => null);
   if (saved) return saved;
   throw new Error(errors.join(" · "));
@@ -301,6 +315,8 @@ export interface LiveQuote {
   asOf: number;
   /** Intraday closes for a mini sparkline. */
   spark: number[];
+  /** Priced from this tracking ETF (see PROXIES). */
+  proxy?: string;
 }
 
 const liveCache = new Map<string, { at: number; q: LiveQuote }>();
@@ -370,7 +386,7 @@ export async function getLiveQuotes(symbols: string[]): Promise<LiveQuote[]> {
   await pool(rest, 2, async (s) => {
     try {
       const d = await getChart(s, "1d");
-      put({ symbol: s, price: d.price, prevClose: d.prevClose, changePct: d.changePct, asOf: d.asOf, spark: thin(d.bars.map((b) => b.c)) });
+      put({ symbol: s, price: d.price, prevClose: d.prevClose, changePct: d.changePct, asOf: d.asOf, spark: thin(d.bars.map((b) => b.c)), ...(d.proxy ? { proxy: d.proxy } : {}) });
     } catch {}
   });
   if (liveCache.size > 800) for (const k of [...liveCache.keys()].slice(0, 200)) liveCache.delete(k);

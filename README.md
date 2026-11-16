@@ -157,6 +157,8 @@ All sources are free, keyless and unofficial, checked from a cloud server in Nov
 | Vietnamese (`FPT.VN`, `^VNINDEX.VN`, `^VN30.VN`, `^HNX.VN`, `^UPCOM.VN`) | DNSE → Vietcap → VNDirect → Yahoo (stocks only) |
 | Everything else | Yahoo → Nasdaq (US stocks, ETFs, Nasdaq indexes) |
 
+When Yahoo refuses the server, indexes, gold, oil, the dollar, Bitcoin and the VIX are priced from US-listed ETFs that track them (SPY for the S&P 500, EWJ for the Nikkei, GLD for gold, ...) through Nasdaq's public API. Those cards carry a small ETF tag, and the AI is told which prices come from an ETF. Global giants are their US-listed shares (TSMC, ASML, Toyota, Sony, Alibaba, Novo Nordisk, SAP, Shell, HSBC, BHP), so they load either way.
+
 Yahoo throttles busy cloud IPs (a burst of ~60 requests gets "429 Too Many Requests" for minutes, for every symbol). The app keeps well under that: one batch request per 20 symbols, at most 3 Yahoo requests in flight, and after a 429 it stops calling Yahoo for 90 seconds and uses the fallbacks. If nothing answers, the strip shows the last good price (dimmed, "last available price") and charts show the last saved daily history, rather than blank cards. Graded calls never use those stale prices. Stooq and TCBS were dropped: both now put a browser check in front of their data.
 
 ### Accounts for other people (optional, free)
@@ -222,7 +224,8 @@ Locally, data is stored as JSON in `.data/`.
 - "Live" means polled every ~20 seconds, not tick-by-tick streaming. Good for a daily-trend tool. True streaming needs a paid data feed.
 - Price alerts are as fresh as the check interval (~20 min by default).
 - Free feeds and price endpoints are unofficial and can change or rate-limit. Failures show up under "feed(s) failed", and the app keeps going with whatever loaded.
-- World indexes, currencies and commodities have no free, keyless backup to Yahoo that works from servers. During a Yahoo cooldown they show the last available price (dimmed) until Yahoo answers again. Vietnamese prices don't depend on Yahoo.
+- When Yahoo refuses the server, world indexes and commodities show their tracking ETF instead (tagged). Yields (US 10Y) and currencies other than the dollar index have no ETF stand-in and show their last available price. Vietnamese prices don't depend on Yahoo.
+- Briefings in other languages are translations of one English briefing (World/US/Vietnam) or of your personal briefing, made once per briefing version and cached for everyone. A translation costs roughly a quarter of a full analysis; the calls and numbers are identical in every language.
 - Free LLM tiers change their limits and models often. If one starts failing, the fallback note on the page will say so. Swap the model via `GROQ_MODEL` / `GEMINI_MODEL`.
 - Technical levels and the mood gauge are context computed from price history. They are not signals on their own.
 - Scenario probabilities are the AI's estimates, not market-implied odds.

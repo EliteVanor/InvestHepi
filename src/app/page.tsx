@@ -181,7 +181,7 @@ function App() {
       setRefreshing(s);
       setError("");
       try {
-        const r = await api<{ results: { ok: boolean; error?: string }[] }>(`/api/refresh?section=${s}`, { method: "POST" });
+        const r = await api<{ results: { ok: boolean; error?: string }[] }>(`/api/refresh?section=${s}&lang=${lang}`, { method: "POST" });
         const failed = r.results?.find((x) => !x.ok);
         if (failed) setError(failed.error ?? "Refresh failed");
         setOldDigest(null);
@@ -193,8 +193,25 @@ function App() {
         setRefreshing(null);
       }
     },
-    [api, loadDigest, loadCalendar, toast, t],
+    [api, loadDigest, loadCalendar, toast, t, lang],
   );
+
+  // A briefing written in another language is translated (not regenerated): the server caches each
+  // translation per briefing version, so only the first reader of a new briefing costs an AI call.
+  const tried = useRef(new Set<string>());
+  const [translatingTab, setTranslatingTab] = useState<SectionId | null>(null);
+  useEffect(() => {
+    const d = digests[tab];
+    if (!d || oldDigest || d.provider === "rules" || !d.language || d.language === lang) return;
+    const k = `${tab}:${lang}:${d.generatedAt}`;
+    if (tried.current.has(k)) return;
+    tried.current.add(k);
+    setTranslatingTab(tab);
+    api<{ digest: Digest | null }>(`/api/translate?section=${tab}&lang=${lang}`, { method: "POST" })
+      .then((j) => j.digest && setDigests((all) => ({ ...all, [tab]: j.digest })))
+      .catch(() => {})
+      .finally(() => setTranslatingTab((x) => (x === tab ? null : x)));
+  }, [digests, tab, lang, oldDigest, api]);
 
   const pickHistory = async (key: string | null) => {
     setSheet(null);
@@ -273,8 +290,8 @@ function App() {
     const resolve = (s: string): Quote | null => {
       const q = known.get(s);
       const l = live.get(s);
-      if (q) return l ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false } : q;
-      if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.spark.map((c, i) => [String(i), c] as [string, number]), source: "yahoo" };
+      if (q) return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false } : q;
+      if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.spark.map((c, i) => [String(i), c] as [string, number]), source: "yahoo", proxy: l.proxy };
       return null;
     };
     const ok = (q: Quote | null): q is Quote => q != null && Number.isFinite(q.price) && Number.isFinite(q.changePct);
@@ -384,7 +401,8 @@ function App() {
             <div className="eyebrow" suppressHydrationWarning>{dateStr}</div>
             <h1 className="large-title" ref={titleRef}>{t(`sec.${tab}` as MsgKey)}</h1>
           </div>
-          <StatusPill market={tab === "vn" ? "vn" : "us"} />
+          {/* World spans many exchanges with different hours, so there's no single open/closed. */}
+          {tab !== "world" && <StatusPill market={tab === "vn" ? "vn" : "us"} />}
         </div>
 
         {shown && !gated && <MarketStrip groups={stripRows.groups} macro={stripRows.macro} onOpen={openTicker} />}
@@ -439,7 +457,7 @@ function App() {
                 <SinceLastVisit digest={interestsDigest} quotes={interestsLive} newCount={newSnap.interests?.ids.size ?? 0} onTicker={openTicker} />
               </div>
             )}
-            <Briefing digest={shown} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} onCatchUp={() => setSheet({ kind: "catchup" })} />
+            <Briefing digest={shown} translating={translatingTab === tab} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} onCatchUp={() => setSheet({ kind: "catchup" })} />
             <Calls outlook={shown.analysis.outlook} onTicker={openTicker} />
             <ScenariosCard scenarios={shown.analysis.scenarios} />
             {isHome && <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />}

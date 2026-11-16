@@ -19,6 +19,7 @@ import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM,
 import { GUEST, OWNER, currentUid, ukey, withUser } from "./context";
 import { isLang } from "./languages";
 import { analyze } from "./llm";
+import { translateDigest } from "./translate";
 import { getQuotes } from "./market";
 import { computeMood } from "./mood";
 import { dedupe, fetchFeeds, fetchInterestNews } from "./news";
@@ -99,22 +100,62 @@ export async function sharedLanguages(): Promise<string[]> {
 
 /* ------------------------------------------------------------- reading */
 
+/** Translation cache key for a stored briefing (prefix = ib:<hash> or digest:<section>:<lang>). */
+const trKey = (prefix: string, lang: string) => `tr:${prefix}:${lang}`;
+
+/**
+ * The briefing a reader sees. `langOverride` is the reader's interface language: if the briefing was
+ * written in another language and a translation of this exact version is cached, that's returned;
+ * otherwise the original (the client then asks /api/translate once).
+ */
 export async function loadDigest(section: SectionId, at?: string, langOverride?: string): Promise<Digest | null> {
+  const want = langOverride && isLang(langOverride) ? langOverride : undefined;
+  const translated = async (prefix: string, d: Digest | null, target: string | undefined = want) => {
+    if (!d || !target || d.language === target || at) return d;
+    const tr = await getJSON<Digest>(trKey(prefix, target));
+    return tr && tr.generatedAt === d.generatedAt ? tr : d;
+  };
   if (section === "interests") {
     const { hash } = await currentInterestSet(langOverride);
     if (at) return getJSON<Digest>(`ib:${hash}:${at}`);
     const d = await getJSON<Digest>(`ib:${hash}`);
     // The owner's pre-multi-user briefing is shown until the first new one is generated.
     if (!d && currentUid() === OWNER) return getJSON<Digest>("digest:interests");
-    return d;
+    return translated(`ib:${hash}`, d);
   }
-  const { lang } = await currentInterestSet(langOverride);
+  const lang = want ?? (await currentInterestSet()).lang;
   if (at) return (await getJSON<Digest>(`digest:${section}:${lang}:${at}`)) ?? getJSON<Digest>(`digest:${section}:${at}`);
-  return (
-    (await getJSON<Digest>(`digest:${section}:${lang}`)) ??
-    (lang !== "en" ? await getJSON<Digest>(`digest:${section}:en`) : null) ??
-    getJSON<Digest>(`digest:${section}`)
-  );
+  // Shared sections are written once in English and translated; a native copy (older runs, or a
+  // language someone generated directly) wins only if it's at least as new.
+  const [native, en] = await Promise.all([getJSON<Digest>(`digest:${section}:${lang}`), lang !== "en" ? getJSON<Digest>(`digest:${section}:en`) : null]);
+  if (native && (!en || native.generatedAt >= en.generatedAt)) return native;
+  if (en) return translated(`digest:${section}:en`, en, lang);
+  return getJSON<Digest>(`digest:${section}`);
+}
+
+const translating = new Map<string, Promise<Digest>>();
+
+/**
+ * Translate the latest briefing of a section into `lang`, once per briefing version (cached for
+ * every reader; concurrent requests share one call). Returns the original if no translation is
+ * needed or possible. `onSpend` runs only when a new translation is actually paid for.
+ */
+export async function translateLatest(section: SectionId, lang: string, onSpend?: () => Promise<boolean>): Promise<Digest | null> {
+  const d = await loadDigest(section, undefined, lang);
+  if (!d || !isLang(lang) || d.language === lang || d.provider === "rules" || d.translatedFrom) return d;
+  const prefix = section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:${d.language ?? "en"}`;
+  const key = trKey(prefix, lang);
+  const pending = translating.get(key);
+  if (pending) return pending;
+  if (onSpend && !(await onSpend())) return d;
+  const job = translateDigest(d, lang)
+    .then(async (t) => {
+      await setJSON(key, t);
+      return t;
+    })
+    .finally(() => translating.delete(key));
+  translating.set(key, job);
+  return job;
 }
 
 export interface HistoryEntry extends DigestMeta {
@@ -365,7 +406,12 @@ export async function refreshScheduled(section: SectionId, opts: { batch?: numbe
     }
   };
   if (section !== "interests") {
-    for (const lang of await sharedLanguages()) await run(`${section}:${lang}`, () => refreshShared(section, lang, now));
+    // Write the section once (English), then translate it for the other languages readers use:
+    // a translation costs about a quarter of a full analysis and keeps the calls identical.
+    await run(`${section}:en`, () => refreshShared(section, "en", now));
+    for (const lang of (await sharedLanguages()).filter((l) => l !== "en")) {
+      await run(`${section}:${lang}`, async () => (await translateLatest(section, lang)) ?? Promise.reject(new Error("no briefing")));
+    }
     return { results };
   }
   const batch = opts.batch ?? (Number(process.env.INTEREST_BATCH) || 2);
