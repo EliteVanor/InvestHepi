@@ -147,6 +147,24 @@ Signed-in views checked too (multi-user build, fake sessions): the admin and a r
 
 **Not verified:** a real Google sign-in after the refactor (production, after merge).
 
+## v16 (branch `v16`, Nov 16 2026): track record that teaches the model, panels that slide, dark-safe controls
+
+**Owner decisions:** macOS-style toggles (sidebar top-left, chat top-right, always in the same place), keep the icon rail, refine the glass look; flat calls graded on a band from each ticker's typical move; the track record must improve predictions over time (richer prompt record, "right x of y" on each call, confidence pulled toward the record once a level has 20+ graded calls, the model's own number kept); Hold/Wait scored apart from the up/down hit rate; grade within the hour after each close.
+
+**Why everything showed Pending:** no session had closed since calls started on Nov 16 (US calls for Nov 16 need the official close VNDirect posts the next morning; the VN calls on screen were for Nov 17). Fixed on the way: grading used New York's clock for every market, so a HOSE close was graded ~12 h late; now each exchange's own close (+15 min), and the tick grades hourly.
+
+**Track record:**
+- Grading: exchange closes, ETF stand-ins on New York hours (grading one at the European close would have used a live price), volatility-scaled flat band, `band` stored.
+- Stats: up/down hit rate with a 90% Wilson range, "always up" baseline and skill (research: directional accuracy alone overstates skill because markets rise more often than not), flat calls apart, Brier score, per horizon, per action (positive = the action paid off; Wait/Sell/Trim/Avoid earn the drop avoided), per ticker, pending with "graded in ...".
+- Learning loop: the prompt gets all of the above plus an instruction to lower confidence where the record is weak; each call card shows "Right x of y at this confidence"; from 20 graded calls at a level the shown confidence moves toward the real hit rate (n/(n+20)), "AI said 75%, adjusted by its record"; the model's raw number is recorded so calibration keeps learning from the model.
+- Sheet redesigned (summary card with range, skill and "Early data" under 30 calls; tiles; faded thin calibration buckets; result by action; waiting list; graded list). CSV export filename fixed (it was literally `investhepi-calls${...}.csv`).
+
+**UI:** both side panels slide with a spring (0.45 s, off with reduced motion): the shell keeps three columns, the dock stays mounted and folds to a 56px rail with its reopen button where the close button was, the sidebar's toggle moved top-left and icons don't move while labels fade; no floating Ask button on wide screens. Dark-mode native controls: `<option>` colors (the owner's white language menu), themed thin scrollbars (the sidebar's light Windows scrollbar), autofill. The sidebar account menu opens upward and floats above the page (it was cut off).
+
+**Verified:** `npm test` (17 suites, new `v16test`), typecheck, unused-code check, both builds; in Chromium: dark mode on a light system (option colors computed as #1C1C1E / #F5F5F7, scrollbar color), a sidebar mid-animation frame, both rails folded, the dock reopen button in place and working, the account menu inside the window, the track sheet with seeded calls in English and Vietnamese, wide and phone, light and dark; the CSV header.
+
+**Not verified:** Windows' native select popup itself (headless Chromium can't screenshot OS popups; the computed option colors are what Chrome on Windows uses); real graded calls (the first arrive after the Nov 16 US close is posted and the Nov 17 HOSE close).
+
 ## Open items / known gaps
 
 - BLS release dates (CPI, jobs) return 403 to Vercel, so the calendar has no US macro releases; the AI was inventing dates (now told not to). Options: hardcode the BLS schedule yearly like FOMC (needs dates checked on bls.gov), or fetch it from GitHub Actions.

@@ -63,7 +63,9 @@ World, US and Vietnam are the same for everyone and never include anyone's perso
 
 A confidence number means nothing unless you know how often it's right. Every call is logged against the **next session on its own exchange that hasn't opened yet**, so the AI never sees the market's reaction, then graded against the real close ("today" on the next close, "this week" on the 5th). Each section keeps its own record.
 
-The calibration chart compares what the AI claimed with how often it was right, and the equity curve shows what acting on every call would have returned next to just holding. These numbers go back into the prompt so the model can recalibrate. Give it a few weeks before trusting them.
+The headline is the hit rate on up/down calls with its likely range, next to how often "always up" would have been right on the same calls: markets rise more days than not, so the edge over that is what counts. Flat calls must stay inside the ticker's usual daily range. The calibration chart compares what the AI claimed with how often it was right, the equity curve shows what acting on every call would have returned next to just holding, and each action (Buy, Wait, Sell...) shows what it earned.
+
+The record feeds back in: every briefing's prompt gets it, each call shows "Right x of y at this confidence", and once a confidence level has 20+ graded calls the shown confidence is pulled toward its real hit rate (the AI's own number stays visible). Give it a few weeks before trusting any of it; the sheet says "Early data" until then.
 
 Other guards against invented facts:
 - Every level, % and mover number is overwritten from real price data after the AI answers; tickers it can't back are dropped.
