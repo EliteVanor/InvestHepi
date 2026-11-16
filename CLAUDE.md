@@ -102,7 +102,7 @@ These are the habits from past sessions. Follow them without being asked.
 
 **Starting a session**
 - Read `docs/HANDOFF.md`, then restate the goal and the rules that apply in a few lines before doing anything.
-- If the task has real design choices (schedule, limits, models, UX behavior), ask every question that changes the design up front, in one numbered list. Give lettered options and mark the one you recommend. The owner answers by number ("1 B, 2 yes"). After that, build without more check-ins.
+- Before starting, ask every question needed to make the task clear, so the work hits what the owner actually wants: scope, priorities, expected behavior, edge cases, limits, models, schedule, UX, what "done" looks like. Put them in one numbered list. Give lettered options where they help and mark the one you recommend. The owner answers by number ("1 B, 2 yes"). After that, build without more check-ins.
 - "Use all of the token" means: keep working through the whole task list without stopping for approval. If the context gets long, write a summary that keeps every decision, file change and open item so nothing is lost.
 
 **Stress testing** ("stress test", "test every detail", "to the last minute")
