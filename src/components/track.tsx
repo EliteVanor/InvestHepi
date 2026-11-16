@@ -1,10 +1,201 @@
 "use client";
 
-/** Track-record extras: the followed-the-AI equity curve and calibration. */
+/**
+ * The track record sheet: how often the AI's calls were right, against what baseline, how sure it
+ * was vs how often it was right, what each action returned, and which calls wait for a close.
+ */
+import { useEffect, useState } from "react";
+import { relTime, type MsgKey } from "@/lib/i18n";
+import { symLabel } from "@/lib/symbols";
+import { type Rate, type TrackStats } from "@/lib/track";
+import { SECTION_IDS, type Call, type SectionId } from "@/lib/types";
 import { lsGet, usePrefs } from "./prefs";
-import { fmtPct } from "./primitives";
-import { type TrackStats } from "@/lib/track";
+import { Sheet, arrow, fmtPct } from "./primitives";
 import { useToast } from "./toast";
+
+const pctOf = (x: number | null | undefined) => (x == null ? "–" : `${Math.round(x * 100)}%`);
+/** Fewer graded calls than this and the numbers are labeled early data. */
+const EARLY = 30;
+
+export function TrackSheet({ onClose, section = "interests" }: { onClose: () => void; section?: SectionId }) {
+  const { t, api, lang } = usePrefs();
+  const [sec, setSec] = useState<SectionId>(section);
+  const [s, setS] = useState<TrackStats | null>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    setS(null);
+    setErr("");
+    api<TrackStats>(`/api/track${sec === "interests" ? "" : `?section=${sec}`}`).then(setS).catch((e) => setErr((e as Error).message));
+  }, [api, sec]);
+  const fmtDate = (iso: string) => new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(iso + "T12:00:00Z"));
+  const callLabel = (c: Pick<Call, "direction" | "action">) => (
+    <span className={c.direction}>
+      {arrow(c.direction)} {t(`act.${c.action}` as MsgKey)}
+    </span>
+  );
+
+  return (
+    <Sheet title={t("track.title")} onClose={onClose} wide>
+      <p className="hint" style={{ marginTop: 0 }}>{t("track.intro")}</p>
+      {/* Each section keeps its own record: your interests, plus the shared World, US and Vietnam calls. */}
+      <div className="segmented track-seg" role="tablist" aria-label={t("track.title")}>
+        {SECTION_IDS.map((x) => (
+          <button key={x} role="tab" aria-selected={sec === x} className={sec === x ? "on" : ""} onClick={() => setSec(x)}>
+            {t(`sec.${x}` as MsgKey)}
+          </button>
+        ))}
+      </div>
+      {err && <p className="hint bad">{err}</p>}
+      {!s ? (
+        <div className="skeleton" style={{ height: 220, marginTop: 16 }} />
+      ) : (
+        <>
+          <Summary s={s} />
+          <Calibration s={s} />
+          <ByAction s={s} />
+          <TrackExtras stats={s} section={sec} />
+          {s.pending.length > 0 && (
+            <div className="sheet-section">
+              <h3>
+                {t("track.waiting")} <span className="muted num">({s.pending.length})</span>
+              </h3>
+              <div className="tr-list">
+                {s.pending.map((p) => (
+                  <div className="tr-row" key={p.id}>
+                    <span className="num tr-date">
+                      {fmtDate(p.date)}
+                      {p.horizon === "w" ? ` (${t("track.week")})` : ""}
+                    </span>
+                    <b className="tr-sym">{symLabel(p.ticker)}</b>
+                    {callLabel(p as Pick<Call, "direction" | "action">)}
+                    <span className="num muted">{p.confidence}%</span>
+                    <span className="tr-when muted">{t("track.gradesAt", { when: relTime(p.gradesAfter, lang) })}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="sheet-section">
+            <h3>{t("track.recent")}</h3>
+            {s.recent.length === 0 ? (
+              <p className="hint">{t("track.none")}</p>
+            ) : (
+              <div className="tr-list">
+                {s.recent.map((c) => (
+                  <div className="tr-row" key={c.id}>
+                    <span className="num tr-date">
+                      {fmtDate(c.date)}
+                      {c.id.endsWith(":w") ? ` (${t("track.week")})` : ""}
+                    </span>
+                    <b className="tr-sym">{symLabel(c.ticker)}</b>
+                    {callLabel(c)}
+                    <span className="num muted">{c.confidence}%</span>
+                    <span className={`num tr-result ${c.correct ? "ok" : "bad"}`} title={c.band != null && c.direction === "flat" ? `±${c.band}%` : undefined}>
+                      {c.correct ? "✓" : "✗"} {fmtPct(c.returnPct ?? 0)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+    </Sheet>
+  );
+}
+
+/** The headline: hit rate on up/down calls, its likely range, and the edge over "always up". */
+function Summary({ s }: { s: TrackStats }) {
+  const { t } = usePrefs();
+  const d = s.direction;
+  const skillPts = d.skill == null ? null : Math.round(d.skill * 100);
+  const rateText = (r: Rate) => (r.n ? `${r.hits}/${r.n}` : "–");
+  return (
+    <div className="sheet-section">
+      <div className="tr-hero">
+        <div className="tr-hero-main">
+          <span className="big-stat num">{pctOf(d.rate)}</span>
+          <span className="muted">{d.n ? t("track.dirRate", { n: d.n }) : t("track.none")}</span>
+        </div>
+        <div className="tr-chips">
+          {d.low != null && <span className="chip num">{t("track.likely", { lo: Math.round(d.low * 100), hi: Math.round(d.high! * 100) })}</span>}
+          {skillPts != null && <span className={`chip num ${skillPts > 0 ? "ok" : skillPts < 0 ? "bad" : ""}`}>{t("track.skill", { pts: `${skillPts > 0 ? "+" : ""}${skillPts}` })}</span>}
+          {d.n < EARLY && <span className="chip">{t("track.early")}</span>}
+        </div>
+      </div>
+      <div className="tr-tiles">
+        <div className="stat">
+          <small>{t("track.flat")}</small>
+          <b className="num">{rateText(s.flat)}</b>
+        </div>
+        <div className="stat">
+          <small>{t("track.horizon")}</small>
+          <b className="num">
+            {pctOf(s.byHorizon.d.rate)} · {pctOf(s.byHorizon.w.rate)}
+          </b>
+        </div>
+        <div className="stat" title={t("track.brierHint")}>
+          <small>{t("track.brier")}</small>
+          <b className="num">{s.brier == null ? "–" : s.brier.toFixed(2)}</b>
+        </div>
+      </div>
+      <p className="hint">{t("track.brierHint")}</p>
+    </div>
+  );
+}
+
+/** Claimed vs real, per confidence level. Levels with few graded calls are faded: too few to read. */
+function Calibration({ s }: { s: TrackStats }) {
+  const { t } = usePrefs();
+  const mids = [55, 65, 75, 85];
+  return (
+    <div className="sheet-section">
+      <h3>{t("track.calibration")}</h3>
+      <div className="calib">
+        {s.buckets.map((b, i) => {
+          const actual = b.n ? (b.hits / b.n) * 100 : 0;
+          const claimed = b.n ? b.avgConfidence : mids[i];
+          return (
+            <div className={`calib-col${b.n < 5 ? " thin" : ""}`} key={b.label}>
+              <span className="num" style={{ fontSize: 13, fontWeight: 600 }}>{b.n ? `${Math.round(actual)}%` : "–"}</span>
+              <div className="calib-track">
+                <div className="calib-bar" style={{ height: `${actual}%` }} />
+                <div className="calib-line" style={{ bottom: `${claimed}%` }} />
+              </div>
+              <span className="calib-lbl">
+                {b.label}
+                <br />
+                <span className="num">n={b.n}</span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="hint">{t("track.calibrationHint")}</p>
+    </div>
+  );
+}
+
+/** What acting on each kind of call returned on average. */
+function ByAction({ s }: { s: TrackStats }) {
+  const { t } = usePrefs();
+  if (!s.byAction.length) return null;
+  return (
+    <div className="sheet-section">
+      <h3>{t("track.byAction")}</h3>
+      <div className="tr-list">
+        {s.byAction.map((a) => (
+          <div className="tr-row" key={a.action}>
+            <span className={`action ${a.action}`}>{t(`act.${a.action}` as MsgKey)}</span>
+            <span className={`num ${a.avgReturn >= 0 ? "ok" : "bad"}`}>{fmtPct(a.avgReturn)}</span>
+            <span className="num muted">n={a.n}</span>
+          </div>
+        ))}
+      </div>
+      <p className="hint">{t("track.actionHint")}</p>
+    </div>
+  );
+}
 
 function EquityChart({ equity }: { equity: TrackStats["equity"] }) {
   const { t } = usePrefs();

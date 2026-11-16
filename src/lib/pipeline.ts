@@ -21,7 +21,7 @@ import { dedupe, fetchFeeds, fetchInterestNews } from "./news";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
 import { getTechnicals, type Technicals } from "./technicals";
-import { computeStats, gradeCalls, loadCalls, recordCalls, trackRecordText } from "./track";
+import { calibrate, computeStats, gradeCalls, loadCalls, recordCalls, trackRecordText } from "./track";
 import { multiUser } from "./users";
 import { fold, vnNameSync } from "./vnlist";
 import { symLabel } from "./symbols";
@@ -184,6 +184,12 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
   // Movers' numbers come from the price data, never from the model (it once reported a 5-day gain as
   // the last session's). A ticker that isn't in the snapshot is dropped.
   analysis.movers = alignMovers(analysis.movers ?? [], quotes, news);
+  // The track record adjusts each call's confidence once its level has enough graded calls; the
+  // model's own number is kept (aiConfidence) and is what gets recorded and graded.
+  analysis.outlook = (analysis.outlook ?? []).map((x) => {
+    const c = calibrate(x.confidence, stats);
+    return { ...x, aiConfidence: x.confidence, confidence: c.confidence, ...(c.record ? { record: c.record } : {}) };
+  });
   return {
     section: o.section,
     generatedAt: o.now.toISOString(),

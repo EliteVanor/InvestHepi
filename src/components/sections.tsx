@@ -370,6 +370,13 @@ export function Calls({ outlook, onTicker }: { outlook: Outlook[]; onTicker: (s:
             <div className="muted">
               <b>{t("calls.risks")}:</b> {o.risks}
             </div>
+            {/* The track record at this confidence level; when it moved the number, the AI's own is shown too. */}
+            {o.record && (
+              <div className="call-record">
+                {t("calls.record", { hits: o.record.hits, n: o.record.n })}
+                {o.aiConfidence != null && o.aiConfidence !== o.confidence && <> · {t("calls.adjusted", { ai: o.aiConfidence })}</>}
+              </div>
+            )}
           </article>
         ))}
       </div>

@@ -10,7 +10,7 @@ import { AccountCtx, InterestsGate, SignInCard, SignInSheet, type Account } from
 import { AskPanel, AskSheet } from "@/components/ask";
 import { ChartCard, MoodGaugeCard, ScenariosCard, SectorHeatmap } from "@/components/cards";
 import { CatchUp, SinceLastVisit } from "@/components/catchup";
-import { IconAlert, IconSearch, IconSparkles } from "@/components/Icons";
+import { IconAlert, IconPanelRight, IconSearch, IconSparkles } from "@/components/Icons";
 import { mergeLive, useLiveQuotes } from "@/components/live";
 import { CommandPalette, type PaletteActions } from "@/components/palette";
 import { PortfolioCard, Watchlist } from "@/components/portfolio";
@@ -18,7 +18,8 @@ import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { SetupChecklist } from "@/components/setup";
-import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
+import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, type Tab as SettingsTab } from "@/components/sheets";
+import { TrackSheet } from "@/components/track";
 import { Ambient, Footer, Sidebar, Skeleton, TabBar, TopBar, sectionName, type FrameActions } from "@/components/shell/chrome";
 import {
   refreshState,
@@ -345,7 +346,7 @@ function App() {
         </div>
       )}
 
-      <div className={isWide ? `shell${sideRail ? " rail" : ""}${readOnly || !dockOpen ? " nodock" : ""}` : undefined}>
+      <div className={isWide ? `shell${sideRail ? " rail" : ""}${readOnly ? " nodock" : !dockOpen ? " dockclosed" : ""}` : undefined}>
         {isWide && <Sidebar tab={tab} rail={sideRail} toggleRail={toggleRail} badge={badge} newIds={newIds} news={shown?.news ?? null} guestChip={guestChip} refresh={refreshUi} actions={frame} />}
         <main className="page">
           <div className="page-head">
@@ -455,17 +456,24 @@ function App() {
 
           <Footer />
         </main>
-        {isWide && !readOnly && dockOpen && (
-          <aside className="chat-dock">
-            <AskPanel docked digest={shown} calendar={calendar.events} section={tab} request={askReq} onClose={() => toggleDock(false)} closeLabel={`${t("ui.hideChat")} (])`} />
+        {/* Ask AI stays mounted when hidden, so it slides away and back (and keeps the conversation);
+            folded, it's a slim rail whose button sits where the close button was. */}
+        {isWide && !readOnly && (
+          <aside className={`chat-dock${dockOpen ? "" : " closed"}`}>
+            <button className="icon-btn dock-open" onClick={() => toggleDock(true)} aria-label={`${t("ui.showChat")} (])`} title={`${t("ui.showChat")} (])`} tabIndex={dockOpen ? -1 : 0} aria-hidden={dockOpen}>
+              <IconPanelRight />
+            </button>
+            <div className="dock-panel" inert={!dockOpen}>
+              <AskPanel docked digest={shown} calendar={calendar.events} section={tab} request={askReq} onClose={() => toggleDock(false)} closeLabel={`${t("ui.hideChat")} (])`} />
+            </div>
           </aside>
         )}
       </div>
 
       <TabBar tab={tab} badge={badge} readOnly={readOnly} sheet={sheet?.kind} section={switchTab} track={frame.track} ask={() => openAsk()} />
 
-      {!readOnly && (!isWide || !dockOpen) && (
-        <button className="ask-fab" onClick={() => openAsk()} aria-label={t("ask.title")} title={isWide ? `${t("ui.showChat")} (])` : undefined}>
+      {!readOnly && !isWide && (
+        <button className="ask-fab" onClick={() => openAsk()} aria-label={t("ask.title")}>
           <IconSparkles /> <span className="fab-text">{t("ask.title")}</span> <kbd>A</kbd>
         </button>
       )}

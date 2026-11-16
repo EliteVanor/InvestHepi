@@ -1021,3 +1021,88 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 /* Jumping to the headlines lands below the sticky top bar (no top bar on wide screens). */
 #headlines { scroll-margin-top: 68px; }
 .shell #headlines { scroll-margin-top: 16px; }
+
+/* ==========================================================================
+   v16: panels that slide, dark-safe native controls, track record
+   ========================================================================== */
+
+:root { --spring: cubic-bezier(0.32, 0.72, 0, 1); --scroll-thumb: rgba(0, 0, 0, 0.2); }
+:root[data-theme="dark"] { --scroll-thumb: rgba(255, 255, 255, 0.2); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --scroll-thumb: rgba(255, 255, 255, 0.2); } }
+
+/* Native controls follow the theme the reader picked (not only the system's): menus, scrollbars,
+   number and date fields. Windows draws <option> with its own white unless told otherwise. */
+select option, select optgroup { background-color: var(--surface); color: var(--label); }
+* { scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+::-webkit-scrollbar { width: 10px; height: 10px; background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 10px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-button, ::-webkit-scrollbar-corner { display: none; background: transparent; }
+input:-webkit-autofill, input:-webkit-autofill:focus { -webkit-text-fill-color: var(--label); box-shadow: 0 0 0 1000px var(--surface) inset; caret-color: var(--label); }
+/* Panels show their scrollbar only while the pointer is over them, like macOS. */
+.sidebar, .chat-dock { scrollbar-color: transparent transparent; }
+.sidebar:hover, .chat-dock:hover { scrollbar-color: var(--scroll-thumb) transparent; }
+
+/* Wide layout: three columns that always exist, so opening and closing can animate. The sidebar
+   folds to a 64px icon rail; the Ask AI dock folds to a 56px rail holding its reopen button,
+   in the same top-right spot as the close button. */
+.shell { grid-template-columns: 248px minmax(0, 1fr) 380px; transition: grid-template-columns 0.45s var(--spring); }
+.shell.rail { grid-template-columns: 64px minmax(0, 1fr) 380px; }
+.shell.dockclosed { grid-template-columns: 248px minmax(0, 1fr) 56px; }
+.shell.rail.dockclosed { grid-template-columns: 64px minmax(0, 1fr) 56px; }
+@media (min-width: 1440px) {
+  .shell.dockclosed .grid { grid-template-columns: minmax(0, 1fr) 320px; }
+}
+
+.sidebar { overflow-x: hidden; padding: 16px 12px; }
+.sidebar.rail { padding: 16px 12px; }
+.side-label, .sidebar .brand, .side-headlines, .side-caption { transition: opacity 0.22s ease; }
+.side-label { white-space: nowrap; }
+.sidebar.rail .side-label { display: inline; opacity: 0; pointer-events: none; }
+.sidebar.rail .side-actions kbd.side-label { opacity: 0; }
+/* Icons keep their exact place in both states: only the labels fade. */
+.sidebar.rail .side-nav button, .sidebar.rail .side-actions button { justify-content: flex-start; padding: 0 11px; overflow: hidden; }
+.side-top { display: flex; align-items: center; gap: 6px; }
+.sidebar.rail .side-top { flex-direction: row; gap: 6px; }
+.sidebar.rail .side-top .brand { opacity: 0; pointer-events: none; }
+.side-toggle { flex: none; }
+.sidebar.rail .badge { top: 3px; right: 3px; }
+.sidebar.rail .side-nav button[aria-current="page"]::after { left: -12px; }
+
+.chat-dock { overflow: hidden; position: sticky; transition: border-color 0.3s ease; }
+.dock-panel { width: 380px; height: 100%; transition: opacity 0.25s ease, transform 0.45s var(--spring); }
+.chat-dock.closed { border-left-color: transparent; }
+.chat-dock.closed .dock-panel { opacity: 0; transform: translateX(28px); pointer-events: none; }
+.dock-open { position: absolute; top: 14px; right: 12px; z-index: 2; opacity: 0; transform: scale(0.85); pointer-events: none; transition: opacity 0.2s ease, transform 0.3s var(--spring); }
+.chat-dock.closed .dock-open { opacity: 1; transform: none; pointer-events: auto; transition-delay: 0.12s; }
+.dock-open svg { color: var(--accent); }
+
+@media (prefers-reduced-motion: reduce) {
+  .shell, .dock-panel, .dock-open, .side-label, .sidebar .brand { transition: none !important; }
+}
+
+/* The account menu opened from the sidebar floats above the page (the sidebar would clip it). */
+.acct-menu.floating { position: fixed; top: auto; right: auto; z-index: 80; }
+
+/* Track record */
+.tr-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.tr-hero-main { display: grid; gap: 4px; }
+.tr-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip.ok { background: var(--green-tint); color: var(--green); }
+.chip.bad { background: var(--red-tint); color: var(--red); }
+.tr-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 14px; }
+.tr-tiles .stat b { font-size: 16px; }
+.tr-list { display: grid; border-radius: 12px; overflow: hidden; background: var(--fill-2); }
+.tr-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto 44px minmax(92px, auto); align-items: center; gap: 10px; padding: 10px 12px; font-size: 14px; border-bottom: 0.5px solid var(--sep); }
+.tr-row:last-child { border-bottom: 0; }
+.tr-list .tr-row:has(> .action) { grid-template-columns: auto 1fr auto; }
+.tr-sym { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tr-date { color: var(--label-2); font-size: 13px; }
+.tr-when, .tr-result { text-align: right; font-size: 13px; white-space: nowrap; }
+.calib-col.thin .calib-bar, .calib-col.thin .calib-line { opacity: 0.35; }
+.call-record { margin-top: 8px; font-size: 12px; color: var(--label-2); }
+@media (max-width: 719px) {
+  .tr-row { grid-template-columns: 70px minmax(0, 1fr) auto; row-gap: 2px; }
+  .tr-row > :nth-child(4) { display: none; }
+  .tr-row > :nth-child(5) { grid-column: 2 / -1; text-align: left; }
+  .tr-tiles { grid-template-columns: 1fr 1fr; }
+}

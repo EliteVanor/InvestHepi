@@ -6,8 +6,7 @@ import { LANGUAGES, langInfo, type LangCode } from "@/lib/languages";
 import type { AlertSettings } from "@/lib/alerts";
 import type { ChartData } from "@/lib/chart";
 import { tickerMatcher } from "@/lib/tickers";
-import type { TrackStats } from "@/lib/track";
-import { SECTION_IDS, type Call, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
+import { SECTION_IDS, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart } from "./LiveChart";
@@ -16,7 +15,6 @@ import { AlertsTab } from "./alerts-tab";
 import { useAccount } from "./account";
 import { VN_PRESET } from "@/lib/config";
 import { HoldingsEditor, TickerSearch } from "./portfolio";
-import { TrackExtras } from "./track";
 
 /* -------------------------------------------------------------- Settings */
 
@@ -352,110 +350,6 @@ function ShortcutsTab() {
 }
 
 /* ---------------------------------------------------------- Track record */
-
-export function TrackSheet({ onClose, section = "interests" }: { onClose: () => void; section?: SectionId }) {
-  const { t, api, lang } = usePrefs();
-  const [sec, setSec] = useState<SectionId>(section);
-  const [s, setS] = useState<TrackStats | null>(null);
-  const [err, setErr] = useState("");
-  useEffect(() => {
-    setS(null);
-    setErr("");
-    api<TrackStats>(`/api/track${sec === "interests" ? "" : `?section=${sec}`}`).then(setS).catch((e) => setErr((e as Error).message));
-  }, [api, sec]);
-  const fmtDate = (iso: string) => new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(iso + "T12:00:00Z"));
-  const mids = [55, 65, 75, 85];
-
-  return (
-    <Sheet title={t("track.title")} onClose={onClose} wide>
-      <p className="hint" style={{ marginTop: 0 }}>{t("track.intro")}</p>
-      {/* Each section keeps its own record: your interests, plus the shared World, US and Vietnam calls. */}
-      <div className="segmented track-seg" role="tablist" aria-label={t("track.title")}>
-        {SECTION_IDS.map((x) => (
-          <button key={x} role="tab" aria-selected={sec === x} className={sec === x ? "on" : ""} onClick={() => setSec(x)}>
-            {t(`sec.${x}` as MsgKey)}
-          </button>
-        ))}
-      </div>
-      {err && <p className="hint bad">{err}</p>}
-      {!s ? (
-        <div className="skeleton" style={{ height: 220, marginTop: 16 }} />
-      ) : (
-        <>
-          <div className="sheet-section" style={{ display: "flex", alignItems: "baseline", gap: 14, flexWrap: "wrap" }}>
-            <span className="big-stat num">{s.hitRate == null ? "–" : `${Math.round(s.hitRate * 100)}%`}</span>
-            <span className="muted">{s.hitRate == null ? t("track.none") : t("track.counts", { g: s.graded, t: s.total })}</span>
-          </div>
-          <div className="sheet-section">
-            <h3>{t("track.calibration")}</h3>
-            <div className="calib">
-              {s.buckets.map((b, i) => {
-                const actual = b.n ? (b.hits / b.n) * 100 : 0;
-                const claimed = b.n ? b.avgConfidence : mids[i];
-                return (
-                  <div className="calib-col" key={b.label}>
-                    <span className="num" style={{ fontSize: 13, fontWeight: 600 }}>{b.n ? `${Math.round(actual)}%` : "–"}</span>
-                    <div className="calib-track">
-                      <div className="calib-bar" style={{ height: `${actual}%` }} />
-                      <div className="calib-line" style={{ bottom: `${claimed}%` }} />
-                    </div>
-                    <span className="calib-lbl">
-                      {b.label}
-                      <br />
-                      <span className="num">n={b.n}</span>
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="hint">{t("track.calibrationHint")}</p>
-          </div>
-          <TrackExtras stats={s} section={sec} />
-          <div className="sheet-section">
-            <h3>{t("track.recent")}</h3>
-            <div style={{ overflowX: "auto" }}>
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>{t("track.session")}</th>
-                    <th>{t("track.ticker")}</th>
-                    <th>{t("track.call")}</th>
-                    <th>%</th>
-                    <th>{t("track.result")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {s.recent.map((c: Call) => (
-                    <tr key={c.id}>
-                      <td className="num">
-                        {fmtDate(c.date)}
-                        {c.id.endsWith(":w") ? ` (${t("track.week")})` : ""}
-                      </td>
-                      <td style={{ fontWeight: 600 }}>{symLabel(c.ticker)}</td>
-                      <td className={c.direction}>
-                        {arrow(c.direction)} {t(`act.${c.action}` as MsgKey)}
-                      </td>
-                      <td className="num">{c.confidence}</td>
-                      <td className="num">
-                        {c.correct === undefined ? (
-                          <span className="muted">{t("track.pending")}</span>
-                        ) : (
-                          <span className={c.correct ? "ok" : "bad"}>
-                            {c.correct ? "✓" : "✗"} {fmtPct(c.returnPct ?? 0)}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-    </Sheet>
-  );
-}
 
 /* ---------------------------------------------------------------- Ticker */
 
