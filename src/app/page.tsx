@@ -5,8 +5,14 @@ import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, I
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
-import { ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, canOverlay, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
-import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
+import { ChartCard, SectorHeatmap } from "@/components/cards";
+import { canOverlay, mergeLive, useLiveQuotes } from "@/components/live";
+import { CommandPalette, type PaletteActions } from "@/components/palette";
+import { SetupChecklist } from "@/components/setup";
+import { MoodGaugeCard, ScenariosCard } from "@/components/cards";
+import { CatchUp, SinceLastVisit } from "@/components/catchup";
+import { PortfolioCard, Watchlist } from "@/components/portfolio";
+import { ToastProvider, useToast } from "@/components/toast";
 import { relTime, type MsgKey } from "@/lib/i18n";
 import { isLang, langInfo } from "@/lib/languages";
 import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";

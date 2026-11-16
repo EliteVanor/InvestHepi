@@ -162,7 +162,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(Pl.headlineMentions("Cổ phiếu VIC tăng trần", "VIC.VN") && !Pl.headlineMentions("VICTORY Securities tăng", "VIC.VN"), "codes match as whole words only");
 
   /* ---------------- live overlay: a real level may replace an ETF stand-in, never the reverse */
-  const V3 = await import("../src/components/v3");
+  const V3 = await import("../src/components/live");
   assert.equal(V3.canOverlay("SPY", undefined), true, "real S&P level replaces SPY's price");
   assert.equal(V3.canOverlay(undefined, "SPY"), false, "SPY's price never replaces the real level");
   assert.equal(V3.canOverlay("EWJ", "EWJ"), true);

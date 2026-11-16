@@ -14,8 +14,8 @@ import type { Interest } from "@/lib/types";
 import { IconSearch } from "./Icons";
 import { usePrefs } from "./prefs";
 import { Sheet, fmtPct, fmtPrice } from "./primitives";
-import { useToast } from "./v4";
-import { useLiveQuotes } from "./v3";
+import { useToast } from "./toast";
+import { useLiveQuotes } from "./live";
 
 export const MAX_INTERESTS = 12;
 
