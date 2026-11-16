@@ -95,3 +95,40 @@ Single page: `src/app/page.tsx` holds the state (tabs, digests, sheets, account)
 - UI copy is plain and direct; the AI is told the same (no hype, specific risks, calibrated confidence).
 - The AI only ever sees holding weights and gain %, never amounts (`positionsAsText`).
 - Interests: the first ticker is the benchmark used for the outlook and the track record.
+
+## Working with the owner
+
+These are the habits from past sessions. Follow them without being asked.
+
+**Starting a session**
+- Read `docs/HANDOFF.md`, then restate the goal and the rules that apply in a few lines before doing anything.
+- Before starting, ask every question needed to make the task clear, so the work hits what the owner actually wants: scope, priorities, expected behavior, edge cases, limits, models, schedule, UX, what "done" looks like. Put them in one numbered list. Give lettered options where they help and mark the one you recommend. The owner answers by number ("1 B, 2 yes").
+- Then give a plan before running anything: the steps in order, the files and services each touches, how each will be tested, the AI and free-tier cost, the risks, and what will need the owner (accounts, tokens, a merge). Wait for the owner's go. After the go, build without more check-ins, and say so if the plan has to change along the way.
+- "Use all of the token" means: keep working through the whole task list without stopping for approval. If the context gets long, write a summary that keeps every decision, file change and open item so nothing is lost.
+
+**Stress testing** ("stress test", "test every detail", "to the last minute")
+- Test each goal end to end against real data from the cloud sandbox (`NODE_USE_ENV_PROXY=1`), not only the offline mocks. Go easy on rate-limited sources.
+- Prices, charts and timing must agree everywhere. Compare the strip, the chart sheet and the briefing for the same symbol: level, % change, chip and sparkline color, session date, exchange time zone, and stale/estimate/proxy labels.
+- Audit at least one real AI briefing line by line. Every level, %, date and reason must trace back to the data the model was given. An invented fact is a bug: fix it with a prompt rule and a code guard (overwrite numbers from data, require source ids, drop what can't be backed).
+- Check all 8 languages, phone and wide screens, light and dark. Phone overlays need a check with a short visual viewport (browser bars showing).
+- For any change, count the AI calls and tokens per day against the free-tier limits in `models.ts` and the schedule.
+- Report each finding with its evidence (the URL, the number, the screenshot), fix it, and add a regression test to that round's `scripts/v<N>test.ts`.
+
+**Research and ideas**
+- When a data source or outside service is involved, research before building: find the options, test the real endpoints from the sandbox, and prefer official, keyless, free sources. Write down what was rejected and why (see the Prices section).
+- Suggest ideas the owner didn't ask for when they clearly help, ranked by value against effort and free-tier cost. Give one recommendation, not a survey, and separate "do now" from "later".
+- Push back on the owner's ideas too: give the other side and the failure cases, and say plainly when something won't work or costs too much.
+- Reports for the owner (competitors, research, audits) are published as an artifact with sources linked and unverified figures marked as such.
+
+**Delivering**
+- One short-named branch per round (`v12`, `v13`, ...).
+- Before pushing: `npm test`, `npm run typecheck`, and `npm run build` both with and without the `AUTH_*` env vars.
+- Update this file for architecture changes, and add a section to `docs/HANDOFF.md` for the round: what changed, what was verified and how, what wasn't, and open items.
+- Ask before merging to `main` (it deploys) unless the owner said to merge without asking. After a merge, check production with read-only GET requests only.
+- On long tasks, post a one-line status now and then.
+- End with: what changed, what was verified, what wasn't, open risks, and the one question that decides the next step.
+
+**Lines not to cross**
+- Never send write requests to production without credentials, and never probe it with them.
+- No scraped API keys, no browser user-agent tricks to get past a site that refuses servers, no bypassing rate limits.
+- Keep the owner's personal details out of code, docs, commits and requests to outside services.

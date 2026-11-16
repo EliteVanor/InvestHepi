@@ -27,16 +27,11 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 
 ## How the owner likes to work
 
-- Direct, concise, natural writing. No em dashes, buzzwords or jargon. Explain decisions plainly.
-- Wants ideas stress-tested and different perspectives; first-principles reasoning; propose the cheaper option when token cost is involved.
-- Wants research before building when data sources are involved (test real endpoints from a cloud server).
-- **Git:** work on a short-named branch (`v11`, `v12`, ...; the owner asked for these, not long auto names), run `npm test` + `npm run build`, push, then **ask before merging to `main`** (merging deploys to production) unless the owner says to merge right away.
-- Commits end with the `Co-Authored-By` / `Claude-Session` lines the session provides.
-- Keep the owner's personal details (email) out of code, docs and requests to outside services.
+The working rules (session start, stress testing, research and ideas, delivering, lines not to cross) are in `CLAUDE.md` under "Working with the owner", so they load in every session. In short: direct, concise writing with no em dashes or jargon; stress-test ideas and give other perspectives; research before building; short branch names; ask before merging to `main`.
 
 ## Current state
 
-- `main` = v8, deployed on Vercel at `investhepi.vercel.app`.
+- `main` = v11, deployed on Vercel at `investhepi.vercel.app`.
 - Multi-user mode is on (Google sign-in via Auth.js). Vercel env vars in use: AI keys (`GROQ_API_KEY`, `GEMINI_API_KEY`), Upstash (`KV_REST_API_*`), `APP_PASSWORD`, `CRON_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `OWNER_EMAIL`, optionally `CONTACT_EMAIL` (shown on `/privacy` and `/terms`). GitHub repo secrets `APP_URL`, `CRON_SECRET` drive the scheduler.
 - Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT` (admin, 10), `USER_REFRESH_DAILY_LIMIT` (5), `USER_REFRESH_GAP_MIN` (90), `RULES_DAILY_LIMIT` (30), `ASK_DAILY_LIMIT`, `INTEREST_BATCH` (1), repo variable `INTEREST_ROUNDS` (15 calls per run), model overrides `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, limits `GROQ_TPD`, `GEMINI_RPD`.
 - Google OAuth consent screen: branding filled in, privacy/terms pages exist; publishing needs no logo (a logo triggers brand verification).
