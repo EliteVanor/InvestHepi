@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, IconStar, IconTarget, IconAlert } from "@/components/Icons";
-import { PrefsProvider, usePrefs } from "@/components/prefs";
+import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
 import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
 import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
 import type { MsgKey } from "@/lib/i18n";
-import { langInfo } from "@/lib/languages";
+import { isLang, langInfo } from "@/lib/languages";
 import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
 import { AccountButton, AccountCtx, InterestsGate, SignInCard, SignInSheet, type Account } from "@/components/account";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
@@ -40,7 +40,7 @@ type Sheet =
   | { kind: "palette" };
 
 function App() {
-  const { ready, t, lang, api, needPassword, seen, markSeen, toggleTheme } = usePrefs();
+  const { ready, t, lang, setLang, api, needPassword, seen, markSeen, toggleTheme } = usePrefs();
   const [tab, setTab] = useState<SectionId>("interests");
   const [digests, setDigests] = useState<Partial<Record<SectionId, Digest | null>>>({});
   const [oldDigest, setOldDigest] = useState<{ section: SectionId; key: string; digest: Digest } | null>(null);
@@ -51,6 +51,8 @@ function App() {
   const [readOnly, setReadOnly] = useState(false);
   const [account, setAccount] = useState<Account>({ mode: "single", user: null, admin: false });
   const [accountKnown, setAccountKnown] = useState(false);
+  // Briefings refresh on a schedule; only the admin (the single-user owner, or OWNER_EMAIL) can force one.
+  const canRefresh = account.admin;
   const [signIn, setSignIn] = useState(false);
   useEffect(() => {
     const on = () => setSignIn(true);
@@ -104,6 +106,30 @@ function App() {
     },
     [api, lang],
   );
+  // After interests change, the server makes the new set's first briefing in the background; poll
+  // until it shows up (or ~3 minutes pass). Another user with the same interests means it's instant.
+  const pollRef = useRef<number | null>(null);
+  const waitForBriefing = useCallback(() => {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+    let n = 0;
+    const tick = () => {
+      n++;
+      api<{ digest: Digest | null }>(`/api/digest?section=interests&lang=${lang}`)
+        .then((j) => {
+          setDigests((d) => ({ ...d, interests: j.digest }));
+          if ((j.digest || n > 22) && pollRef.current) {
+            window.clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        })
+        .catch(() => {});
+    };
+    tick();
+    pollRef.current = window.setInterval(tick, 8000);
+  }, [api, lang]);
+  useEffect(() => () => {
+    if (pollRef.current) window.clearInterval(pollRef.current);
+  }, []);
   const loadCalendar = useCallback(() => api<{ events: CalendarEvent[]; notes: string[] }>("/api/calendar").then(setCalendar).catch(() => {}), [api]);
   const loadInterests = useCallback(() => api<{ interests: Interest[] }>("/api/interests").then((j) => setInterests(j.interests)).catch(() => {}), [api]);
 
@@ -118,6 +144,17 @@ function App() {
     Promise.all([api<Account>("/api/me").catch(() => null), api<{ role?: "owner" | "viewer" | null }>("/api/status").catch(() => null)]).then(([me, st]) => {
       if (me) setAccount(me);
       setAccountKnown(true);
+      // One language per account: a device with no explicit choice adopts the saved one; otherwise the
+      // device's choice is saved (it drives alert emails and which translations the scheduler keeps).
+      if (me?.user || (me?.mode === "single" && st?.role !== "viewer")) {
+        api<{ briefingLanguage: string }>("/api/settings")
+          .then((s) => {
+            const chosen = lsGet<string | null>("ih-lang", null);
+            if (!chosen && isLang(s.briefingLanguage) && s.briefingLanguage !== lang) setLang(s.briefingLanguage);
+            else if (s.briefingLanguage !== lang) api("/api/settings", { method: "PUT", body: JSON.stringify({ briefingLanguage: lang }) }).catch(() => {});
+          })
+          .catch(() => {});
+      }
       // Signed-out visitors land on a section they can read (Vietnam for Vietnamese readers), unless
       // they picked a tab before.
       if (me?.mode === "multi" && !me.user) {
@@ -243,7 +280,7 @@ function App() {
       if (sheet && e.key !== "Escape") return;
       const k = e.key.toLowerCase();
       if (k >= "1" && k <= String(SECTION_IDS.length) && k.length === 1) switchTab(SECTION_IDS[Number(k) - 1]);
-      else if (k === "r" && !readOnly) refresh(tab);
+      else if (k === "r" && canRefresh) refresh(tab);
       else if (k === "/") {
         e.preventDefault();
         document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -259,7 +296,7 @@ function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sheet, tab, refresh, switchTab, toggleTheme, readOnly]);
+  }, [sheet, tab, refresh, switchTab, toggleTheme, readOnly, canRefresh]);
 
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
   const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);
@@ -317,9 +354,9 @@ function App() {
     if (followDirty.current) {
       followDirty.current = false;
       switchTab("interests");
-      refresh("interests");
+      waitForBriefing();
     }
-  }, [refresh, switchTab]);
+  }, [waitForBriefing, switchTab]);
   const watchSymbols = useMemo(() => [...new Set([...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)])], [interests, holdings]);
   const interestsDigest = digests.interests;
   const interestsLive = useMemo(() => (interestsDigest ? mergeLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
@@ -336,12 +373,12 @@ function App() {
         document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
         window.dispatchEvent(new CustomEvent("ih-search", { detail: q }));
       },
-      refresh: () => refresh(tab),
+      refresh: canRefresh ? () => refresh(tab) : undefined,
       theme: toggleTheme,
       track: () => setSheet({ kind: "track" }),
       settings: (tabName?: SettingsTab) => setSheet({ kind: "settings", tab: tabName }),
     }),
-    [switchTab, openTicker, refresh, tab, toggleTheme],
+    [switchTab, openTicker, refresh, tab, toggleTheme, canRefresh],
   );
 
   return (
@@ -379,9 +416,11 @@ function App() {
             <IconTarget />
           </button>
           {readOnly && account.mode !== "multi" && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
-          <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing} hidden={readOnly}>
+          {canRefresh && (
+            <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing}>
             <IconRefresh className={refreshing ? "spin" : ""} />
           </button>
+          )}
           <AccountButton />
           <button className="icon-btn" aria-label={t("nav.settings")} title={t("nav.settings")} onClick={() => setSheet({ kind: "settings" })}>
             <IconGear />
@@ -432,7 +471,7 @@ function App() {
         ) : gated ? (
           <InterestsGate onBrowse={() => switchTab(lang === "vi" ? "vn" : "world")} />
         ) : !shown ? (
-          readOnly ? (
+          !canRefresh ? (
             <div className="card empty">
               <div className="empty-orb" />
               <h2>{t("empty.waitTitle")}</h2>
@@ -562,9 +601,8 @@ function App() {
             setSheet(null);
             switchTab("interests");
             loadInterests();
-            refresh("interests");
+            waitForBriefing();
           }}
-          onBriefingLangSaved={() => refresh(tab)}
           onHoldingsSaved={setHoldings}
         />
       )}

@@ -23,10 +23,11 @@ async function handle(req: Request) {
   }
 
   return gate(req, { user: true }, async (user) => {
+    // Briefings refresh on a schedule; only the admin can force one (e.g. after fixing a source).
+    if (!user?.admin) return Response.json({ error: "Briefings refresh automatically several times a day." }, { status: 403 });
     const set = await currentInterestSet();
     const { interests, hash } = set;
-    // Shared sections are written once in English and translated for the reader (?lang=); personal
-    // briefings use the saved briefing language and are translated for display the same way.
+    // Every briefing is written in English, then translated for the reader (?lang=).
     const asked = new URL(req.url).searchParams.get("lang");
     const lang = asked && isLang(asked) ? asked : set.lang;
     const key = section === "interests" ? `ib:${hash}:last` : `digest:${section}:en:last`;

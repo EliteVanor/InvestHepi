@@ -64,11 +64,14 @@ function prefixFor(section: SectionId, lang: string, hash?: string): string {
   return section === "interests" ? `ib:${hash}` : `digest:${section}:${lang}`;
 }
 
-/** The interest list, language and hash the current caller sees (guests: defaults). */
-export async function currentInterestSet(langOverride?: string) {
+/**
+ * The caller's interest list and briefing key. Every briefing is written in English (one AI call per
+ * interest set, shared by everyone with the same interests); `display` is the caller's chosen
+ * language, which readers get as a cached translation (translate.ts).
+ */
+export async function currentInterestSet(_langOverride?: string) {
   const [interests, settings] = await Promise.all([loadInterests(), loadSettings()]);
-  const lang = currentUid() === GUEST && langOverride && isLang(langOverride) ? langOverride : settings.briefingLanguage;
-  return { interests, lang, hash: interestHash(interests, lang) };
+  return { interests, lang: "en", display: settings.briefingLanguage, hash: interestHash(interests, "en") };
 }
 
 /** Track-record key for the current caller's interest set (owner's legacy record carries over once). */
@@ -98,6 +101,19 @@ export async function sharedLanguages(): Promise<string[]> {
   return [...langs].slice(0, 3);
 }
 
+/**
+ * A newly saved interest set gets its first briefing right away (users can't refresh by hand).
+ * Costs nothing if anyone already follows the same set; capped per user per day.
+ * Returns true if a briefing exists or was just made.
+ */
+export async function ensureInterestBriefing(uid: string, onSpend?: () => Promise<boolean>): Promise<boolean> {
+  const { interests, hash } = await currentInterestSet();
+  if (await getJSON(`ib:${hash}`)) return true;
+  if (onSpend && !(await onSpend())) return false;
+  await refreshInterestSet(interests, "en", [uid]);
+  return true;
+}
+
 /* ------------------------------------------------------------- reading */
 
 /** Translation cache key for a stored briefing (prefix = ib:<hash> or digest:<section>:<lang>). */
@@ -115,15 +131,16 @@ export async function loadDigest(section: SectionId, at?: string, langOverride?:
     const tr = await getJSON<Digest>(trKey(prefix, target));
     return tr && tr.generatedAt === d.generatedAt ? tr : d;
   };
+  const set = await currentInterestSet();
   if (section === "interests") {
-    const { hash } = await currentInterestSet(langOverride);
+    const { hash } = set;
     if (at) return getJSON<Digest>(`ib:${hash}:${at}`);
     const d = await getJSON<Digest>(`ib:${hash}`);
     // The owner's pre-multi-user briefing is shown until the first new one is generated.
-    if (!d && currentUid() === OWNER) return getJSON<Digest>("digest:interests");
-    return translated(`ib:${hash}`, d);
+    if (!d && currentUid() === OWNER) return translated("digest:interests", await getJSON<Digest>("digest:interests"), want ?? set.display);
+    return translated(`ib:${hash}`, d, want ?? set.display);
   }
-  const lang = want ?? (await currentInterestSet()).lang;
+  const lang = want ?? set.display;
   if (at) return (await getJSON<Digest>(`digest:${section}:${lang}:${at}`)) ?? getJSON<Digest>(`digest:${section}:${at}`);
   // Shared sections are written once in English and translated; a native copy (older runs, or a
   // language someone generated directly) wins only if it's at least as new.

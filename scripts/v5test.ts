@@ -96,7 +96,16 @@ const OWNER_EMAIL = "owner@example.com";
   // ---- per-user isolation
   const interests = await import("../src/app/api/interests/route");
   const custom = [{ id: "vn", name: "Vietnam stocks", query: '"VN-Index" OR "chứng khoán"', tickers: ["FPT.VN", "VCB.VN", "E1VFVN30.VN"] }];
+  aiCalls = 0;
   assert.equal((await interests.PUT(req("/api/interests", A, { method: "PUT", body: JSON.stringify(custom) }))).status, 200, "Vietnamese tickers accepted");
+  // Users can't refresh, so a brand-new interest set gets its first briefing in the background.
+  const { getJSON: gj } = await import("../src/lib/store");
+  const Pp = await import("../src/lib/pipeline");
+  const { withUser: wu } = await import("../src/lib/context");
+  const aliceHash = await wu(U.uidFor(A), async () => (await Pp.currentInterestSet()).hash);
+  for (let i = 0; i < 100 && !(await gj(`ib:${aliceHash}`)); i++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok(await gj(`ib:${aliceHash}`), "new interest set → first briefing made automatically");
+  assert.equal(aiCalls, 1, "one AI call for it");
   assert.equal((await json(await interests.GET(req("/api/interests", A))))[1].interests[0].name, "Vietnam stocks");
   assert.equal((await json(await interests.GET(req("/api/interests", B))))[1].interests[0].name, "Nasdaq", "Bob still has defaults");
   assert.equal((await interests.PUT(req("/api/interests", undefined, { method: "PUT", body: JSON.stringify(custom) }))).status, 401, "guests can't save");
@@ -113,20 +122,18 @@ const OWNER_EMAIL = "owner@example.com";
   assert.deepEqual((await P.sharedLanguages()).sort(), ["en", "vi"], "languages actually in use");
   const groups = await P.interestGroups();
   const byUids = [...groups.values()].map((g) => g.uids.sort().join(","));
-  assert.ok(byUids.includes([U.uidFor(B), "owner"].sort().join(",")), "Bob and the owner (both on defaults, English) share one briefing");
-  assert.ok(byUids.includes(U.uidFor(A)) && byUids.includes(U.uidFor(C)), "Alice (custom) and Carol (defaults in Vietnamese) get their own");
-  assert.equal(groups.size, 3, "default-en (owner, Bob, guests), default-vi (Carol, Vietnamese guests), Alice's set");
+  assert.ok(byUids.includes([U.uidFor(B), U.uidFor(C), "owner"].sort().join(",")), "Bob, Carol (Vietnamese) and the owner share one English briefing: language no longer splits sets");
+  assert.ok(byUids.includes(U.uidFor(A)), "Alice (custom) gets her own");
+  assert.equal(groups.size, 2, "the default set and Alice's set");
 
   const refresh = await import("../src/app/api/refresh/route");
   const cron = (section: string) => refresh.GET(req(`/api/refresh?section=${section}`, undefined, { headers: { authorization: "Bearer cron" } }));
   aiCalls = 0;
   const [, iv] = await json(await cron("interests"));
-  assert.equal(iv.results.length, 2, "batch of 2 per scheduled call");
-  const [, iv2] = await json(await cron("interests"));
-  assert.equal(iv2.results.length, 1, "next call picks up the remaining set");
+  assert.equal(iv.results.length, 1, "only the default set is due (Alice's was just made)");
   const [, iv3] = await json(await cron("interests"));
   assert.equal(iv3.results.length, 0, "nothing due once all are fresh");
-  assert.equal(aiCalls, 3, "3 distinct sets → 3 AI calls for 4 users + guests");
+  assert.equal(aiCalls, 1, "2 distinct sets for 4 users, one already fresh → 1 AI call");
   const [, w] = await json(await cron("world"));
   assert.deepEqual(w.results.map((r: { key: string }) => r.key).sort(), ["world:en", "world:vi"]);
   feedsHit.length = 0;
@@ -159,10 +166,10 @@ const OWNER_EMAIL = "owner@example.com";
   assert.equal(tB.total, 1, "Bob's set logged one call (QQQ)");
   assert.equal(tA.total, 0, "Alice's set doesn't follow QQQ, so no call logged for her");
 
-  // ---- manual refresh: cooldowns protect the free AI quota
+  // ---- users can't refresh (briefings run on a schedule); only the admin can force one
   aiCalls = 0;
-  const [, r1] = await json(await refresh.POST(req("/api/refresh?section=world", B, { method: "POST" })));
-  assert.equal(r1.results[0].cached, true, "World refreshed minutes ago → cached copy, no AI call");
+  assert.equal((await refresh.POST(req("/api/refresh?section=world", B, { method: "POST" }))).status, 403, "users can't refresh shared sections");
+  assert.equal((await refresh.POST(req("/api/refresh?section=interests", B, { method: "POST" }))).status, 403, "or their own");
   assert.equal(aiCalls, 0);
   assert.equal((await refresh.POST(req("/api/refresh?section=world", undefined, { method: "POST" }))).status, 401, "guests can't refresh");
   const [, r2] = await json(await refresh.POST(req("/api/refresh?section=world", OWNER_EMAIL, { method: "POST" })));
