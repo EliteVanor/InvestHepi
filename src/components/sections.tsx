@@ -3,19 +3,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { relTime } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
-import { fmtDuration, marketClock } from "@/lib/marketTime";
+import { fmtDuration, marketClock, vnMarketClock } from "@/lib/marketTime";
 import type { CalendarEvent, Digest, Interest, KeyEvent, NewsItem, Outlook, Quote } from "@/lib/types";
 import {
   IconAlert, IconArrow, IconBookmark, IconCalendar, IconCopy, IconEye, IconHistory, IconSearch, IconShare, IconSparkles, IconSpeaker, IconStop, IconTarget,
 } from "./Icons";
 import { usePrefs } from "./prefs";
-import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
+import { Ring, Sparkline, arrow, fmtPct, fmtPrice, symLabel } from "./primitives";
 
 const MACRO_LABEL: Record<string, string> = { "^VIX": "VIX", "^TNX": "US 10Y", "CL=F": "Oil", "GC=F": "Gold", "DX-Y.NYB": "Dollar", "BTC-USD": "Bitcoin" };
 
 /* ---------------------------------------------------------------- Market */
 
-export function StatusPill() {
+export function StatusPill({ market = "us" }: { market?: "us" | "vn" }) {
   const { t } = usePrefs();
   const [now, setNow] = useState<Date | null>(null);
   useEffect(() => {
@@ -24,13 +24,13 @@ export function StatusPill() {
     return () => clearInterval(id);
   }, []);
   if (!now) return <span className="status-pill">&nbsp;</span>;
-  const { phase, secs } = marketClock(now);
-  const label = phase === "open" ? t("mkt.open") : phase === "pre" ? t("mkt.pre") : phase === "after" ? t("mkt.after") : t("mkt.closed");
-  const sub = phase === "open" ? t("mkt.closesIn", { t: fmtDuration(secs) }) : t("mkt.opensIn", { t: fmtDuration(secs) });
+  const { phase, secs } = market === "vn" ? vnMarketClock(now) : marketClock(now);
+  const label = phase === "break" ? t("mkt.break") : phase === "open" ? t("mkt.open") : phase === "pre" ? t("mkt.pre") : phase === "after" ? t("mkt.after") : t("mkt.closed");
+  const sub = phase === "open" && market === "vn" && secs > 0 && new Date(now.getTime() + 7 * 3600_000).getUTCHours() < 12 ? t("mkt.breakIn", { t: fmtDuration(secs) }) : phase === "open" ? t("mkt.closesIn", { t: fmtDuration(secs) }) : t("mkt.opensIn", { t: fmtDuration(secs) });
   return (
     <span className="status-pill" role="status">
       <span className={`dot ${phase === "open" ? "live" : phase === "pre" ? "pre" : ""}`} />
-      <b>{label}</b>
+      <b>{market === "vn" ? `HOSE · ${label}` : label}</b>
       <span>{sub}</span>
     </span>
   );
@@ -45,7 +45,7 @@ export function MarketStrip({ quotes, macro, onOpen }: { quotes: Quote[]; macro:
         {quotes.map((q) => (
           <button key={q.symbol} className="qcard" role="listitem" onClick={() => onOpen(q.symbol)}>
             <div className="sym">
-              <span>{q.symbol}</span>
+              <span>{symLabel(q.symbol)}</span>
               <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
             </div>
             <div className="px num">{fmtPrice(q.price)}</div>
@@ -56,7 +56,7 @@ export function MarketStrip({ quotes, macro, onOpen }: { quotes: Quote[]; macro:
         {macro.map((q) => (
           <button key={q.symbol} className="qcard macro" role="listitem" onClick={() => onOpen(q.symbol)}>
             <div className="sym">
-              <span>{MACRO_LABEL[q.symbol] ?? q.symbol}</span>
+              <span>{MACRO_LABEL[q.symbol] ?? symLabel(q.symbol)}</span>
             </div>
             <div className="px num">
               {q.symbol === "^TNX" ? `${q.price.toFixed(2)}%` : fmtPrice(q.price)}
@@ -78,7 +78,7 @@ export function briefingText(d: Digest, t: ReturnType<typeof usePrefs>["t"]): st
   const lines = [a.headline, "", ...a.summary.map((s) => `• ${s}`)];
   if (a.outlook.length) {
     lines.push("", t("calls.title"));
-    for (const o of a.outlook) lines.push(`• ${o.interest} (${o.ticker}): ${t(`act.${o.action}`)} · ${t(`dir.${o.direction}`)} · ${o.confidence}%. ${o.actionTrigger}`);
+    for (const o of a.outlook) lines.push(`• ${o.interest} (${symLabel(o.ticker)}): ${t(`act.${o.action}`)} · ${t(`dir.${o.direction}`)} · ${o.confidence}%. ${o.actionTrigger}`);
   }
   if (a.watchNext.length) lines.push("", t("watch.title"), ...a.watchNext.map((w) => `• ${w}`));
   return lines.join("\n");
@@ -122,7 +122,7 @@ export function Briefing({
     const text = briefingText(digest, t);
     try {
       if (navigator.share && window.matchMedia("(max-width: 719px)").matches) {
-        await navigator.share({ title: "Invest Helper", text });
+        await navigator.share({ title: "InvestHepi", text });
         return;
       }
       await navigator.clipboard.writeText(text);
@@ -223,7 +223,7 @@ export function Calls({ outlook, onTicker }: { outlook: Outlook[]; onTicker: (s:
                 <div className="call-name">{o.interest}</div>
                 <div className="call-sub">
                   <button onClick={() => onTicker(o.ticker)} style={{ color: "var(--accent)", fontWeight: 600 }}>
-                    {o.ticker}
+                    {symLabel(o.ticker)}
                   </button>{" "}
                   · <span className={o.direction}>{arrow(o.direction)} {t(`dir.${o.direction}`)}</span> ·{" "}
                   {o.horizon === "today" ? t("calls.today") : t("calls.thisWeek")}
@@ -259,7 +259,7 @@ export function Movers({ movers, quotes, onTicker }: { movers: Digest["analysis"
         return (
           <div className="mover" key={m.ticker}>
             <button className="mover-tk" onClick={() => onTicker(m.ticker)}>
-              {m.ticker}
+              {symLabel(m.ticker)}
             </button>
             <span className={`mover-chg num ${chg >= 0 ? "up" : "down"}`}>{fmtPct(chg)}</span>
             <div className="mover-why">{m.why}</div>

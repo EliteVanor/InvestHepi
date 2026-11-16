@@ -1,10 +1,11 @@
+import { gate } from "@/lib/users";
 import { z } from "zod";
 import { ask } from "@/lib/ask";
-import { authorized, passwordRequired, unauthorized, ownerOnly } from "@/lib/auth";
 import { getCalendar } from "@/lib/calendar";
 import { isLang } from "@/lib/languages";
 import { hit, limits } from "@/lib/ratelimit";
-import { loadDigest, loadInterests } from "@/lib/pipeline";
+import { currentCallsKey, loadDigest, loadInterests } from "@/lib/pipeline";
+import { SECTION_IDS } from "@/lib/types";
 import { loadHoldings, positionsAsText } from "@/lib/portfolio";
 import { computeStats, loadCalls, trackRecordText } from "@/lib/track";
 import type { Digest } from "@/lib/types";
@@ -19,30 +20,27 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
-  if (!authorized(req)) return unauthorized();
-  const ro = ownerOnly(req);
-  if (ro) return ro;
-  const locked = passwordRequired();
-  if (locked) return locked;
-  const parsed = Body.safeParse(await req.json().catch(() => null));
-  if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
-  const { question, history, lang } = parsed.data;
-  const rl = await hit("ask", limits.ask());
-  if (!rl.ok) return Response.json({ error: `Daily Ask AI limit reached (${rl.limit}). It resets at midnight ET.` }, { status: 429 });
-  const [digests, interests, calls] = await Promise.all([
-    Promise.all((["interests", "world", "us"] as const).map((s) => loadDigest(s))),
-    loadInterests(),
-    loadCalls(),
-  ]);
-  const ds = digests.filter((d): d is Digest => !!d);
-  if (!ds.length) return Response.json({ error: "No briefings yet. Refresh a section first." }, { status: 409 });
-  const cal = await getCalendar(interests).catch(() => ({ events: [] }));
-  try {
-    const main = ds.find((d) => d.section === "interests") ?? ds[0];
-    const positions = positionsAsText(await loadHoldings().catch(() => []), main.quotes);
-    return Response.json(await ask(question, history, ds, cal.events, trackRecordText(computeStats(calls)), isLang(lang) ? lang : "en", positions));
-  } catch (e) {
-    const msg = (e as Error).message;
-    return Response.json({ error: msg === "NO_PROVIDER" ? "NO_PROVIDER" : msg }, { status: msg === "NO_PROVIDER" ? 412 : 502 });
-  }
+  return gate(req, { user: true }, async () => {
+    const parsed = Body.safeParse(await req.json().catch(() => null));
+    if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
+    const { question, history, lang } = parsed.data;
+    const rl = await hit("ask", limits.ask());
+    if (!rl.ok) return Response.json({ error: `Daily Ask AI limit reached (${rl.limit}). It resets at midnight ET.` }, { status: 429 });
+    const [digests, interests, calls] = await Promise.all([
+      Promise.all(SECTION_IDS.map((s) => loadDigest(s))),
+      loadInterests(),
+      currentCallsKey().then((k) => loadCalls(k)),
+    ]);
+    const ds = digests.filter((d): d is Digest => !!d);
+    if (!ds.length) return Response.json({ error: "No briefings yet. Refresh a section first." }, { status: 409 });
+    const cal = await getCalendar(interests).catch(() => ({ events: [] }));
+    try {
+      const main = ds.find((d) => d.section === "interests") ?? ds[0];
+      const positions = positionsAsText(await loadHoldings().catch(() => []), main.quotes);
+      return Response.json(await ask(question, history, ds, cal.events, trackRecordText(computeStats(calls)), isLang(lang) ? lang : "en", positions));
+    } catch (e) {
+      const msg = (e as Error).message;
+      return Response.json({ error: msg === "NO_PROVIDER" ? "NO_PROVIDER" : msg }, { status: msg === "NO_PROVIDER" ? 412 : 502 });
+    }
+  });
 }

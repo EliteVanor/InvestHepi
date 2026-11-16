@@ -38,9 +38,10 @@ const SECTION_FOCUS: Record<SectionId, string> = {
   interests: "news directly about the user's followed markets and stocks",
   world: "global news (geopolitics, foreign economies, central banks, commodities, trade)",
   us: "US news (Fed, economic data, fiscal policy, politics, regulation)",
+  vn: "the Vietnamese stock market (VN-Index, HOSE/HNX listings, State Bank of Vietnam policy and credit growth, the dong exchange rate, FDI, exports, foreign investor net buying/selling, margin lending, index reclassification). Headlines may be in Vietnamese",
 };
 
-const RULES = `You are the analyst inside "Invest Helper", a personal tool that helps one investor catch up on news fast and act on it.
+const RULES = `You are the analyst inside "InvestHepi", a personal tool that helps one investor catch up on news fast and act on it.
 Your job: turn today's headlines into a clear read on how the user's followed stocks will likely trade over the next session and the coming week.
 
 How to think:
@@ -86,7 +87,7 @@ export function buildSystemPrompt(input: PromptInput, opts: PromptOptions): stri
     lang.code === "en"
       ? ""
       : `\n\nLANGUAGE: Write every human-readable text value (headline, summary, titles, explanations, triggers, rationale, risks, watch_next, movers.why) in ${lang.english}. Keep JSON keys, enum values (up/down/flat, risk-on, BUY, today, ...) and tickers exactly as specified in English.`;
-  return `${RULES}${langRule}\n\nPLAYBOOK (verified historical reactions):\n${playbook}`;
+  return `${RULES}${input.section === "vn" ? VN_RULES : ""}${langRule}\n\nPLAYBOOK (verified historical reactions):\n${playbook}`;
 }
 
 function etParts(d: Date) {
@@ -101,6 +102,26 @@ function etParts(d: Date) {
     hour12: false,
   }).format(d);
 }
+
+/** Ho Chi Minh City exchange (HOSE): 9:00-11:30 and 13:00-14:45 ICT (UTC+7), ATC auction 14:30-14:45. */
+export function vnMarketPhase(d: Date): string {
+  const ict = new Date(d.getTime() + 7 * 3600_000);
+  const wd = ict.getUTCDay();
+  const mins = ict.getUTCHours() * 60 + ict.getUTCMinutes();
+  if (wd === 0 || wd === 6) return "weekend, HOSE closed (next session Monday)";
+  if (mins < 540) return "before the HOSE open (9:00 ICT)";
+  if (mins < 690) return "HOSE morning session in progress";
+  if (mins < 780) return "HOSE lunch break (reopens 13:00 ICT)";
+  if (mins < 885) return "HOSE afternoon session in progress";
+  return "after the HOSE close (next session tomorrow)";
+}
+
+const VN_RULES = `
+VIETNAM SECTION:
+- Prices are in VND; indexes in points. VN-Index moves are driven mostly by banks, real estate (Vingroup family) and foreign/retail flows, so weigh those first.
+- Key drivers: State Bank of Vietnam rates, credit growth and liquidity (OMO), USD/VND pressure, foreign net buying/selling, margin debt, earnings seasons, public investment, FDI and export data, and index reclassification news. US rates and the dollar matter through the exchange rate and foreign flows.
+- HOSE has a 7% daily price limit and T+2 settlement; retail investors dominate turnover, so momentum and sentiment swings are sharp.
+- "today" means the next HOSE session; "week" means the next 5 HOSE sessions.`;
 
 export function marketPhase(d: Date): string {
   const parts = Object.fromEntries(
@@ -137,11 +158,15 @@ export function buildUserPrompt(p: PromptInput, opts: PromptOptions): string {
     })
     .join("\n");
   const moversRule =
-    p.section === "interests"
+    p.section === "interests" || p.section === "vn"
       ? `In "movers", explain the 1-4 tickers from the user's list with the biggest last-session moves (use the snapshot's numbers).`
       : `Return "movers" as an empty array.`;
 
-  return `Now: ${etParts(p.now)} ET (${marketPhase(p.now)}).
+  const clock =
+    p.section === "vn"
+      ? `Now: ${new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Ho_Chi_Minh", weekday: "long", day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: false }).format(p.now)} ICT (${vnMarketPhase(p.now)}). US: ${marketPhase(p.now)}.`
+      : `Now: ${etParts(p.now)} ET (${marketPhase(p.now)}).`;
+  return `${clock}
 Section: ${p.section.toUpperCase()}, covering ${SECTION_FOCUS[p.section]}.
 
 USER'S INTERESTS (give one outlook entry per interest using its benchmark ticker; add entries for individual tickers only if a headline is directly about them):
@@ -170,5 +195,5 @@ ${p.trackRecord}
 HEADLINES (cite by number in source_ids):
 ${headlines || "(no headlines fetched)"}
 
-Analyze these headlines${p.section === "interests" ? "" : " for their impact on the user's interests"}. In "impacts", use the exact interest names above. ${moversRule}`;
+Analyze these headlines${p.section === "interests" ? "" : p.section === "vn" ? " for their impact on the Vietnamese market groups above" : " for their impact on the user's interests"}. In "impacts", use the exact interest names above. ${moversRule}`;
 }

@@ -219,7 +219,8 @@ async function main() {
 
   // ---- CSV export and per-ticker calls
   const { setJSON } = await import("../src/lib/store");
-  await setJSON("calls", calls);
+  const { currentCallsKey } = await import("../src/lib/pipeline");
+  await setJSON(await currentCallsKey(), calls);
   const tr = await import("../src/app/api/track/route");
   const csv = await (await tr.GET(new Request("http://x/api/track?format=csv"))).text();
   assert.equal(csv.split("\n").length, 6, "header + 5 calls");

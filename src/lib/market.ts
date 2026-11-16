@@ -1,4 +1,5 @@
 import type { Quote } from "./types";
+import { isVnSymbol, vnDaily } from "./vnmarket";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
@@ -50,10 +51,19 @@ async function stooq(symbol: string): Promise<Quote> {
   return { symbol, price, prevClose: prior, changePct: ((price - prior) / prior) * 100, history, source: "stooq" };
 }
 
+async function vnQuote(symbol: string): Promise<Quote> {
+  const bars = (await vnDaily(symbol, 30)).slice(-25);
+  const history: [string, number][] = bars.map((b) => [new Date(b.t * 1000).toISOString().slice(0, 10), b.c]);
+  const price = history.at(-1)![1];
+  const prior = history.at(-2)![1];
+  return { symbol, price, prevClose: prior, changePct: ((price - prior) / prior) * 100, history, source: "stooq" };
+}
+
 export async function getQuote(symbol: string): Promise<Quote | null> {
   try {
     return await yahoo(symbol);
   } catch {
+    if (isVnSymbol(symbol)) return vnQuote(symbol).catch(() => null);
     // Stooq only covers plain US tickers; futures (=F), FX and crypto pairs (-USD) need Yahoo.
     if (/[=^]|-USD$|\.NYB$/.test(symbol)) return null;
     try {
@@ -93,7 +103,8 @@ export const MACRO: { symbol: string; label: string; unit?: string }[] = [
   { symbol: "BTC-USD", label: "Bitcoin" },
 ];
 
-export const macroLabel = (symbol: string) => MACRO.find((m) => m.symbol === symbol)?.label ?? symbol;
+const EXTRA_LABELS: Record<string, string> = { "VND=X": "USD/VND" };
+export const macroLabel = (symbol: string) => MACRO.find((m) => m.symbol === symbol)?.label ?? EXTRA_LABELS[symbol] ?? symbol;
 
 export function macroAsText(quotes: Quote[]): string {
   if (!quotes.length) return "(macro data unavailable)";

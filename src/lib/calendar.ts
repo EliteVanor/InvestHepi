@@ -5,6 +5,7 @@
  *  - BLS (CPI, jobs, PPI, JOLTS): BLS release-schedule iCal feed, when reachable.
  *  - Earnings: Finnhub (if FINNHUB_API_KEY) else Nasdaq's public calendar API.
  */
+import { createHash } from "node:crypto";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Interest } from "./types";
 
@@ -184,7 +185,8 @@ export async function buildCalendar(interests: Interest[], now = new Date()): Pr
 /** Cached calendar; rebuilt at most every few hours or when interests change. */
 export async function getCalendar(interests: Interest[], { force = false } = {}): Promise<CalendarData> {
   const key = `calendar:${interests.flatMap((i) => i.tickers).sort().join(",")}`.slice(0, 200);
-  const cached = await getJSON<CalendarData & { key: string }>("calendar");
+  const slot = `calendar:${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
+  const cached = await getJSON<CalendarData & { key: string }>(slot);
   const fresh = cached && cached.key === key && Date.now() - new Date(cached.generatedAt).getTime() < CACHE_HOURS * 3600_000;
   if (fresh && !force) {
     // Drop events that are now in the past.
@@ -192,7 +194,7 @@ export async function getCalendar(interests: Interest[], { force = false } = {})
     return { ...cached, events: cached.events.filter((e) => e.date >= today) };
   }
   const data = await buildCalendar(interests);
-  await setJSON("calendar", { ...data, key });
+  await setJSON(slot, { ...data, key });
   return data;
 }
 

@@ -46,16 +46,16 @@ export function targetSession(now: Date): string {
   return d;
 }
 
-export async function loadCalls(): Promise<Call[]> {
-  return (await getJSON<Call[]>(KEY)) ?? [];
+export async function loadCalls(key = KEY): Promise<Call[]> {
+  return (await getJSON<Call[]>(key)) ?? [];
 }
 
-export async function recordCalls(outlook: Outlook[], interests: Interest[], provider: string, now = new Date()): Promise<number> {
+export async function recordCalls(outlook: Outlook[], interests: Interest[], provider: string, now = new Date(), key = KEY): Promise<number> {
   if (provider === "rules") return 0; // only grade real analyses
   const tracked = new Map<string, Interest>();
   for (const it of interests) for (const t of it.tickers) tracked.set(t.toUpperCase(), it);
   const date = targetSession(now);
-  const calls = await loadCalls();
+  const calls = await loadCalls(key);
   let n = 0;
   for (const o of outlook) {
     const it = tracked.get(o.ticker);
@@ -78,12 +78,12 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
     else calls.push(call);
     n++;
   }
-  await setJSON(KEY, calls.slice(-MAX_CALLS));
+  await setJSON(key, calls.slice(-MAX_CALLS));
   return n;
 }
 
-export async function gradeCalls(now = new Date()): Promise<number> {
-  const calls = await loadCalls();
+export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
+  const calls = await loadCalls(key);
   const pending = calls.filter((c) => c.correct === undefined);
   if (!pending.length) return 0;
   const { date: today, mins } = etNow(now);
@@ -108,7 +108,7 @@ export async function gradeCalls(now = new Date()): Promise<number> {
     c.gradedAt = now.toISOString();
     graded++;
   }
-  if (graded) await setJSON(KEY, calls);
+  if (graded) await setJSON(key, calls);
   return graded;
 }
 

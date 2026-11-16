@@ -3,7 +3,7 @@ import type { Feed } from "./config";
 import type { Interest, NewsItem } from "./types";
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", textNodeName: "#text" });
-const UA = "Mozilla/5.0 (compatible; InvestHelper/0.1; personal news reader)";
+const UA = "Mozilla/5.0 (compatible; InvestHepi/0.1; personal news reader)";
 
 function text(v: unknown): string {
   if (v == null) return "";
@@ -185,7 +185,8 @@ export async function fetchInterestNews(
       const feeds: Feed[] = [
         {
           name: `Google News: ${it.name}`,
-          url: `https://news.google.com/rss/search?q=${encodeURIComponent(it.query + " when:1d")}&hl=en-US&gl=US&ceid=US:en`,
+          // Queries with Vietnamese characters search Google News Vietnam.
+          url: `https://news.google.com/rss/search?q=${encodeURIComponent(it.query + " when:1d")}&${/[^\x00-\x7F]/.test(it.query) ? "hl=vi&gl=VN&ceid=VN:vi" : "hl=en-US&gl=US&ceid=US:en"}`,
         },
         ...it.tickers.slice(0, 4).map((t) => ({
           name: `Yahoo: ${t}`,

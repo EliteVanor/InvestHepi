@@ -12,6 +12,7 @@ import { getLiveQuotes, type LiveQuote } from "./chart";
 import { appUrl, emailProvider, sendEmail } from "./email";
 import { makeT, type MsgKey, type T } from "./i18n";
 import { isLang, langInfo, type LangCode } from "./languages";
+import { ukey } from "./context";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Digest, Interest, Outlook } from "./types";
 
@@ -78,7 +79,7 @@ export const DEFAULT_ALERTS: AlertSettings = {
 /* ------------------------------------------------------------------ store */
 
 export async function loadAlertSettings(): Promise<AlertSettings> {
-  const s = (await getJSON<Partial<AlertSettings>>("alerts:settings")) ?? {};
+  const s = (await getJSON<Partial<AlertSettings>>(ukey("alerts:settings"))) ?? {};
   return {
     ...DEFAULT_ALERTS,
     ...s,
@@ -90,16 +91,16 @@ export async function loadAlertSettings(): Promise<AlertSettings> {
 }
 
 export async function saveAlertSettings(s: AlertSettings): Promise<void> {
-  await setJSON("alerts:settings", s);
+  await setJSON(ukey("alerts:settings"), s);
 }
 
 export async function loadAlertLog(): Promise<AlertLogEntry[]> {
-  return (await getJSON<AlertLogEntry[]>("alerts:log")) ?? [];
+  return (await getJSON<AlertLogEntry[]>(ukey("alerts:log"))) ?? [];
 }
 
 async function appendLog(entries: AlertLogEntry[]) {
   const log = [...entries, ...(await loadAlertLog())].slice(0, LOG_SIZE);
-  await setJSON("alerts:log", log);
+  await setJSON(ukey("alerts:log"), log);
 }
 
 interface Ledger {
@@ -122,14 +123,14 @@ function etClock(now = new Date()) {
 
 async function loadLedger(now: Date): Promise<Ledger> {
   const today = etDate(now);
-  const l = await getJSON<Ledger>("alerts:ledger");
+  const l = await getJSON<Ledger>(ukey("alerts:ledger"));
   return l && l.date === today ? l : { date: today, keys: [], count: 0 };
 }
 
 /* -------------------------------------------------------------- language */
 
 async function mailLang(): Promise<LangCode> {
-  const s = await getJSON<{ briefingLanguage?: string }>("settings");
+  const s = await getJSON<{ briefingLanguage?: string }>(ukey("settings"));
   return isLang(s?.briefingLanguage) ? s!.briefingLanguage! : "en";
 }
 
@@ -351,7 +352,7 @@ async function dispatch(events: AlertEvent[], settings: AlertSettings, lang: Lan
   if (!res.ok) return { sentKeys: [] as string[], error: res.error };
   ledger.keys.push(...batch.map((e) => e.key));
   ledger.count += 1;
-  await setJSON("alerts:ledger", ledger);
+  await setJSON(ukey("alerts:ledger"), ledger);
   return { sentKeys: batch.map((e) => e.key) };
 }
 
@@ -362,7 +363,7 @@ async function sendTracked(settings: AlertSettings, key: string, kind: AlertKind
     const ledger = await loadLedger(now);
     ledger.keys.push(key);
     ledger.count += 1;
-    await setJSON("alerts:ledger", ledger);
+    await setJSON(ukey("alerts:ledger"), ledger);
   }
   return res.ok ? "sent" : res.error;
 }
@@ -399,7 +400,7 @@ function shell({ lang, preheader, title, body, t }: { lang: LangCode; preheader:
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" style="background:#f5f5f7"><tr><td align="center" style="padding:28px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
 <tr><td style="padding:0 6px 14px;font:600 15px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" class="tx">
-<span style="display:inline-block;width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#0a84ff,#5e5ce6,#bf5af2);vertical-align:-3px;margin-right:8px"></span>Invest Helper</td></tr>
+<span style="display:inline-block;width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#0a84ff,#5e5ce6,#bf5af2);vertical-align:-3px;margin-right:8px"></span>InvestHepi</td></tr>
 <tr><td class="card" style="background:#ffffff;border-radius:20px;padding:28px 26px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1d1d1f">
 <div class="tx" style="font-size:24px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;margin:0 0 16px">${esc(title)}</div>
 ${body}
