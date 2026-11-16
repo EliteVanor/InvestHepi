@@ -54,7 +54,7 @@ export function mergeLive(quotes: Quote[], live: Map<string, LiveQuote>): Quote[
   return quotes.map((q) => {
     const l = live.get(q.symbol);
     // Never mix an index level with its tracking ETF's price.
-    return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct } : q;
+    return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, spark: l.intraday ? l.spark : undefined } : q;
   });
 }
 

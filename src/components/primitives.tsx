@@ -57,14 +57,21 @@ export function Sheet({ title, onClose, children, actions, wide }: { title: Reac
 }
 
 /** Minimal SVG sparkline. Color follows direction of the series. */
-export function Sparkline({ values, width = 108, height = 26, strokeWidth = 1.6, fill = true }: { values: number[]; width?: number; height?: number; strokeWidth?: number; fill?: boolean }) {
+/**
+ * Mini line chart. By default colored by its own first-to-last move. Pass `up` to color it by the
+ * figure shown next to it (the day's change), and `baseline` (previous close) to draw it dotted and
+ * keep it in range, the way a session chart is read: above the line = up on the day.
+ */
+export function Sparkline({ values, width = 108, height = 26, strokeWidth = 1.6, fill = true, up, baseline, neutral }: { values: number[]; width?: number; height?: number; strokeWidth?: number; fill?: boolean; up?: boolean; baseline?: number; neutral?: boolean }) {
   if (values.length < 2) return <svg width={width} height={height} />;
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const range = baseline != null && Number.isFinite(baseline) ? [...values, baseline] : values;
+  const min = Math.min(...range);
+  const max = Math.max(...range);
   const span = max - min || 1;
-  const pts = values.map((v, i) => [(i / (values.length - 1)) * width, height - 2 - ((v - min) / span) * (height - 4)] as const);
+  const yOf = (v: number) => height - 2 - ((v - min) / span) * (height - 4);
+  const pts = values.map((v, i) => [(i / (values.length - 1)) * width, yOf(v)] as const);
   const d = pts.map(([x, y], i) => `${i ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-  const color = values[values.length - 1] >= values[0] ? "var(--green)" : "var(--red)";
+  const color = neutral ? "var(--label-3, #8e8e93)" : (up ?? values[values.length - 1] >= values[0]) ? "var(--green)" : "var(--red)";
   const id = `g${Math.round(values[0] * 1000) % 100000}${values.length}${width}`;
   return (
     <svg viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
@@ -78,6 +85,9 @@ export function Sparkline({ values, width = 108, height = 26, strokeWidth = 1.6,
           </defs>
           <path d={`${d} L${width},${height} L0,${height} Z`} fill={`url(#${id})`} />
         </>
+      )}
+      {baseline != null && Number.isFinite(baseline) && (
+        <line x1="0" x2={width} y1={yOf(baseline)} y2={yOf(baseline)} stroke="var(--label-3, currentColor)" strokeOpacity="0.45" strokeWidth="1" strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
       )}
       <path d={d} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
     </svg>
@@ -121,7 +131,13 @@ export function fmtPct(n: number, digits = 2) {
 
 export { symLabel } from "@/lib/symbols";
 
-export function fmtPrice(n: number) {
+/**
+ * Price text. Index levels keep 2 decimals (VN-Index 1,734.93, not 1,735); whole-number prices such as
+ * Vietnamese shares stay whole (53,800). `digits` overrides (currency pairs: 4).
+ */
+export function fmtPrice(n: number, digits?: number) {
   if (typeof n !== "number" || !Number.isFinite(n)) return "–";
-  return n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2);
+  if (digits != null) return n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  if (Math.abs(n) >= 1000) return n.toLocaleString("en-US", Number.isInteger(n) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toFixed(2);
 }

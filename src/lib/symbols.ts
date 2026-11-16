@@ -15,6 +15,9 @@ export const SYMBOL_LABELS: Record<string, string> = {
   "000001.SS": "Shanghai",
   "^KS11": "KOSPI",
   "^BSESN": "Sensex",
+  "^NSEI": "Nifty 50",
+  "^FCHI": "CAC 40",
+  "BZ=F": "Brent",
   "005930.KS": "Samsung",
   "0700.HK": "Tencent",
   "7203.T": "Toyota",
@@ -65,6 +68,7 @@ export const PROXIES: Record<string, string> = {
   "000001.SS": "ASHR",
   "^KS11": "EWY",
   "^BSESN": "INDA",
+  "^NSEI": "INDA",
   "GC=F": "GLD",
   "CL=F": "USO",
   "BTC-USD": "IBIT",
@@ -75,6 +79,12 @@ export const PROXIES: Record<string, string> = {
 /** "^VNINDEX.VN" → "VN-Index", "FPT.VN" → "FPT", "AAPL" → "AAPL". */
 export function symLabel(s: string): string {
   return SYMBOL_LABELS[s] ?? s.replace(/\.VN$/, "");
+}
+
+/** Decimals for a price: currency pairs need 4 (EUR/USD 1.1023), big-number pairs (USD/JPY, USD/VND) 2. */
+export function priceDigits(symbol: string, value: number): number | undefined {
+  if (!/=X$/.test(symbol)) return undefined;
+  return Math.abs(value) >= 50 ? 2 : 4;
 }
 
 /** Yields are quoted in percent, not price. */
@@ -89,7 +99,7 @@ export function exchangeTz(s: string): string {
   if (s.endsWith(".SS") || s.endsWith(".SZ")) return "Asia/Shanghai";
   if (s.endsWith(".L") || s === "^FTSE") return "Europe/London";
   if (s.endsWith(".DE") || s === "^GDAXI" || s === "^STOXX50E") return "Europe/Berlin";
-  if (s.endsWith(".PA")) return "Europe/Paris";
-  if (s.endsWith(".BO") || s.endsWith(".NS") || s === "^BSESN") return "Asia/Kolkata";
+  if (s.endsWith(".PA") || s === "^FCHI") return "Europe/Paris";
+  if (s.endsWith(".BO") || s.endsWith(".NS") || s === "^BSESN" || s === "^NSEI") return "Asia/Kolkata";
   return "America/New_York";
 }

@@ -462,6 +462,10 @@ const en = {
   "ai.showRules": "See the latest headlines with a basic rule-based summary",
   "ai.rulesBanner": "You're viewing a rule-based summary: the latest headlines and prices sorted by simple keyword rules, without AI analysis. Calls here are rough.",
   "ai.backToAi": "Back to the AI briefing",
+  "trend.span": "recent weeks",
+  "strip.est": "Estimated: the last official close moved with the {etf} ETF, which trades in the same hours",
+  "strip.closeOf": "Close of {date}. Only daily closes are available for this market",
+  "chart.shape": "Official close; the intraday path follows the {etf} ETF",
 };
 
 export type MsgKey = keyof typeof en;
@@ -925,6 +929,10 @@ const vi: Dict = {
   "ai.showRules": "Xem tin mới nhất với bản tóm tắt cơ bản theo quy tắc",
   "ai.rulesBanner": "Bạn đang xem bản tóm tắt theo quy tắc: tin và giá mới nhất được sắp xếp bằng quy tắc từ khóa đơn giản, không có phân tích AI. Các nhận định ở đây chỉ mang tính tham khảo sơ bộ.",
   "ai.backToAi": "Quay lại bản tin AI",
+  "trend.span": "vài tuần gần đây",
+  "strip.est": "Ước tính: giá đóng cửa chính thức gần nhất cộng biến động của quỹ ETF {etf} (giao dịch cùng giờ)",
+  "strip.closeOf": "Giá đóng cửa ngày {date}. Thị trường này chỉ có dữ liệu cuối ngày",
+  "chart.shape": "Giá đóng cửa chính thức; diễn biến trong phiên theo quỹ ETF {etf}",
 };
 
 const zh: Dict = {
@@ -1385,6 +1393,10 @@ const zh: Dict = {
   "ai.showRules": "查看最新新闻的基础规则摘要",
   "ai.rulesBanner": "您正在查看基于规则的摘要：按简单关键词规则整理的最新新闻和价格，没有 AI 分析。其中的判断较为粗略。",
   "ai.backToAi": "返回 AI 简报",
+  "trend.span": "近几周",
+  "strip.est": "估算值：最近官方收盘价按同时段交易的 {etf} ETF 涨跌推算",
+  "strip.closeOf": "{date} 收盘价。该市场只有每日收盘数据",
+  "chart.shape": "官方收盘价；盘中走势参考 {etf} ETF",
 };
 
 const ja: Dict = {
@@ -1845,6 +1857,10 @@ const ja: Dict = {
   "ai.showRules": "最新ニュースを簡易ルールベース要約で見る",
   "ai.rulesBanner": "ルールベースの要約を表示中です。最新ニュースと価格を単純なキーワードルールで整理したもので、AIによる分析はありません。判断はおおまかな目安です。",
   "ai.backToAi": "AIブリーフィングに戻る",
+  "trend.span": "ここ数週間",
+  "strip.est": "推定値：直近の公式終値を、同じ時間帯に取引される {etf} ETF の値動きで延長",
+  "strip.closeOf": "{date} の終値。この市場は日次終値のみ",
+  "chart.shape": "公式終値。日中の推移は {etf} ETF に基づく",
 };
 
 const ko: Dict = {
@@ -2305,6 +2321,10 @@ const ko: Dict = {
   "ai.showRules": "최신 뉴스를 기본 규칙 기반 요약으로 보기",
   "ai.rulesBanner": "규칙 기반 요약을 보고 있습니다. 최신 뉴스와 가격을 간단한 키워드 규칙으로 정리한 것으로 AI 분석은 없습니다. 여기의 판단은 대략적입니다.",
   "ai.backToAi": "AI 브리핑으로 돌아가기",
+  "trend.span": "최근 몇 주",
+  "strip.est": "추정치: 최근 공식 종가에 같은 시간대에 거래되는 {etf} ETF의 등락을 반영",
+  "strip.closeOf": "{date} 종가. 이 시장은 일별 종가만 제공됩니다",
+  "chart.shape": "공식 종가이며, 장중 흐름은 {etf} ETF를 따름",
 };
 
 const es: Dict = {
@@ -2765,6 +2785,10 @@ const es: Dict = {
   "ai.showRules": "Ver los últimos titulares con un resumen básico por reglas",
   "ai.rulesBanner": "Estás viendo un resumen basado en reglas: los últimos titulares y precios ordenados con reglas simples de palabras clave, sin análisis de IA. Las recomendaciones son aproximadas.",
   "ai.backToAi": "Volver al resumen con IA",
+  "trend.span": "últimas semanas",
+  "strip.est": "Estimación: el último cierre oficial ajustado con el movimiento del ETF {etf}, que cotiza en el mismo horario",
+  "strip.closeOf": "Cierre del {date}. Para este mercado solo hay cierres diarios",
+  "chart.shape": "Cierre oficial; el recorrido intradía sigue al ETF {etf}",
 };
 
 const fr: Dict = {
@@ -3225,6 +3249,10 @@ const fr: Dict = {
   "ai.showRules": "Voir les derniers titres avec un résumé basique à base de règles",
   "ai.rulesBanner": "Vous consultez un résumé à base de règles : derniers titres et prix triés par de simples règles de mots-clés, sans analyse IA. Les recommandations sont approximatives.",
   "ai.backToAi": "Revenir au briefing IA",
+  "trend.span": "dernières semaines",
+  "strip.est": "Estimation : dernière clôture officielle ajustée du mouvement de l'ETF {etf}, coté aux mêmes heures",
+  "strip.closeOf": "Clôture du {date}. Seules les clôtures quotidiennes sont disponibles pour ce marché",
+  "chart.shape": "Clôture officielle ; le tracé intrajournalier suit l'ETF {etf}",
 };
 
 const de: Dict = {
@@ -3685,6 +3713,10 @@ const de: Dict = {
   "ai.showRules": "Neueste Schlagzeilen mit einfacher regelbasierter Zusammenfassung ansehen",
   "ai.rulesBanner": "Du siehst eine regelbasierte Zusammenfassung: neueste Schlagzeilen und Kurse, nach einfachen Stichwortregeln sortiert, ohne KI-Analyse. Die Einschätzungen sind grob.",
   "ai.backToAi": "Zurück zum KI-Briefing",
+  "trend.span": "letzte Wochen",
+  "strip.est": "Schätzung: letzter offizieller Schlusskurs, fortgeschrieben mit der Bewegung des ETF {etf} (gleiche Handelszeiten)",
+  "strip.closeOf": "Schlusskurs vom {date}. Für diesen Markt gibt es nur Tagesschlusskurse",
+  "chart.shape": "Offizieller Schlusskurs; der Tagesverlauf folgt dem ETF {etf}",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

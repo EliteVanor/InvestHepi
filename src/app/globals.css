@@ -290,6 +290,7 @@ input, select, textarea { font: inherit; color: inherit; }
 .banner.ai-fallback.top { margin: 0 0 14px; }
 .banner.ai-fallback span { flex: 1 1 240px; }
 .banner.ai-fallback button { white-space: normal; text-align: left; }
+.chart-note { font-size: 12px; color: var(--label-2); margin: -4px 0 8px; }
 .refresh-btn { position: relative; }
 .refresh-left { position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center; }
 

@@ -364,10 +364,13 @@ function App() {
   const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);
   const quoteFor = (sym: string) => allDigests.flatMap((d) => [...d.quotes, ...(d.macro ?? [])]).find((q) => q.symbol === sym);
   const newIds = newSnap[tab]?.ids ?? new Set<string>();
-  const dateStr = useMemo(
-    () => (ready ? new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "long", month: "long", day: "numeric" }).format(new Date()) : ""),
-    [ready, lang],
-  );
+  // Market tabs show their market's date (Vietnam: Hanoi, US: New York), so the date matches the
+  // session pill; My Interests and World use the reader's own date.
+  const dateStr = useMemo(() => {
+    if (!ready) return "";
+    const timeZone = tab === "vn" ? "Asia/Ho_Chi_Minh" : tab === "us" ? "America/New_York" : undefined;
+    return new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "long", month: "long", day: "numeric", timeZone }).format(new Date());
+  }, [ready, lang, tab]);
   // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders
   // and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
@@ -389,8 +392,11 @@ function App() {
     const resolve = (s: string): Quote | null => {
       const q = known.get(s);
       const l = live.get(s);
-      if (q) return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false } : q;
-      if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.spark.map((c, i) => [String(i), c] as [string, number]), source: "yahoo", proxy: l.proxy };
+      // Live wins (same numbers as the chart sheet), with its intraday path for the sparkline.
+      const spark = l?.intraday ? l.spark : undefined;
+      const flags = l ? { estimatedVia: l.estimatedVia, dailyOnly: l.dailyOnly, session: l.session } : {};
+      if (q) return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false, spark, ...flags } : q;
+      if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.intraday ? [] : l.spark.map((c, i) => [String(i), c] as [string, number]), spark, source: "yahoo", proxy: l.proxy, ...flags };
       return null;
     };
     const ok = (q: Quote | null): q is Quote => q != null && Number.isFinite(q.price) && Number.isFinite(q.changePct);

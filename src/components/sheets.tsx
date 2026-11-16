@@ -493,7 +493,7 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert, action }
       {tech && (
         <div className="sheet-section">
           <h3>
-            {t("tk.levels")} · <span className={tech.trend === "up" ? "up" : tech.trend === "down" ? "down" : "flat"}>{t(`trend.${tech.trend}` as MsgKey)}</span>
+            {t("tk.levels")} · <span className={tech.trend === "up" ? "up" : tech.trend === "down" ? "down" : "flat"}>{t(`trend.${tech.trend}` as MsgKey)}</span> <span className="muted">({t("trend.span")})</span>
           </h3>
           <div className="levels">
             {(

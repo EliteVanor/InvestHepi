@@ -5,6 +5,7 @@
  */
 import { getChart, type Bar } from "./chart";
 import { isVnSymbol, pool, vndirectDaily } from "./vnmarket";
+import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
 
 export interface Technicals {
@@ -136,6 +137,15 @@ export async function getTechnicals(symbols: string[]): Promise<Record<string, T
       }
     })(),
   ]);
+  // Real world indexes / futures / FX from VNDirect's daily closes (one request per table).
+  const world = uniq.filter((s) => !out[s] && hasWorldDaily(s));
+  if (world.length) {
+    const m = await worldDaily(world).catch(() => new Map<string, Bar[]>());
+    for (const [s, bars] of m) {
+      const t = computeTechnicals(s, bars);
+      if (t) out[s] = t;
+    }
+  }
   const missing = uniq.filter((s) => !out[s]).slice(0, 4);
   await pool(missing, 2, async (s) => {
     try {

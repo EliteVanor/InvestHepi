@@ -172,7 +172,9 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   assert.ok(during.find((q) => q.symbol === "T1")?.stale, "last good price filled in, flagged stale");
   assert.ok(!during.some((q) => q.symbol === "NEVERSEEN"), "nothing invented for symbols never seen");
   assert.equal(await M.getQuote("T1"), null, "grading never uses stale prices");
-  // Yahoo-only symbols get a tracking ETF priced by Nasdaq, labeled as such (never mixed with the index level).
+  // Yahoo-only symbols, when VNDirect's world closes are also unreachable: a tracking ETF priced by
+  // Nasdaq, labeled as such (never mixed with the index level). Real levels: budgettest/v10test.
+  down.vndirect = true;
   const px = await M.getQuotes(["^GSPC", "^N225", "GC=F", "^TNX"]);
   const spx = px.find((q) => q.symbol === "^GSPC");
   assert.equal(spx?.proxy, "SPY", "S&P 500 priced via SPY when Yahoo refuses");
@@ -184,6 +186,7 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   assert.equal(cpx.proxy, "EWJ");
   assert.ok(cpx.name?.includes("EWJ"), "chart says it's the ETF");
   down.yahoo = false;
+  down.vndirect = false;
   Y.resetYahoo();
 
   // ---- shared sections: market coverage, no personal stocks
