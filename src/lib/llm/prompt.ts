@@ -1,5 +1,6 @@
-import { EVENT_KEYWORDS, PLAYBOOK, type EventType } from "../analogs";
+import { EVENT_KEYWORDS, PLAYBOOK, type EventType, type PlaybookEntry } from "../analogs";
 import { calendarAsText } from "../calendar";
+import { SECTION_MACRO } from "../config";
 import { sectorsAsText } from "../chart";
 import { langInfo } from "../languages";
 import { macroAsText, quotesAsText } from "../market";
@@ -50,18 +51,20 @@ How to think:
 - Be decisive. Give a direction and an action for every interest. "It depends" is not an answer; put the conditions in action_trigger.
 - Confidence is a calibrated probability that your direction call is right (50 = coin flip, 65 = solid edge, 80+ = rare). Use your track record to recalibrate: if you've been overconfident, lower your numbers.
 - Use TECHNICALS to make triggers concrete: name the level (20/50/200-day average, 20-day range, 52-week high) instead of "on weakness". They are context, not signals: news and positioning come first. RSI above 70 or below 30 and a stretched distance from the 50-day average argue against chasing.
+- Price levels: only quote a level that appears in the snapshots. Where a market says "level unknown" (it is tracked by an ETF whose price is not the index, oil, gold or dollar level), or has no TECHNICALS line, write triggers as % moves ("a further 2% drop", "a close above its 20-day average") and never write a number as its level. Data marked "unavailable" is unknown: don't fill it in from memory.
 - MOOD is a 0-100 composite (0 fear, 100 greed). Extremes cut both ways: extreme greed raises the bar for new buys, extreme fear often marks short-term lows.
 - If POSITIONS are given, word each action for this investor: for something they hold use HOLD/ADD/TRIM/SELL; for something they don't hold use BUY/WAIT/AVOID. Flag concentration if one position is over ~30%.
 - SCENARIOS: if a major scheduled catalyst (FOMC, CPI, jobs report, or earnings of a followed ticker) falls within the next 7 days, return ONE scenario set for the nearest one with 2-3 cases (e.g. hot / in line / cool), probabilities that sum to 100, the expected reaction of the user's interests, and what to do in each case. Probabilities are your estimates; keep them sober. Otherwise return an empty array.
-- Use the UPCOMING catalysts: a pending CPI print, FOMC decision or earnings report often argues for WAIT or smaller size until it passes. Put dated catalysts in watch_next.
-- Historical analogs: prefer entries from the PLAYBOOK. If you use one from memory, keep numbers approximate and only cite events you are sure happened. Never invent precise figures.
+- Use the UPCOMING catalysts: a pending CPI print, FOMC decision or earnings report often argues for WAIT or smaller size until it passes. Put dated catalysts in watch_next. Only give a date that appears in UPCOMING CATALYSTS or a headline; otherwise name the item without a date. Never invent release dates.
+- Historical analogs: use a PLAYBOOK entry only when it is the same kind of event (a China growth scare is not a US inflation print). Otherwise set analog to null: a loose analog misleads more than none. analog.event is a short plain description of the past event ("Hot August 2022 US CPI"), never the bracketed tag. If you use one from memory, keep numbers approximate and only cite events you are sure happened.
+- movers: if no headline explains a move, say so ("no clear news") instead of guessing a cause.
 - what_could_go_wrong must be specific (a data release, a level, a counter-narrative), not a generic disclaimer.
 - Actions: BUY/ADD = favorable entry now; HOLD = keep positions; WAIT = setup unclear or a catalyst is pending; TRIM/SELL = reduce; AVOID = stay out. Tie each to a concrete trigger.
 - Only use facts from the headlines and snapshots. If headlines are thin, say so and lower confidence.
 - Write plainly and concisely. No hype.`;
 
 /** Pick playbook entries whose event types appear in today's headlines (plus a couple of defaults). */
-export function relevantPlaybook(news: NewsItem[], max = 6) {
+export function relevantPlaybook(news: NewsItem[], max = 6, section?: SectionId) {
   const counts = new Map<EventType, number>();
   for (const n of news) {
     const hay = `${n.title} ${n.summary ?? ""}`;
@@ -70,18 +73,21 @@ export function relevantPlaybook(news: NewsItem[], max = 6) {
     }
   }
   const types = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([t]) => t);
-  const picked = types.flatMap((t) => PLAYBOOK.filter((p) => p.type === t).slice(0, 1));
-  for (const fallback of ["inflation_hot", "fed_hawkish", "ai_disruption_scare"] as EventType[]) {
-    if (picked.length >= 3) break;
-    const p = PLAYBOOK.find((x) => x.type === fallback);
-    if (p && !picked.includes(p)) picked.push(p);
-  }
-  return picked.slice(0, max);
+  // Only entries whose event type is in today's headlines. Padding with unrelated US entries made the
+  // model attach "hot CPI 2022" to a China slowdown; no analog beats a wrong one.
+  const region = section === "vn" ? "vn" : undefined;
+  const pick = (t: EventType) => {
+    const all = PLAYBOOK.filter((p) => p.type === t);
+    return (region && all.find((p) => p.region === region)) || all.find((p) => !p.region) || all[0];
+  };
+  return types.map(pick).filter((p): p is PlaybookEntry => !!p).slice(0, max);
 }
 
 export function buildSystemPrompt(input: PromptInput, opts: PromptOptions): string {
-  const entries = opts.compact ? relevantPlaybook(input.news) : PLAYBOOK;
-  const playbook = entries.map((p) => `- [${p.type}] ${p.date}: ${p.event} → ${p.whatHappenedNext} Lesson: ${p.lesson}`).join("\n");
+  const entries = opts.compact ? relevantPlaybook(input.news, 6, input.section) : PLAYBOOK;
+  const playbook = entries.length
+    ? entries.map((p) => `- (${p.type.replace(/_/g, " ")}) ${p.date}: ${p.event} → ${p.whatHappenedNext} Lesson: ${p.lesson}`).join("\n")
+    : "(no entry matches today's headlines: set analog to null unless you are sure of a close match)";
   const lang = langInfo(input.language);
   const langRule =
     lang.code === "en"
@@ -176,7 +182,7 @@ MARKET SNAPSHOT:
 ${quotesAsText(p.quotes)}
 
 MACRO:
-${macroAsText(p.macro)}
+${macroAsText(p.macro, SECTION_MACRO[p.section])}
 
 ${p.sectors?.length ? `SECTORS (last session, best to worst):\n${sectorsAsText(p.sectors)}\n` : ""}
 TECHNICALS:

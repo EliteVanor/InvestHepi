@@ -31,6 +31,8 @@ export interface NewsItem {
   tags?: string[];
   /** Other outlets that ran the same story (merged by dedupe). */
   alsoIn?: string[];
+  /** The headline as published, when `title` holds a translation. */
+  titleOrig?: string;
 }
 
 export interface Quote {

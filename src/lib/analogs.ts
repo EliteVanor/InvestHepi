@@ -24,7 +24,9 @@ export type EventType =
   | "yields_spike"
   | "earnings_beat"
   | "earnings_miss"
-  | "shutdown_politics";
+  | "shutdown_politics"
+  | "china_slowdown"
+  | "china_stimulus";
 
 export interface PlaybookEntry {
   type: EventType;
@@ -32,6 +34,8 @@ export interface PlaybookEntry {
   date: string;
   whatHappenedNext: string;
   lesson: string;
+  /** Market the entry is about; preferred for that section (Vietnam). Unset = US / global. */
+  region?: "vn";
 }
 
 export const EVENT_KEYWORDS: Record<EventType, RegExp> = {
@@ -41,17 +45,20 @@ export const EVENT_KEYWORDS: Record<EventType, RegExp> = {
   inflation_cool: /\b(inflation (cools|eases|slows|falls)|cooler[- ]than[- ]expected|cpi (eases|falls|cools)|disinflation)\b/i,
   jobs_weak: /\b(jobless claims (rise|jump)|unemployment (rises|jumps|climbs)|layoffs|job cuts|payrolls (miss|fall|slow)|hiring slows)\b/i,
   jobs_strong: /\b(payrolls (beat|surge|jump)|strong jobs|hiring (surges|accelerates)|unemployment (falls|drops))\b/i,
-  tariffs_escalation: /\b(new tariffs?|tariff (hike|increase|threat)|trade war|retaliat\w*|import duties|raises tariffs)\b/i,
+  tariffs_escalation: /\b(new tariffs?|tariff (hike|increase|threat)|trade war|retaliat\w*|import duties|raises tariffs)\b|thuế đối ứng|áp thuế|chiến tranh thương mại/i,
   tariffs_relief: /\b(trade (deal|truce|agreement)|tariff (pause|cut|relief|exemption)|lifts tariffs|eases tariffs)\b/i,
   chip_export_controls: /\b(export (controls?|curbs?|restrictions?|ban)|entity list|chip (ban|curbs))\b/i,
   ai_demand_strong: /\b(ai (spending|capex|demand|boom)|data ?center (spending|build|demand)|raises (guidance|outlook|forecast)|record revenue)\b/i,
   ai_disruption_scare: /\b(ai bubble|cheaper ai|deepseek|ai (spending|capex) (cut|doubts|concerns)|capex cuts?)\b/i,
   geopolitical_shock: /\b(invasion|invades|missile|airstrikes?|war\b|military escalation|strait of hormuz|blockade|taiwan strait)\b/i,
-  financial_stress: /\b(bank (run|failure|collapse)|credit (crunch|crisis|stress)|default|liquidity crisis|margin calls?)\b/i,
+  financial_stress: /\b(bank (run|failure|collapse)|credit (crunch|crisis|stress)|default|liquidity crisis|margin calls?)\b|call margin|giải chấp|vỡ nợ trái phiếu|chậm trả trái phiếu/i,
   yields_spike: /\b(yields? (surge|spike|jump|soar|climb)|bond (selloff|rout)|10-year (yield )?(hits|tops))\b/i,
   earnings_beat: /\b(beats? (estimates|expectations)|tops (estimates|forecasts)|earnings beat|blowout quarter)\b/i,
   earnings_miss: /\b(miss(es)? (estimates|expectations)|falls short|weak guidance|cuts (guidance|outlook|forecast)|profit warning)\b/i,
   shutdown_politics: /\b(government shutdown|debt ceiling|stopgap|continuing resolution)\b/i,
+  // "China’s economy misses forecasts", "Chinese factory output slows"
+  china_slowdown: /\b(china['’]?s?|chinese)\s+(economy|economic|growth|gdp|factory|industrial|exports?|retail sales|data|property)\b.{0,40}\b(slow\w*|miss\w*|weak\w*|contract\w*|falls?|cool\w*|disappoint\w*|slump\w*)|\b(china slowdown|yuan devaluation)\b/i,
+  china_stimulus: /\b(china|chinese|pboc|beijing)\b.{0,40}\b(stimulus|rate cuts?|cuts rates|rrr cut|support measures|bazooka)\b/i,
 };
 
 /** Typical first reaction: [nasdaq, sp500, chips]. */
@@ -73,6 +80,8 @@ export const EVENT_BIAS: Record<EventType, [Direction, Direction, Direction]> = 
   earnings_beat: ["up", "up", "up"],
   earnings_miss: ["down", "down", "down"],
   shutdown_politics: ["flat", "flat", "flat"],
+  china_slowdown: ["down", "down", "down"],
+  china_stimulus: ["flat", "flat", "up"],
 };
 
 export const PLAYBOOK: PlaybookEntry[] = [
@@ -189,6 +198,36 @@ export const PLAYBOOK: PlaybookEntry[] = [
     date: "2018-12-22 to 2019-01-25",
     whatHappenedNext: "S&P 500 rose ~10% during the shutdown (it began near the December 2018 low).",
     lesson: "Shutdowns historically have small market impact. Fed and earnings dominate.",
+  },
+  {
+    type: "china_slowdown",
+    event: "China growth scare after the surprise yuan devaluation",
+    date: "2015-08-11 to 2015-08-24",
+    whatHappenedNext: "Shanghai fell ~8.5% on Aug 24; the S&P 500 dropped ~11% in a week and recovered by early November.",
+    lesson: "China growth scares hit commodities, Asian markets and chipmakers first; the US damage was sharp but temporary.",
+  },
+  {
+    type: "china_stimulus",
+    event: "Beijing's broad stimulus package (rate cuts, bank reserve cut, stock-market support)",
+    date: "2024-09-24",
+    whatHappenedNext: "Chinese stocks rallied roughly 25-30% in under three weeks, then gave back part of it when fiscal details disappointed.",
+    lesson: "Chinese stimulus rallies are fast and policy-driven; they fade unless follow-through spending arrives.",
+  },
+  {
+    type: "tariffs_escalation",
+    region: "vn",
+    event: "US announced a 46% tariff on Vietnamese goods",
+    date: "2025-04-03",
+    whatHappenedNext: "VN-Index fell ~6.7% that day and kept falling for several sessions, then rebounded sharply when the US paused the tariffs on April 9.",
+    lesson: "Vietnam's export-driven market sells off hard on US trade threats; negotiation headlines reverse it just as fast.",
+  },
+  {
+    type: "financial_stress",
+    region: "vn",
+    event: "Vietnam corporate bond freeze after the Van Thinh Phat and SCB arrests",
+    date: "2022-10 to 2022-11",
+    whatHappenedNext: "VN-Index fell roughly 15-20% in six weeks to a mid-November low near 900, then rebounded sharply as foreign funds bought heavily.",
+    lesson: "Credit and bond stress in Vietnam hits real estate, banks and brokers through margin calls; forced selling tends to overshoot.",
   },
 ];
 

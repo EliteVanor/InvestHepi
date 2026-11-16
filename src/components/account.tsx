@@ -10,6 +10,8 @@ export interface Account {
   mode: "multi" | "single";
   user: { email?: string; name?: string; image?: string } | null;
   admin: boolean;
+  /** Refresh button quota: users 5 a day (90 min apart, My Interests); admin 10 a day. */
+  refresh?: { left: number; limit: number; nextAt: string | null } | null;
 }
 
 export const AccountCtx = createContext<Account>({ mode: "single", user: null, admin: false });

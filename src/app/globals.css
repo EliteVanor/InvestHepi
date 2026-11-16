@@ -285,6 +285,13 @@ input, select, textarea { font: inherit; color: inherit; }
 .banner.info { background: var(--accent-tint); }
 .banner.info svg { color: var(--accent); }
 .banner button { color: var(--accent); font-weight: 600; margin-left: auto; white-space: nowrap; }
+/* AI fallback: long button labels wrap under the text on phones instead of squeezing it. */
+.banner.ai-fallback { flex-wrap: wrap; }
+.banner.ai-fallback.top { margin: 0 0 14px; }
+.banner.ai-fallback span { flex: 1 1 240px; }
+.banner.ai-fallback button { white-space: normal; text-align: left; }
+.refresh-btn { position: relative; }
+.refresh-left { position: absolute; top: 2px; right: 2px; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #fff; font-size: 10px; font-weight: 700; line-height: 15px; text-align: center; }
 
 /* ---------- Calls ---------- */
 .calls { display: grid; grid-template-columns: repeat(auto-fill, minmax(290px, 1fr)); gap: 12px; }

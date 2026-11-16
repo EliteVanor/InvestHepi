@@ -21,6 +21,7 @@ delete process.env.SHARED_LANGUAGES;
 const feedsHit: string[] = [];
 const quoted: string[] = [];
 let aiCalls = 0;
+const groqModels: string[] = [];
 const now = Math.floor(Date.now() / 1000);
 const rss = `<?xml version="1.0"?><rss><channel>${[0, 1, 2].map((i) => `<item><title>Chứng khoán tăng điểm phiên ${i} - VnExpress</title><link>https://e/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("")}</channel></rss>`;
 const reply = (lang: string) => JSON.stringify({ headline: `headline-${lang}`, mood: "mixed", summary: ["s"], events: [], watch_next: [], movers: [], scenarios: [], outlook: [{ interest: "Nasdaq", ticker: "QQQ", direction: "up", confidence: 60, horizon: "today", action: "HOLD", action_trigger: "t", rationale: "r", risks: "k" }] });
@@ -48,6 +49,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   }
   if (url.includes("api.groq.com")) {
     aiCalls++;
+    groqModels.push(JSON.parse(String(init?.body)).model);
     const msgs = JSON.parse(String(init?.body)).messages;
     const sys: string = msgs[0].content;
     if (sys.startsWith("You translate")) {
@@ -166,11 +168,21 @@ const OWNER_EMAIL = "owner@example.com";
   assert.equal(tB.total, 1, "Bob's set logged one call (QQQ)");
   assert.equal(tA.total, 0, "Alice's set doesn't follow QQQ, so no call logged for her");
 
-  // ---- users can't refresh (briefings run on a schedule); only the admin can force one
+  // ---- users refresh only their own My Interests: 5 a day, 90 minutes apart, on the lighter model
   aiCalls = 0;
   assert.equal((await refresh.POST(req("/api/refresh?section=world", B, { method: "POST" }))).status, 403, "users can't refresh shared sections");
-  assert.equal((await refresh.POST(req("/api/refresh?section=interests", B, { method: "POST" }))).status, 403, "or their own");
   assert.equal(aiCalls, 0);
+  groqModels.length = 0;
+  const [st1, own] = await json(await refresh.POST(req("/api/refresh?section=interests", B, { method: "POST" })));
+  assert.equal(st1, 200, "a user can refresh their own interests");
+  assert.ok(own.results[0].ok, "and it writes a new briefing");
+  assert.deepEqual([own.quota.left, own.quota.limit], [4, 5], "the reply says how many presses are left");
+  assert.ok(own.quota.nextAt, "and when the next one is allowed");
+  assert.deepEqual(groqModels.filter((m) => !m.includes("qwen")), ["openai/gpt-oss-20b"], "the button uses the lighter model (Gemini when configured, then 20b), not 120b");
+  const [st2, again] = await json(await refresh.POST(req("/api/refresh?section=interests", B, { method: "POST" })));
+  assert.deepEqual([st2, again.error], [429, "wait"], "a second press inside 90 minutes is refused");
+  const [, meB] = await json(await (await import("../src/app/api/me/route")).GET(req("/api/me", B)));
+  assert.equal(meB.refresh.left, 4, "/api/me reports the quota for the button");
   assert.equal((await refresh.POST(req("/api/refresh?section=world", undefined, { method: "POST" }))).status, 401, "guests can't refresh");
   const [, r2] = await json(await refresh.POST(req("/api/refresh?section=world", OWNER_EMAIL, { method: "POST" })));
   assert.equal(r2.results[0].ok && !r2.results[0].cached, true, "the owner can force a refresh");

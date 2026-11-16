@@ -4,21 +4,50 @@ name: Refresh briefings
 
 on:
   schedule:
-    # Times are UTC. Weekdays: pre-market x2, midday, after close. Sunday evening: week-ahead.
-    - cron: "50 11 * * 1-5"   # ~6:50 ET (winter) / 7:50 ET (summer)
-    - cron: "10 13 * * 1-5"   # ~8:10 / 9:10 ET, last run before the open (this is the graded call)
-    - cron: "20 17 * * 1-5"   # midday
-    - cron: "25 21 * * 1-5"   # after the close
-    - cron: "35 22 * * 0"     # Sunday evening
-    # Vietnam only (ICT = UTC+7): before the HOSE open and after the close.
-    - cron: "15 1 * * 1-5"    # 8:15 ICT
-    - cron: "10 8 * * 1-5"    # 15:10 ICT
-  workflow_dispatch: {}
+    # Times are UTC (Hanoi = UTC+7; New York = UTC-5 in winter, UTC-4 in summer).
+    # Weekdays: World 4, US 2, Vietnam 5 briefings; the admin's interests 6 (plus Vercel's 10:30
+    # cron), everyone else's 4. Fits Groq's free daily tokens with room for the admin's refreshes.
+    - cron: "15 1 * * 1-5"    # 08:15 Hanoi, before the HOSE open (graded VN call): vn, world, all interests
+    - cron: "35 4 * * 1-5"    # 11:35 Hanoi, HOSE lunch break: vn, admin's interests
+    - cron: "10 8 * * 1-5"    # 15:10 Hanoi, after the HOSE close; Europe opening: vn, world, all interests
+    - cron: "30 12 * * 1-5"   # 7:30 / 8:30 New York, before the open (graded US call): us, world, vn, all interests
+    - cron: "20 21 * * 1-5"   # after the US close: us, world, vn, all interests
+    # Sunday: shared sections twice (morning and afternoon in each market's time zone), admin's interests 3x.
+    - cron: "0 2 * * 0"       # 09:00 Hanoi: vn, world (Asia morning), admin's interests
+    - cron: "0 8 * * 0"       # 15:00 Hanoi: vn
+    - cron: "5 9 * * 0"       # Asia afternoon / Europe morning: world
+    - cron: "5 14 * * 0"      # 9:05 New York (winter): us, admin's interests
+    - cron: "5 20 * * 0"      # 15:05 New York (winter): us, admin's interests
+  workflow_dispatch:
+    inputs:
+      yahoo_test:
+        description: "Only check whether Yahoo answers GitHub's runners (no app or AI calls)"
+        type: boolean
+        default: false
 
 jobs:
-  refresh:
+  # One-off check: does Yahoo serve GitHub's runners? Touches no secrets, the app or any AI.
+  yahoo-test:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.yahoo_test }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    steps:
+      - name: Ask Yahoo for a few symbols
+        run: |
+          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+          for host in query1 query2; do
+            url="https://$host.finance.yahoo.com/v8/finance/spark?symbols=%5EGSPC,%5EHSI,%5EN225,%5ETNX,VND%3DX,CL%3DF,GC%3DF,%5EVIX,0700.HK,005930.KS&range=1y&interval=1d"
+            code=$(curl -s -o spark.json -w "%{http_code}" -A "$UA" "$url")
+            echo "spark via $host: HTTP $code, $(wc -c < spark.json) bytes"
+            python3 -c "import json;d=json.load(open('spark.json'));[print(' ',k,len(v.get('close') or []),'closes, last',(v.get('close') or [None])[-1]) for k,v in d.items()]" 2>/dev/null || head -c 300 spark.json
+            sleep 3
+          done
+          code=$(curl -s -o chart.json -w "%{http_code}" -A "$UA" "https://query1.finance.yahoo.com/v8/finance/chart/%5EHSI?range=1d&interval=5m")
+          echo "chart ^HSI 1d: HTTP $code"; python3 -c "import json;m=json.load(open('chart.json'))['chart']['result'][0]['meta'];print('  price',m.get('regularMarketPrice'))" 2>/dev/null || head -c 300 chart.json
+
+  refresh:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.yahoo_test) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Refresh each section
         env:
@@ -33,15 +62,25 @@ jobs:
           call() {
             echo "== $1"
             curl -fsS -m 290 --retry 2 --retry-delay 20 \
-              -H "Authorization: Bearer $CRON_SECRET" "${APP_URL%/}/api/refresh?section=$1" || echo "refresh $1 failed"
-            echo
-            sleep 65  # free LLM tiers limit tokens per minute; give each call a fresh minute
+              -H "Authorization: Bearer $CRON_SECRET" "${APP_URL%/}/api/refresh?section=$1" > out.json || echo '{"error":"refresh failed"}' > out.json
+            cat out.json; echo
+            sleep 65  # Groq counts tokens per minute: one briefing per minute per model
           }
-          if [ "$SCHEDULE" = "15 1 * * 1-5" ] || [ "$SCHEDULE" = "10 8 * * 1-5" ]; then
-            call vn; exit 0
-          fi
-          # Shared sections: one briefing per language that active users read.
-          for s in world us vn; do call $s; done
-          # Personal briefings: each call refreshes the 2 stalest interest sets (users with the
-          # same interests and language share one). Raise INTEREST_ROUNDS as you get more users.
-          for i in $(seq 1 ${INTEREST_ROUNDS:-3}); do call interests; done
+          # Interest sets: one per call, the admin's first, until the app says none are due.
+          interests() {
+            for i in $(seq 1 ${INTEREST_ROUNDS:-15}); do
+              call "interests&scope=$1"
+              pending=$(python3 -c "import json;print(json.load(open('out.json')).get('pending',0))" 2>/dev/null || echo 0)
+              [ "$pending" = "0" ] && break
+            done
+          }
+          case "$SCHEDULE" in
+            "15 1 * * 1-5"|"10 8 * * 1-5") call vn; call world; interests all ;;
+            "35 4 * * 1-5")               call vn; interests admin ;;
+            "30 12 * * 1-5"|"20 21 * * 1-5") call us; call world; call vn; interests all ;;
+            "0 2 * * 0")                  call vn; call world; interests admin ;;
+            "0 8 * * 0")                  call vn ;;
+            "5 9 * * 0")                  call world ;;
+            "5 14 * * 0"|"5 20 * * 0")    call us; interests admin ;;
+            *)                            call world; call us; call vn; interests all ;;  # manual run
+          esac

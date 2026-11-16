@@ -215,7 +215,7 @@ export function StockSearchSheet({
                 <div className="ss-main">
                   <div className="ss-sym">
                     <b>{symLabel(h.symbol)}</b>
-                    {h.region === "vn" && <span className="ss-flag" title="Vietnam">VN</span>}
+                    {h.region === "vn" && <span className="ss-flag" title={t("sec.vn")}>VN</span>}
                     {(h.exchange || h.type === "INDEX") && <span className="ss-ex">{h.type === "INDEX" ? "Index" : h.exchange}</span>}
                   </div>
                   <div className="ss-name">{h.name}{h.sub && h.sub !== h.name ? <span> · {h.sub}</span> : null}</div>

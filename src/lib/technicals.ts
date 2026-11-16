@@ -26,6 +26,8 @@ export interface Technicals {
   chg1m?: number;
   chg3m?: number;
   trend: "up" | "down" | "sideways";
+  /** Computed from this tracking ETF's prices (Yahoo unavailable): levels are the ETF's, not the index's. */
+  proxy?: string;
 }
 
 const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
@@ -139,7 +141,7 @@ export async function getTechnicals(symbols: string[]): Promise<Record<string, T
     try {
       const d = await getChart(s, "1y");
       const t = computeTechnicals(s, d.bars, d.price);
-      if (t) out[s] = t;
+      if (t) out[s] = d.proxy ? { ...t, proxy: d.proxy } : t;
     } catch {}
   });
   return out;
@@ -152,9 +154,13 @@ export function technicalsAsText(t: Record<string, Technicals>): string {
   const rows = Object.values(t);
   if (!rows.length) return "(technical data unavailable)";
   return rows
-    .map(
-      (x) =>
-        `${x.symbol}: trend ${x.trend}; vs 20d ${rel(x.price, x.sma20)}, 50d ${rel(x.price, x.sma50)}, 200d ${rel(x.price, x.sma200)}; RSI ${f(x.rsi14, 0)}; 20d range ${f(x.support20)}-${f(x.resistance20)}; ${rel(x.price, x.high52)} from 52w high; typical day ±${f(x.atrPct, 1)}%`,
-    )
+    .map((x) => {
+      // A proxied index only has its ETF's prices: give the range as distances, never as levels the
+      // model could quote as the index (e.g. "Hang Seng support 22.8" when the index is near 25,000).
+      const range = x.proxy
+        ? `20d range ${rel(x.support20 ?? 0, x.price)} to ${rel(x.resistance20 ?? 0, x.price)} from the current level [index level unknown: computed from the ${x.proxy} ETF, so name no price levels]`
+        : `20d range ${f(x.support20)}-${f(x.resistance20)}`;
+      return `${x.symbol}: trend ${x.trend}; vs 20d ${rel(x.price, x.sma20)}, 50d ${rel(x.price, x.sma50)}, 200d ${rel(x.price, x.sma200)}; RSI ${f(x.rsi14, 0)}; ${range}; ${rel(x.price, x.high52)} from 52w high; typical day ±${f(x.atrPct, 1)}%`;
+    })
     .join("\n");
 }

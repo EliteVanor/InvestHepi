@@ -128,8 +128,11 @@ export function parseVndirect(j: unknown, index: boolean): Map<string, Bar[]> {
   for (const r of rows) {
     const vol = num(r.nmVolume ?? r.accumulatedVol);
     if (!(vol > 0)) continue;
-    const c = num(r.close) * k;
-    const bar = { t: vndTime(String(r.date)), o: num(r.open) * k || c, h: num(r.high) * k || c, l: num(r.low) * k || c, c, v: vol };
+    // Stocks: prefer the adjusted columns (adClose...) so stock dividends and splits don't show up as
+    // crashes in 52-week highs, averages and multi-week returns. They equal the raw price for the latest bar.
+    const pick = (field: string) => num(r[`ad${field[0].toUpperCase()}${field.slice(1)}`]) || num(r[field]);
+    const c = pick("close") * k;
+    const bar = { t: vndTime(String(r.date)), o: pick("open") * k || c, h: pick("high") * k || c, l: pick("low") * k || c, c, v: vol };
     if (!sane(bar)) continue;
     const code = String(r.code).toUpperCase();
     (out.get(code) ?? out.set(code, []).get(code)!).push(bar);

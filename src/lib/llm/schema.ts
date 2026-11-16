@@ -1,6 +1,14 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { z } from "zod";
+import { PLAYBOOK } from "../analogs";
 import type { Analysis } from "../types";
+
+/** The model sometimes copies a playbook tag ("inflation_hot") as the event name: swap in the plain description. */
+export function analogEventName(event: string, date?: string): string {
+  if (!/^[a-z]+(_[a-z]+)+$/.test(event.trim())) return event;
+  const all = PLAYBOOK.filter((p) => p.type === event.trim());
+  return (all.find((p) => p.date === date) ?? all[0])?.event ?? event.replace(/_/g, " ");
+}
 
 // Kept free of min/max constraints so it works as a Claude structured-output schema too.
 const Direction = z.enum(["up", "down", "flat"]);
@@ -96,7 +104,7 @@ export function toAnalysis(r: RawAnalysis): Analysis {
       importance: clamp(e.importance, 1, 5),
       sourceIds: e.source_ids ?? [],
       impacts: (e.impacts ?? []).map((i) => ({ ...i, confidence: clamp(i.confidence, 0, 100) })),
-      analog: e.analog ? { event: e.analog.event, date: e.analog.date, whatHappenedNext: e.analog.what_happened_next } : null,
+      analog: e.analog ? { event: analogEventName(e.analog.event, e.analog.date), date: e.analog.date, whatHappenedNext: e.analog.what_happened_next } : null,
       whatCouldGoWrong: e.what_could_go_wrong,
     })),
     outlook: (r.outlook ?? []).map((o) => ({

@@ -120,13 +120,28 @@ async function nasdaqJson(path: string, classes: string[]): Promise<{ data: unkn
   throw new Error(`nasdaq ${last}`);
 }
 
+/**
+ * Nasdaq's intraday `x` is New York wall-clock time written as if it were UTC (x = "04:00Z" for
+ * "4:00 AM ET"). Shift it by New York's UTC offset at that moment so charts label the real time.
+ * DST switches happen at 2 AM on a Sunday, when nothing trades, so the offset lookup is safe.
+ */
+export function nyWallToUtc(sec: number): number {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric", hour12: false })
+      .formatToParts(new Date(sec * 1000))
+      .map((x) => [x.type, Number(x.value)]),
+  );
+  const wallAsUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour % 24, p.minute, p.second) / 1000;
+  return sec + (sec - wallAsUtc); // offset is negative in New York, so this adds 4-5 hours
+}
+
 /** Exported for tests. */
 export function parseNasdaqIntraday(d: unknown, symbol: string): ChartData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = d as any;
   const pts: { x: number; y: unknown }[] = data?.chart ?? [];
   const bars: Bar[] = pts
-    .map((p) => ({ t: Math.floor(Number(p.x) / 1000), c: nasdaqNum(p.y) }))
+    .map((p) => ({ t: nyWallToUtc(Math.floor(Number(p.x) / 1000)), c: nasdaqNum(p.y) }))
     .filter((p) => p.t > 0 && p.c > 0)
     .map((p) => ({ t: p.t, o: p.c, h: p.c, l: p.c, c: p.c, v: 0 }));
   if (bars.length < 2) throw new Error("nasdaq: no intraday data");
@@ -155,7 +170,8 @@ export function parseNasdaqHistorical(d: unknown, symbol: string, range: ChartRa
 async function nasdaqChart(symbol: string, range: ChartRange): Promise<ChartData> {
   const idx = NASDAQ_INDEX[symbol];
   if (!idx && /[=^]|-USD$|\./.test(symbol)) throw new Error("nasdaq: unsupported symbol");
-  const code = encodeURIComponent(idx ?? symbol);
+  // Share classes: Yahoo writes BRK-B, Nasdaq writes BRK.B.
+  const code = encodeURIComponent(idx ?? symbol.replace(/^([A-Z]{1,5})-([A-Z])$/, "$1.$2"));
   const classes = idx ? ["index"] : ["stocks", "etf"];
   if (range === "1d") return parseNasdaqIntraday((await nasdaqJson(`${code}/chart`, classes)).data, symbol);
   const days = { "5d": 10, "1mo": 35, "6mo": 190, "1y": 370 }[range];

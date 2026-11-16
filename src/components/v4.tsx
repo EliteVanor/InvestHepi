@@ -13,6 +13,7 @@ import { IconAlert, IconCalendar, IconEye, IconHistory, IconPlus, IconSearch, Ic
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { Ring, arrow, fmtPct, fmtPrice } from "./primitives";
 import { useLiveQuotes } from "./v3";
+import { calTitle, calWhen, groupName, moodDetail } from "./labels";
 
 /* ---------------------------------------------------------------- toasts */
 
@@ -188,7 +189,7 @@ export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; 
             <div className="cu-call">
               <Ring value={o.confidence} direction={o.direction} size={72} />
               <div>
-                <div className="cu-name">{o.interest}</div>
+                <div className="cu-name">{groupName(t, o.interest)}</div>
                 <div className="call-sub">
                   {o.ticker} · <span className={o.direction}>{arrow(o.direction)} {t(`dir.${o.direction}` as MsgKey)}</span> · {o.horizon === "today" ? t("calls.today") : t("calls.thisWeek")}
                 </div>
@@ -233,7 +234,7 @@ export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; 
             <div className="impacts">
               {e.impacts.map((im, j) => (
                 <span key={j} className={`chip ${im.direction}`}>
-                  {arrow(im.direction)} {im.interest} · {im.confidence}%
+                  {arrow(im.direction)} {groupName(t, im.interest)} · {im.confidence}%
                 </span>
               ))}
             </div>
@@ -242,7 +243,7 @@ export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; 
                 <div className="analog-label">
                   <IconHistory /> {t("events.past")} · {e.analog.date}
                 </div>
-                <b style={{ fontWeight: 600 }}>{e.analog.event}.</b> {e.analog.whatHappenedNext}
+                {!/^[a-z]+(_[a-z]+)+$/.test(e.analog.event) && <b style={{ fontWeight: 600 }}>{e.analog.event}. </b>}{e.analog.whatHappenedNext}
               </div>
             )}
             <div className="wrong">
@@ -278,8 +279,8 @@ export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; 
             {cal.map((e, i) => (
               <div key={i} className="cu-row">
                 <div>
-                  <b>{e.title}</b>
-                  <span className="muted">{fmtDay.format(new Date(e.date + "T12:00:00Z"))}{e.time ? ` · ${e.time}` : ""}</span>
+                  <b>{calTitle(t, e)}</b>
+                  <span className="muted">{fmtDay.format(new Date(e.date + "T12:00:00Z"))}{e.time ? ` · ${calWhen(t, e.time)}` : ""}</span>
                 </div>
               </div>
             ))}
@@ -464,7 +465,7 @@ export function MoodGaugeCard({ gauge }: { gauge?: MoodGauge }) {
           {gauge.parts.map((p) => (
             <div key={p.key} className="gauge-part">
               <span>{t(`mood.part.${p.key}` as MsgKey)}</span>
-              <span className="muted num">{p.detail}</span>
+              <span className="muted num">{moodDetail(t, p.detail)}</span>
               <div className="scen-bar">
                 <i style={{ width: `${p.score}%`, background: p.score < 45 ? "var(--red)" : p.score > 55 ? "var(--green)" : "var(--orange)" }} />
               </div>

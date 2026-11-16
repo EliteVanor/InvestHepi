@@ -127,21 +127,32 @@ export function quotesAsText(quotes: Quote[]): string {
       const mo = h.length > 1 ? ((q.price - h[0][1]) / h[0][1]) * 100 : NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       const name = symLabel(q.symbol);
-      return `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}${q.proxy ? ` [priced via the ${q.proxy} ETF]` : ""}: ${q.price.toFixed(2)}${q.stale ? " [stale, from an earlier fetch]" : ""} (last session ${f(q.changePct)}, 5d ${f(wk)}, 1mo ${f(mo)})`;
+      const label = `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}`;
+      // Proxied: the price is the ETF's (EWH ~23 for a Hang Seng near 25,000), so give moves only.
+      const level = q.proxy ? `level unknown [tracked by the ${q.proxy} ETF: use % moves only, never quote a price level]` : q.price.toFixed(2);
+      return `${label}: ${level}${q.stale ? " [stale, from an earlier fetch]" : ""} (last session ${f(q.changePct)}, 5d ${f(wk)}, 1mo ${f(mo)})`;
     })
     .join("\n");
 }
 
 export const macroLabel = (symbol: string) => symLabel(symbol);
+/** Names for the AI, where the short UI label is ambiguous ("Dollar" was read as USD/VND). */
+const PROMPT_NAMES: Record<string, string> = { "DX-Y.NYB": "US dollar index (DXY, vs euro, yen etc.; not USD/VND)", "^TNX": "US 10-year Treasury yield (%)" };
+const promptName = (s: string) => PROMPT_NAMES[s] ?? macroLabel(s);
 
-export function macroAsText(quotes: Quote[]): string {
-  if (!quotes.length) return "(macro data unavailable)";
-  return quotes
+export function macroAsText(quotes: Quote[], wanted: string[] = []): string {
+  // Say what's missing, so the model doesn't fill the gap from memory or from a look-alike row.
+  const missing = wanted.filter((s) => !quotes.some((q) => q.symbol === s)).map((s) => `${promptName(s)}: unavailable today (don't guess it)`);
+  if (!quotes.length) return missing.length ? missing.join("\n") : "(macro data unavailable)";
+  return [...quotes
     .map((q) => {
       const h = q.history;
       const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
-      return `${macroLabel(q.symbol)}: ${q.price.toFixed(2)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;
-    })
+      if (!q.proxy) return `${promptName(q.symbol)}: ${q.price.toFixed(2)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;
+      // e.g. USO ~145 is not "oil at $145", UUP ~29.5 is not the dollar index (or USD/VND).
+      const note = q.symbol === "^VIX" ? "the VIXY futures ETF: direction only, it moves less than the VIX itself" : `the ${q.proxy} ETF: % moves only`;
+      return `${promptName(q.symbol)}: level unknown [tracked by ${note}; never quote a price level] (1d ${f(q.changePct)}, 5d ${f(wk)})`;
+    }), ...missing]
     .join("\n");
 }

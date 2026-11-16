@@ -304,7 +304,7 @@ export function AlertsTab({ prefillSymbol }: { prefillSymbol?: string }) {
         </div>
         <div className="pa-form">
           <input className="input num" placeholder={t("al.symbol")} value={form.symbol} onChange={(e) => setForm({ ...form, symbol: e.target.value.toUpperCase() })} maxLength={12} aria-label={t("al.symbol")} />
-          <select value={form.op} onChange={(e) => setForm({ ...form, op: e.target.value as PriceOp })} aria-label="Condition">
+          <select value={form.op} onChange={(e) => setForm({ ...form, op: e.target.value as PriceOp })} aria-label={t("ui.condition")}>
             {(["above", "below", "pct_up", "pct_down"] as PriceOp[]).map((op) => (
               <option key={op} value={op}>
                 {opLabel(op)}

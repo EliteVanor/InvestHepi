@@ -55,6 +55,25 @@ export function fomcEvents(from: string, to: string): { events: CalendarEvent[];
   return { events, covered };
 }
 
+/**
+ * VN30 index futures expire on the third Thursday of each month (HNX rule; a holiday moves it to the
+ * previous session, which isn't modeled). Expiry days often bring sharp moves in VN30 large caps.
+ * Exported for tests.
+ */
+export function vnFuturesExpiry(from: string, to: string): CalendarEvent[] {
+  const out: CalendarEvent[] = [];
+  const start = new Date(from + "T12:00:00Z");
+  for (let i = 0; i < 3; i++) {
+    const y = start.getUTCFullYear();
+    const m = start.getUTCMonth() + i;
+    const first = new Date(Date.UTC(y, m, 1, 12));
+    const thursday = 1 + ((4 - first.getUTCDay() + 7) % 7) + 14;
+    const date = new Date(Date.UTC(y, m, thursday, 12)).toISOString().slice(0, 10);
+    if (date >= from && date <= to) out.push({ date, time: "14:45 ICT", kind: "macro", title: "VN30 futures expiry", importance: 2 });
+  }
+  return out;
+}
+
 const BLS_RELEASES: [RegExp, string, 1 | 2 | 3][] = [
   [/consumer price index/i, "CPI inflation", 3],
   [/employment situation/i, "Jobs report (nonfarm payrolls)", 3],
@@ -160,6 +179,7 @@ export async function buildCalendar(interests: Interest[], now = new Date()): Pr
   if (!f.covered) notes.push("FOMC dates for next year aren't in the app yet (update src/lib/calendar.ts).");
 
   const tickers = [...new Set(interests.flatMap((i) => i.tickers))];
+  if (tickers.some((t) => t.toUpperCase().endsWith(".VN"))) events.push(...vnFuturesExpiry(from, to));
   const [bls, earnings] = await Promise.allSettled([
     blsEvents(from, to),
     process.env.FINNHUB_API_KEY

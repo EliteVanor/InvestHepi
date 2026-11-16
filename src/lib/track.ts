@@ -7,6 +7,7 @@
  * calls on the 5th session's close.
  */
 import { getQuotes } from "./market";
+import { exchangeTz } from "./symbols";
 import { getJSON, setJSON } from "./store";
 import type { Call, Interest, Outlook } from "./types";
 
@@ -38,10 +39,38 @@ function addDays(iso: string, n: number): string {
 }
 const isWeekend = (iso: string) => [0, 6].includes(new Date(iso + "T12:00:00Z").getUTCDay());
 
-/** Date of the next regular session that has not opened yet (holidays ignored; grading handles them). */
-export function targetSession(now: Date): string {
-  const { date, mins } = etNow(now);
-  let d = !isWeekend(date) && mins < 570 ? date : addDays(date, 1);
+/** Local opening time (minutes after midnight) of each exchange time zone. */
+const OPEN_MINS: Record<string, number> = {
+  "America/New_York": 570, // 9:30
+  "Asia/Ho_Chi_Minh": 540, // HOSE 9:00
+  "Asia/Tokyo": 540,
+  "Asia/Seoul": 540,
+  "Asia/Hong_Kong": 570,
+  "Asia/Shanghai": 570,
+  "Asia/Kolkata": 555,
+  "Europe/London": 480,
+  "Europe/Berlin": 540,
+  "Europe/Paris": 540,
+};
+
+function localNow(d: Date, timeZone: string) {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
+      .formatToParts(d)
+      .map((x) => [x.type, x.value]),
+  );
+  return { date: `${p.year}-${p.month}-${p.day}`, mins: (Number(p.hour) % 24) * 60 + Number(p.minute) };
+}
+
+/**
+ * Date of the next regular session that has not opened yet ON THE TICKER'S OWN EXCHANGE (holidays
+ * ignored; grading handles them). Using New York's clock for everything let a Vietnam briefing written
+ * at 11:00 in Hanoi be graded on a HOSE session that was already half over.
+ */
+export function targetSession(now: Date, ticker = "SPY"): string {
+  const tz = exchangeTz(ticker);
+  const { date, mins } = localNow(now, tz);
+  let d = !isWeekend(date) && mins < (OPEN_MINS[tz] ?? 570) ? date : addDays(date, 1);
   while (isWeekend(d)) d = addDays(d, 1);
   return d;
 }
@@ -54,12 +83,12 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
   if (provider === "rules") return 0; // only grade real analyses
   const tracked = new Map<string, Interest>();
   for (const it of interests) for (const t of it.tickers) tracked.set(t.toUpperCase(), it);
-  const date = targetSession(now);
   const calls = await loadCalls(key);
   let n = 0;
   for (const o of outlook) {
     const it = tracked.get(o.ticker);
     if (!it) continue;
+    const date = targetSession(now, o.ticker);
     const horizon = o.horizon === "this week" ? "w" : "d";
     const id = `${date}:${o.ticker}:${horizon}`;
     const call: Call = {

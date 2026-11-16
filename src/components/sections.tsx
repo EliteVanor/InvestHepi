@@ -11,7 +11,8 @@ import {
 } from "./Icons";
 import { usePrefs } from "./prefs";
 import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
-import { isPercentQuote, symLabel } from "@/lib/symbols";
+import { isPercentQuote } from "@/lib/symbols";
+import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";
 
 
 /* ---------------------------------------------------------------- Market */
@@ -139,7 +140,7 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
             {g.quotes.map((q) => (
               <button key={q.symbol} className={`qcard${q.stale ? " stale" : ""}`} role="listitem" onClick={() => open(q.symbol)} title={q.stale ? t("strip.stale") : undefined}>
                 <div className="sym">
-                  <span>{symLabel(q.symbol)}</span>
+                  <span>{symName(t, q.symbol)}</span>
                   <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
                 </div>
                 <div className="px num">
@@ -155,7 +156,7 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
         {macro.map((q) => (
           <button key={q.symbol} className={`qcard macro${q.stale ? " stale" : ""}`} role="listitem" onClick={() => open(q.symbol)} title={q.stale ? t("strip.stale") : undefined}>
             <div className="sym">
-              <span>{symLabel(q.symbol)}</span>
+              <span>{symName(t, q.symbol)}</span>
             </div>
             <div className="px num">
               {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : fmtPrice(q.price)}
@@ -181,15 +182,22 @@ export function briefingText(d: Digest, t: ReturnType<typeof usePrefs>["t"]): st
   const lines = [a.headline, "", ...a.summary.map((s) => `• ${s}`)];
   if (a.outlook.length) {
     lines.push("", t("calls.title"));
-    for (const o of a.outlook) lines.push(`• ${o.interest} (${symLabel(o.ticker)}): ${t(`act.${o.action}`)} · ${t(`dir.${o.direction}`)} · ${o.confidence}%. ${o.actionTrigger}`);
+    for (const o of a.outlook) lines.push(`• ${groupName(t, o.interest)} (${symName(t, o.ticker)}): ${t(`act.${o.action}`)} · ${t(`dir.${o.direction}`)} · ${o.confidence}%. ${o.actionTrigger}`);
   }
   if (a.watchNext.length) lines.push("", t("watch.title"), ...a.watchNext.map((w) => `• ${w}`));
   return lines.join("\n");
 }
 
 export function Briefing({
-  digest, viewingOld, onBackToLatest, onHistory, onCatchUp, translating,
-}: { digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void; onCatchUp: () => void; translating?: boolean }) {
+  digest, viewingOld, onBackToLatest, onHistory, onCatchUp, translating, translateFailed, aiFailedAt, rulesView, onToggleRules,
+}: {
+  digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void; onCatchUp: () => void; translating?: boolean; translateFailed?: boolean;
+  /** The latest run couldn't use AI (when): the briefing shown is the last AI one. */
+  aiFailedAt?: string | null;
+  /** Showing the rule-based copy instead. */
+  rulesView?: boolean;
+  onToggleRules?: (on: boolean) => void;
+}) {
   const { t, lang } = usePrefs();
   const a = digest.analysis;
   const [speaking, setSpeaking] = useState(false);
@@ -247,6 +255,17 @@ export function Briefing({
 
   return (
     <section className="card hero" aria-labelledby="brief-h">
+      {aiFailedAt && !viewingOld && onToggleRules && (
+        <div className="banner ai-fallback top" role="status">
+          <IconInfo16 />
+          <span>
+            {rulesView
+              ? t("ai.rulesBanner")
+              : t("ai.failedBanner", { age: relTime(digest.generatedAt, lang), time: new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" }).format(new Date(aiFailedAt)) })}
+          </span>
+          <button onClick={() => onToggleRules(!rulesView)}>{rulesView ? t("ai.backToAi") : t("ai.showRules")}</button>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span className="chip accent">
           <IconSparkles width={13} height={13} /> {t("brief.title")}
@@ -269,7 +288,7 @@ export function Briefing({
       {langMismatch && !viewingOld && (
         <div className="banner info">
           <IconInfo16 />
-          <span>{translating ? t("brief.translating", { lang: langInfo(lang).native }) : t("brief.langMismatch", { lang: langInfo(digest.language!).native })}</span>
+          <span>{translating ? t("brief.translating", { lang: langInfo(lang).native }) : translateFailed ? t("brief.translateFailed") : t("brief.langMismatch", { lang: langInfo(digest.language!).native })}</span>
         </div>
       )}
       <div className="hero-meta">
@@ -323,10 +342,10 @@ export function Calls({ outlook, onTicker }: { outlook: Outlook[]; onTicker: (s:
             <div className="call-head">
               <Ring value={o.confidence} direction={o.direction} />
               <div>
-                <div className="call-name">{o.interest}</div>
+                <div className="call-name">{groupName(t, o.interest)}</div>
                 <div className="call-sub">
                   <button onClick={() => onTicker(o.ticker)} style={{ color: "var(--accent)", fontWeight: 600 }}>
-                    {symLabel(o.ticker)}
+                    {symName(t, o.ticker)}
                   </button>{" "}
                   · <span className={o.direction}>{arrow(o.direction)} {t(`dir.${o.direction}`)}</span> ·{" "}
                   {o.horizon === "today" ? t("calls.today") : t("calls.thisWeek")}
@@ -362,7 +381,7 @@ export function Movers({ movers, quotes, onTicker }: { movers: Digest["analysis"
         return (
           <div className="mover" key={m.ticker}>
             <button className="mover-tk" onClick={() => onTicker(m.ticker)}>
-              {symLabel(m.ticker)}
+              {symName(t, m.ticker)}
             </button>
             <span className={`mover-chg num ${chg >= 0 ? "up" : "down"}`}>{fmtPct(chg)}</span>
             <div className="mover-why">{m.why}</div>
@@ -411,7 +430,7 @@ export function Events({ events, news }: { events: KeyEvent[]; news: NewsItem[] 
           <div className="impacts">
             {e.impacts.map((im, j) => (
               <span key={j} className={`chip ${im.direction}`} title={im.reasoning}>
-                {arrow(im.direction)} {im.interest} · {im.confidence}%
+                {arrow(im.direction)} {groupName(t, im.interest)} · {im.confidence}%
               </span>
             ))}
           </div>
@@ -420,7 +439,7 @@ export function Events({ events, news }: { events: KeyEvent[]; news: NewsItem[] 
               <div className="analog-label">
                 <IconHistory /> {t("events.past")} · {e.analog.date}
               </div>
-              <b style={{ fontWeight: 600 }}>{e.analog.event}.</b> {e.analog.whatHappenedNext}
+              {!/^[a-z]+(_[a-z]+)+$/.test(e.analog.event) && <b style={{ fontWeight: 600 }}>{e.analog.event}. </b>}{e.analog.whatHappenedNext}
             </div>
           )}
           <div className="wrong">
@@ -465,7 +484,6 @@ export function UpNext({ events, notes }: { events: CalendarEvent[]; notes: stri
     return [...m.entries()];
   }, [events]);
   const fmt = new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
-  const when = (s?: string) => (s === "before open" ? t("cal.beforeOpen") : s === "after close" ? t("cal.afterClose") : s ?? "");
   return (
     <section className="card" aria-labelledby="cal-h">
       <h2 className="card-title" id="cal-h">
@@ -480,13 +498,13 @@ export function UpNext({ events, notes }: { events: CalendarEvent[]; notes: stri
           {evs.map((e, i) => (
             <div className="cal-ev" key={i}>
               <span className={`bar i${e.importance}`} />
-              <span>{e.title}</span>
-              <span className="when">{when(e.time)}</span>
+              <span>{calTitle(t, e)}</span>
+              <span className="when">{calWhen(t, e.time)}</span>
             </div>
           ))}
         </div>
       ))}
-      {notes.length > 0 && <div className="note">{notes.join(" ")}</div>}
+      {calNotes(t, notes).length > 0 && <div className="note">{calNotes(t, notes).join(" ")}</div>}
     </section>
   );
 }
@@ -581,7 +599,7 @@ export function Headlines({
       {list.length === 0 && <p className="muted" style={{ padding: "12px 0" }}>{filter === "saved" && !needle ? t("news.savedEmpty") : t("news.none")}</p>}
       {list.map((n) => (
         <div className={`news ${newIds.has(n.id) ? "is-new" : ""}`} key={n.id}>
-          <a href={n.link} target="_blank" rel="noreferrer">
+          <a href={n.link} target="_blank" rel="noreferrer" title={n.titleOrig}>
             {n.title}
           </a>
           <div className="news-actions">
