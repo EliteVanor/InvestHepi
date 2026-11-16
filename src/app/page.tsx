@@ -541,7 +541,7 @@ function App() {
           <button className="icon-btn" aria-label={t("search.title")} title={t("search.title")} onClick={() => setSheet({ kind: "search" })}>
             <IconSearch />
           </button>
-          <button className="icon-btn desktop-only news-jump" aria-label={t("news.title")} title={`${t("news.title")} (N)`} onClick={jumpToNews} disabled={!shown}>
+          <button className="icon-btn news-jump" aria-label={t("news.title")} title={`${t("news.title")} (N)`} onClick={jumpToNews} disabled={!shown}>
             <IconNews />
             {newIds.size > 0 && <span className="refresh-left num">{newIds.size > 99 ? "99+" : newIds.size}</span>}
           </button>
