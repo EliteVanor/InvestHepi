@@ -506,7 +506,8 @@ export interface PaletteActions {
   ask: (q?: string) => void;
   catchup: () => void;
   searchNews: (q: string) => void;
-  refresh: () => void;
+  /** Only for the admin: briefings refresh on a schedule. */
+  refresh?: () => void;
   theme: () => void;
   track: () => void;
   settings: (tab?: "general" | "interests" | "holdings" | "status" | "alerts") => void;
@@ -552,7 +553,7 @@ export function CommandPalette({ onClose, tickers, actions, readOnly }: { onClos
       ...tickers.map((s) => ({ id: `t-${s}`, group: g.tk, label: t("cmd.chart", { s }), sub: s, icon: <IconChart />, run: () => actions.ticker(s), keywords: s })),
       { id: "a-catch", group: g.act, label: t("sc.catchup"), sub: "C", icon: <IconBolt />, run: actions.catchup },
       { id: "a-ask", group: g.act, label: t("ask.title"), sub: "A", icon: <IconSparkles />, run: () => actions.ask() },
-      { id: "a-refresh", group: g.act, label: t("nav.refresh"), sub: "R", icon: <IconRefresh />, run: actions.refresh },
+      ...(actions.refresh ? [{ id: "a-refresh", group: g.act, label: t("nav.refresh"), sub: "R", icon: <IconRefresh />, run: actions.refresh }] : []),
       { id: "a-track", group: g.act, label: t("nav.track"), sub: "T", icon: <IconTarget />, run: actions.track },
       { id: "a-alerts", group: g.act, label: t("set.alerts"), icon: <IconBolt />, run: () => actions.settings("alerts") },
       { id: "a-int", group: g.act, label: t("set.interests"), icon: <IconStar />, run: () => actions.settings("interests") },

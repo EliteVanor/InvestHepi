@@ -28,7 +28,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     assert.ok(body.messages[1].content.includes("HEADLINES"));
     assert.ok(body.messages[1].content.includes("UPCOMING CATALYSTS"), "calendar in prompt");
     assert.ok(body.messages[1].content.includes("MACRO:"), "macro in prompt");
-    assert.ok(body.messages[0].content.includes("LANGUAGE: Write every human-readable text value") && body.messages[0].content.includes("Vietnamese"), "briefing language rule in system prompt");
+    assert.ok(!body.messages[0].content.includes("LANGUAGE:"), "briefings are always generated in English (readers get translations), even with Vietnamese chosen");
     assert.equal(body.reasoning_effort, "low", "low reasoning effort on free Groq");
     assert.ok(body.max_tokens <= 4096, "output capped for free-tier TPM");
     assert.ok(body.messages[0].content.length + body.messages[1].content.length < 14000, "compact prompt stays small");
@@ -49,7 +49,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   assert.equal(d.analysis.events[0].importance, 5);
   assert.equal(d.analysis.outlook[0].action, "BUY");
   assert.equal(d.analysis.outlook[1].horizon, "this week");
-  assert.equal(d.language, "vi", "digest records briefing language");
+  assert.equal(d.language, "en", "generated in English; readers get it translated into their language");
   assert.ok(lastBody, "groq was called");
 
   // Fallback: Groq rate-limited -> Gemini used, note explains why.

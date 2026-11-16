@@ -140,7 +140,7 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
 
    Then in the app go to Settings → Alerts: turn alerts on, enter your email, press **Send test email**.
 6. **Turn on the scheduler**: GitHub repo → Settings → Secrets and variables → Actions → add `APP_URL` (your Vercel URL, e.g. `https://investhepi-xyz.vercel.app`) and `CRON_SECRET` (same value as in Vercel). Run it once by hand from the Actions tab → "Refresh briefings" → Run workflow. A second workflow, "Price alerts", checks prices every 20 minutes during US market hours (no AI, ~600 of the 2,000 free monthly Action minutes on a private repo). Want it every minute? Create a free job at [cron-job.org](https://cron-job.org) that calls `GET https://YOUR-APP/api/alerts/check` with the header `Authorization: Bearer YOUR_CRON_SECRET`.
-7. Open the site, enter your password, and press **↻ Refresh** on any section.
+7. Open the site, enter your password, and press **↻ Refresh** on any section (only you, the admin, see that button; everyone else gets the scheduled refreshes).
 
 ### Vietnam tab
 
@@ -173,7 +173,8 @@ By default the app is just for you, behind `APP_PASSWORD`. To let anyone sign in
 What changes:
 - Visitors read World, US and Vietnam without signing in, in their language, and land on World (Vietnam for Vietnamese readers). My Interests is personal: visitors see what an account gets and a Google sign-in button. Saving interests, holdings, alerts, Ask AI and refresh need an account. The password prompt goes away.
 - World, US and Vietnam are generated once per language and shared by everyone. Personal briefings are shared too when interests and language match exactly, so 50 people on the defaults cost the same as one.
-- The scheduler refreshes the 2 stalest personal sets per call, 3 calls per run (6 sets, about 5x a day). Past roughly 6 distinct interest sets, briefings get refreshed less often, not more expensively. Raise the `INTEREST_ROUNDS` repo variable when you have the quota for it. Manual refresh has a cooldown (30 min shared, 5 min personal) to protect the free AI tier.
+- The scheduler refreshes the 2 stalest personal sets per call, 3 calls per run (6 sets, about 5x a day). Past roughly 6 distinct interest sets, briefings get refreshed less often, not more expensively. Raise the `INTEREST_ROUNDS` repo variable when you have the quota for it. Users can't refresh by hand; only the admin (`OWNER_EMAIL`) can. A new interest set gets its first briefing automatically when it's saved (capped at `AUTOGEN_DAILY_LIMIT`, default 6 a day per user; free if someone already follows the same set).
+- One language setting per person, for the app, briefings and alert emails. Every briefing is generated in English and translated for each reader, so people with the same interests share one briefing whatever language they read, and switching language never re-runs an analysis.
 - Actions minutes: each run is now about 7 minutes. Fine on a public repo (unlimited); on a private repo that plus price alerts is about 1,300 of the 2,000 free minutes.
 
 ### Adding Claude later

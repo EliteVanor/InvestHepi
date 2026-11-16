@@ -23,13 +23,12 @@ export type Tab = "general" | "interests" | "holdings" | "alerts" | "status" | "
 
 /** iOS-style settings: a root list that drills into pages. */
 export function SettingsSheet({
-  onClose, initialTab, onInterestsSaved, onBriefingLangSaved, onHoldingsSaved, prefillSymbol, readOnly,
+  onClose, initialTab, onInterestsSaved, onHoldingsSaved, prefillSymbol, readOnly,
 }: {
   readOnly?: boolean;
   onClose: () => void;
   initialTab?: Tab;
   onInterestsSaved: () => void;
-  onBriefingLangSaved: () => void;
   onHoldingsSaved: (h: Holding[]) => void;
   prefillSymbol?: string;
 }) {
@@ -73,7 +72,7 @@ export function SettingsSheet({
           ))}
         </div>
       )}
-      {page === "general" && <GeneralTab onBriefingLangSaved={onBriefingLangSaved} />}
+      {page === "general" && <GeneralTab />}
       {page === "interests" && <InterestsTab onSaved={onInterestsSaved} />}
       {page === "holdings" && <HoldingsEditor onSaved={onHoldingsSaved} />}
       {page === "alerts" && <AlertsTab prefillSymbol={prefillSymbol} />}
@@ -83,36 +82,15 @@ export function SettingsSheet({
   );
 }
 
-function GeneralTab({ onBriefingLangSaved }: { onBriefingLangSaved: () => void }) {
+function GeneralTab() {
   const { t, theme, setTheme, lang, setLang, api, forgetPassword } = usePrefs();
   const acc = useAccount();
-  const [settings, setSettings] = useState<Settings | null>(null);
-  const [briefLang, setBriefLang] = useState<string>("en");
-  const [saving, setSaving] = useState(false);
-  const [msg, setMsg] = useState("");
-
-  useEffect(() => {
-    api<Settings>("/api/settings")
-      .then((s) => {
-        setSettings(s);
-        setBriefLang(s.briefingLanguage);
-      })
-      .catch(() => {});
-  }, [api]);
-
-  const saveBrief = async () => {
-    setSaving(true);
-    setMsg("");
-    try {
-      await api("/api/settings", { method: "PUT", body: JSON.stringify({ briefingLanguage: briefLang }) });
-      setSettings({ briefingLanguage: briefLang });
-      setMsg(t("set.saved"));
-      onBriefingLangSaved();
-    } catch (e) {
-      setMsg((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
+  // One language for everything: the interface, briefing translations and alert emails. Briefings are
+  // always written in English and translated, so changing it never re-runs an analysis.
+  const pickLang = (l: LangCode) => {
+    setLang(l);
+    const canSave = acc.mode === "multi" ? !!acc.user : true;
+    if (canSave) api("/api/settings", { method: "PUT", body: JSON.stringify({ briefingLanguage: l }) }).catch(() => {});
   };
 
   const themes: [Theme, MsgKey][] = [
@@ -137,17 +115,7 @@ function GeneralTab({ onBriefingLangSaved }: { onBriefingLangSaved: () => void }
         <div className="group">
           <label className="row">
             <span className="label">{t("set.uiLang")}</span>
-            <select value={lang} onChange={(e) => setLang(e.target.value as LangCode)}>
-              {LANGUAGES.map((l) => (
-                <option key={l.code} value={l.code}>
-                  {l.native}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="row">
-            <span className="label">{t("set.briefLang")}</span>
-            <select value={briefLang} onChange={(e) => setBriefLang(e.target.value)} disabled={!settings}>
+            <select value={lang} onChange={(e) => pickLang(e.target.value as LangCode)}>
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
                   {l.native}
@@ -157,14 +125,6 @@ function GeneralTab({ onBriefingLangSaved }: { onBriefingLangSaved: () => void }
           </label>
         </div>
         <p className="hint">{t("set.briefLangHint")}</p>
-        {settings && briefLang !== settings.briefingLanguage && (
-          <div className="sheet-actions">
-            <button className="btn-primary" onClick={saveBrief} disabled={saving}>
-              {saving ? t("set.saving") : t("set.save")}
-            </button>
-          </div>
-        )}
-        {msg && <p className="hint ok">{msg}</p>}
       </div>
       {acc.mode !== "multi" && (
         <div className="sheet-section">
