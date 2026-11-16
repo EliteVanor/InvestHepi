@@ -244,6 +244,7 @@ export interface SlotReport {
   slot: string;
   start: string;
   state: SlotState;
+  sets?: { ran: number; ok: number };
   failed?: string[];
 }
 
@@ -253,7 +254,9 @@ function stateOf(o: Occurrence, run: SlotRun | null, now: number): SlotReport {
   if (run?.done) state = failed.length ? "partial" : "done";
   else if (now < o.start + LATE_AFTER_MIN * MIN) state = "running";
   else state = now < o.end ? "late" : "missed";
-  return { slot: o.slot.id, start: iso(o.start), state, ...(failed.length ? { failed: failed.map((f) => f.slice(0, 15)) } : {}) };
+  // Interest sets that ran (no hashes: counts only).
+  const sets = run ? Object.values(run.sets) : [];
+  return { slot: o.slot.id, start: iso(o.start), state, ...(sets.length ? { sets: { ran: sets.length, ok: sets.filter((a) => a.ok).length } } : {}), ...(failed.length ? { failed: failed.map((f) => f.slice(0, 15)) } : {}) };
 }
 
 /**
