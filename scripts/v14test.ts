@@ -78,6 +78,21 @@ const until = async (cond: () => Promise<boolean>, ms = 8000) => {
     "api/status", "api/track", "api/translate",
   ], "API surface unchanged (add new routes here on purpose)");
 
+  /* ---------------- every env var the code reads is documented in .env.example */
+  const envDoc = readFileSync(path.join(ROOT, ".env.example"), "utf8");
+  const read = new Set<string>();
+  const scan = async (dir: string) => {
+    for (const e of await fs.readdir(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) await scan(p);
+      else if (/\.tsx?$/.test(e.name)) for (const m of readFileSync(p, "utf8").matchAll(/process\.env\.([A-Z0-9_]+)/g)) read.add(m[1]);
+    }
+  };
+  await scan(path.join(ROOT, "src"));
+  const undocumented = [...read].filter((v) => !new RegExp(`\\b${v}\\b`).test(envDoc));
+  assert.deepEqual(undocumented, [], "add these to .env.example");
+  assert.ok(read.size > 30, "the scan found the env reads");
+
   /* ---------------- one date helper (dates.ts) replaces 8 copies */
   const { dayIn, NY } = await import("../src/lib/dates");
   const t0 = Date.parse("2026-11-17T03:00:00Z"); // 22:00 the evening before in New York, 10:00 in Hanoi
