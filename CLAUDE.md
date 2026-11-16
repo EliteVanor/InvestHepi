@@ -51,6 +51,7 @@ For live checks against real APIs from a cloud sandbox, Node's built-in fetch ig
 | `v10test` | prices match everywhere (strip = chart), real world levels, live overlay rule |
 | `v13test` | the scheduler: timetable, order, 65 s gap, skip and retry rules, lock, late/missed, alerts window |
 | `v14test` | golden values (interest hash, `coverage`, API routes, storage keys, env docs), dates, the 1-day cutoff and catch-up |
+| `v15test` | the page's pure logic: price strip (live vs snapshot, ETF rule), chart symbols, who sees Refresh and what it says |
 
 ## Code map
 
@@ -64,6 +65,7 @@ For live checks against real APIs from a cloud sandbox, Node's built-in fetch ig
 | `src/lib/market.ts`, `chart.ts`, `yahoo.ts`, `vnmarket.ts`, `worldmarket.ts` | prices (see Prices below) |
 | `src/lib/dates.ts` | `dayIn(timeZone, at)`: calendar dates in a zone; use it instead of a new `Intl` formatter |
 | `src/lib/i18n/` | UI strings, one file per language (`en.ts` defines the keys) |
+| `src/app/page.tsx` | the single page: loads data, wires actions, lays out a section; its state lives in `components/shell/hooks.ts` (one hook per concern), the frame (top bar, sidebar, tab bar) in `shell/chrome.tsx`, the strip logic in `shell/strip.ts` |
 | `src/components/` | `sections` (briefing parts), `sheets` (settings, track, ticker, history), `live` (live prices), `cards` (chart, heatmap, scenarios, mood), `catchup`, `portfolio`, `track`, `alerts-tab`, `palette`, `setup`, `toast`, `ask`, `search`, `primitives` |
 
 ## Architecture
@@ -122,7 +124,7 @@ Pokers (only an interval; none repeats the times): Vercel Schedules in `vercel.j
 
 ### Frontend
 
-Single page: `src/app/page.tsx` holds the state (tabs, digests, sheets, account) and composes components from `src/components/`. Components are named by feature (see the code map). Client-side preferences (theme, language, password, read state, saved headlines) live in localStorage via `prefs.tsx`, always wrapped in try/catch. Styling is one global stylesheet (`src/app/globals.css`) with CSS variables for light/dark; the mobile layout uses a bottom tab bar (`.tabbar`) and hides `.desktop-only` elements.
+Single page: `src/app/page.tsx` loads data and composes components; its state is split into hooks in `src/components/shell/hooks.ts` (viewport and layout, saved tab, briefing polling, new-headline dots, rule-based copies, translate-on-read, refresh-button state, shortcuts). Components are named by feature (see the code map). Client-side preferences (theme, language, password, read state, saved headlines) live in localStorage via `prefs.tsx`, always wrapped in try/catch. Styling is one global stylesheet (`src/app/globals.css`) with CSS variables for light/dark; the mobile layout uses a bottom tab bar (`.tabbar`) and hides `.desktop-only` elements.
 
 - The price strip (`MarketStrip` in `sections.tsx`) takes labeled groups; for shared sections the page builds them from `Digest.strip` (or `SECTION_STRIPS` for older digests) overlaid with live quotes. Mouse users get arrow buttons and drag-to-scroll.
 - Background: a fixed `.ambient` layer (drifting radial color fields, dot matrix, grain) whose palette follows `data-section`; colors are `@property`-registered so tab switches morph. Cards/strip use translucent `--material` with backdrop blur; `prefers-reduced-motion` and `prefers-reduced-transparency` are honored.

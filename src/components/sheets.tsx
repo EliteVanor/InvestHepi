@@ -501,8 +501,8 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert, action }
       <div className="stats stats-5" style={{ marginTop: 14 }}>
         <div className="stat"><small>{t("tk.5d")}</small><b className={`num ${(chg5 ?? 0) >= 0 ? "up" : "down"}`}>{chg5 == null ? "–" : fmtPct(chg5, 1)}</b></div>
         <div className="stat"><small>{t("tk.1m")}</small><b className={`num ${(chg1m ?? 0) >= 0 ? "up" : "down"}`}>{chg1m == null ? "–" : fmtPct(chg1m, 1)}</b></div>
-        <div className="stat"><small>{t("tk.dayRange")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.dayLow != null && cd.dayHigh != null ? `${fmtPrice(cd.dayLow)} – ${fmtPrice(cd.dayHigh)}` : "–"}</b></div>
-        <div className="stat"><small>{t("tk.52w")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : tech?.low52 != null && tech.high52 != null ? `${fmtPrice(tech.low52)} – ${fmtPrice(tech.high52)}` : "–"}</b></div>
+        <div className="stat"><small>{t("tk.dayRange")}</small><b className="num range" style={{ fontSize: 15 }}>{cd?.dayLow != null && cd.dayHigh != null ? `${fmtPrice(cd.dayLow)} – ${fmtPrice(cd.dayHigh)}` : "–"}</b></div>
+        <div className="stat"><small>{t("tk.52w")}</small><b className="num range" style={{ fontSize: 15 }}>{cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : tech?.low52 != null && tech.high52 != null ? `${fmtPrice(tech.low52)} – ${fmtPrice(tech.high52)}` : "–"}</b></div>
         <div className="stat"><small>{t("tk.volume")}</small><b className="num">{fmtVol(cd?.volume)}</b></div>
       </div>
       {tech && (

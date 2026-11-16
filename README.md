@@ -1,191 +1,153 @@
 # InvestHepi
 
-A personal news site that catches you up on market news fast and tells you what it likely means for the stocks you follow.
+Catch up on market news in a few minutes and see what it likely means: a short AI briefing per market with buy / hold / wait calls, the reasons and risks behind each, and a track record that grades every call against real prices.
 
 <p align="center">
-  <img src="docs/screenshots/desktop-light.png" width="68%" alt="Desktop, light mode" />
-  <img src="docs/screenshots/mobile-dark.png" width="22%" alt="Phone, dark mode" />
+  <img src="docs/screenshots/desktop-light.png" width="68%" alt="World section on a wide screen" />
+  <img src="docs/screenshots/mobile-dark.png" width="22%" alt="Vietnam section on a phone, dark mode" />
 </p>
 
-<sub>Screenshots use sample data.</sub>
+<sub>Screenshots from the live site (signed out), November 2026.</sub>
 
-Four sections, each with its own news feed:
+Runs entirely on free plans: Vercel Hobby, Upstash Redis, Groq and Gemini free tiers. 8 interface languages (English, Tiếng Việt, 简体中文, 日本語, 한국어, Español, Français, Deutsch).
 
-1. **My Interests**: your own stocks. Nasdaq, S&P 500 and chip stocks by default. Add anything with the search (US, Vietnamese or global stocks, ETFs, indexes) or edit groups in Settings → Interests, and the news and analysis follow. With accounts on, this section is personal and asks visitors to sign in.
-2. **World**: geopolitics, foreign economies, central banks, oil, trade. The price strip shows the major world indexes (S&P 500, Euro Stoxx 50, FTSE, DAX, Nikkei, Hang Seng, Shanghai, KOSPI, Sensex) and global giants; the AI makes a call on US stocks, Europe, Japan, China & Hong Kong, oil and gold.
-3. **US**: Fed, economic data, Congress, the White House, regulation. Strip: S&P 500, Dow Jones, Nasdaq 100, Russell 2000 and the mega caps; calls on those four indexes.
-4. **Vietnam**: VN-Index, VN30, HNX, UPCoM, the big banks and large caps; calls on the index and five sector groups.
+## Sections
 
-World, US and Vietnam are the same for everyone and never include anyone's personal stocks. Each keeps its own graded track record (switch sections in the Track record sheet).
+| Section | What it covers | Calls on |
+|---|---|---|
+| **My Interests** | Your own stocks and themes, from search (US, Vietnamese and global stocks, ETFs, indexes) or Settings → Interests | Each interest's first ticker |
+| **World** | Geopolitics, foreign economies, central banks, oil, trade | US stocks, Europe, Japan, China & Hong Kong, oil, gold |
+| **US** | Fed, economic data, Congress, the White House, regulation | S&P 500, Dow, Nasdaq 100, Russell 2000 |
+| **Vietnam** | VN-Index, VN30, HNX, UPCoM, banks and large caps, SBV policy, USD/VND | VN-Index and five sector groups |
 
-**Search like Apple Stocks**: the magnifier (or the search bar on My Interests) finds any stock by name or symbol, accents optional ("vinamilk", "hoa phat", "Apple", "S&P 500"), shows live prices, and adds it to My Interests with one tap. The stock page has the same + button.
+World, US and Vietnam are the same for everyone and never include anyone's personal stocks. With accounts on, My Interests is personal and asks visitors to sign in.
 
-Every section opens with an AI briefing, ordered by what helps you act fastest:
+## What a briefing gives you
 
-- **Briefing**: the one-line takeaway, a risk-on/risk-off mood, and the main events.
-- **What to do**: for each interest, a direction call, a confidence ring, an action (Buy / Add / Hold / Wait / Trim / Sell / Avoid), a concrete trigger, and the risks.
-- **Movers**: why your biggest movers moved, from the headlines.
-- **Key events**: why each event matters, impact per interest, a **past example** of how markets reacted to something similar, and **what could go wrong**.
-- **Up next**: earnings for your tickers plus FOMC, CPI, jobs and PPI dates, all fed to the AI so its timing advice knows what's coming.
-- **Headlines**: new-since-last-visit dots, "Key" badges on stories the AI used, "+N more" when many outlets ran the story, search, and saved headlines.
-
-**New in v4: decide faster, trust for the right reasons**
-
-- **Catch-up mode**: the whole briefing as full-screen cards, one idea each (headline → each call → movers → each event → scenarios → what's next). Tap, swipe or use the arrow keys. Press `C`.
-- **Since you were last here**: calls that flipped, the biggest moves since then, and new key events, on top of the page.
-- **Scenarios**: before CPI, FOMC, jobs or a followed company's earnings, an "if hot / in line / cool" playbook with probabilities, the expected reaction, and what to do in each case.
-- **Technicals**: 20/50/200-day averages, RSI, 20-day range, typical daily move for every ticker. Shown on the quote page and the **watchlist table**, and given to the AI so triggers name real levels.
-- **Market mood gauge**: a transparent 0-100 composite (momentum, strength, breadth, volatility, safe-haven demand). Tap it to see each part.
-- **"If you followed the AI"**: an equity curve of acting on every daily call vs simply holding the same tickers, a per-ticker scorecard, and CSV export.
-- **Holdings (optional)**: enter shares and cost for a live P&L card. The AI only ever sees position weights and gain %, never amounts, and words its advice for what you actually hold.
-- **Chart upgrades**: candles, 20/50-day average overlays, and past AI calls marked on the chart (green = right, red = wrong).
-- **Smaller things**: find tickers by company name, "Explain this" on any headline, iOS-style settings, toasts, a refresh progress bar, daily caps on Ask AI and manual refreshes.
+- **Briefing**: the takeaway, a risk-on / risk-off mood, and the main events.
+- **What to do**: per market or interest, a direction, a confidence ring, an action (Buy / Add / Hold / Wait / Trim / Sell / Avoid), a concrete trigger, and the risks.
+- **Scenarios**: before CPI, FOMC, jobs or earnings, an "if hot / in line / cool" playbook.
+- **Movers**: the biggest moves, with a reason only when a cited headline names the company (otherwise "No clear news").
+- **Key events**: why each matters, a past example of how markets reacted to something similar, and what could go wrong.
+- **Up next**: earnings, FOMC, CPI, jobs and VN30 futures expiry, in the market's own time zone.
+- **Headlines**: new-since-last-visit dots, the stories the AI used, search, saved headlines, "Explain this".
 
 <p align="center">
-  <img src="docs/screenshots/catch-up-desktop.png" width="62%" alt="Catch-up mode" />
-  <img src="docs/screenshots/catch-up.png" width="20%" alt="Catch-up mode on a phone" />
-</p>
-<p align="center">
-  <img src="docs/screenshots/watchlist.png" width="49%" alt="Watchlist and events" />
-  <img src="docs/screenshots/desktop-dark.png" width="49%" alt="Scenarios and chart" />
+  <img src="docs/screenshots/desktop-dark.png" width="68%" alt="US section, dark mode" />
 </p>
 
-**New in v3**
+## Read faster, decide better
 
-- **Live chart** on every ticker: 1D · 5D · 1M · 6M · 1Y, crosshair readout, previous-close line, volume. Updates every ~20s while the market is open, at no cost (TradingView's open-source Lightweight Charts + Yahoo's public chart data).
-- **Email alerts**:
-  - a morning briefing in your inbox before the open, and a Sunday weekly recap;
-  - price targets (above / below / % move), big moves in your tickers;
-  - AI call changes (e.g. Hold → Sell), high-confidence calls;
-  - catalyst reminders the evening before earnings, CPI, jobs or FOMC.
-  - Alerts are de-duplicated, bundled into one email per check, and capped per day.
-- **Ask AI**: follow-up questions answered from today's briefings, headlines, prices and calendar, with cited headlines.
-- **Sector heatmap**: where money is rotating today. Also fed to the AI.
-- **⌘K command palette**: jump to any ticker, section, setting, or ask a question.
-- **Live prices** in the market strip, and a **quote page** per ticker with day / 52-week range, volume, the AI call and one-tap price alerts.
+- **Catch-up mode** (`C`): the whole briefing as full-screen cards, one idea each. Tap, swipe or use the arrow keys.
+- **Since you were last here**: calls that flipped, the biggest moves since then, new key events.
+- **Live prices and charts**: the strip and the stock page show the same numbers (1D · 5D · 1M · 6M · 1Y, candles, averages, past AI calls marked green/red), with technicals: 20/50/200-day averages, RSI, ranges, typical daily move.
+- **Market mood gauge**: a transparent 0-100 composite you can open to see each part.
+- **Ask AI**: follow-up questions answered from today's briefings, headlines, prices and calendar; chats saved per account.
+- **Search like Apple Stocks**: any stock by name or symbol, accents optional ("vinamilk", "hoa phat"), one tap to follow.
+- **Email alerts**: price targets and big moves, AI call changes, high-confidence calls, catalyst reminders, a morning briefing and a weekly recap.
+- **Holdings (optional)**: a live P&L card. The AI only ever sees position weights and gain %, never amounts.
+- **Command palette** (`⌘K`), keyboard shortcuts, listen to a briefing, share, the last 10 briefings per section, light/dark, install to your home screen.
 
 <p align="center">
-  <img src="docs/screenshots/ticker.png" width="49%" alt="Ticker page with live chart" />
-  <img src="docs/screenshots/ask-ai.png" width="49%" alt="Ask AI" />
+  <img src="docs/screenshots/catch-up-desktop.png" width="49%" alt="Catch-up mode" />
+  <img src="docs/screenshots/ticker.png" width="49%" alt="Stock page with live chart and technicals" />
+</p>
+<p align="center">
   <img src="docs/screenshots/command-palette.png" width="49%" alt="Command palette" />
-  <img src="docs/screenshots/email-morning.png" width="32%" alt="Morning briefing email" />
+  <img src="docs/screenshots/catch-up.png" width="22%" alt="Catch-up mode on a phone" />
 </p>
 
-**Also included**
+## The part that keeps the AI honest
 
-- light / dark / system theme;
-- 8 interface languages (English, Tiếng Việt, 简体中文, 日本語, 한국어, Español, Français, Deutsch);
-- a separate AI briefing language, which emails follow too;
-- listen to the briefing;
-- share;
-- the last 10 briefings per section;
-- the macro strip;
-- a market open/close countdown;
-- keyboard shortcuts;
-- install to your home screen as an app.
+<img src="docs/screenshots/track-record.png" width="58%" align="right" alt="Track record" />
 
-Design notes and the reasoning behind each feature: [`docs/PLAN.md`](docs/PLAN.md) (v2), [`docs/PLAN-v3.md`](docs/PLAN-v3.md) (v3) and [`docs/PLAN-v4.md`](docs/PLAN-v4.md) (v4).
+A confidence number means nothing unless you know how often it's right. Every call is logged against the **next session on its own exchange that hasn't opened yet**, so the AI never sees the market's reaction, then graded against the real close ("today" on the next close, "this week" on the 5th). Each section keeps its own record.
 
-## The part that keeps the AI honest: the track record
+The calibration chart compares what the AI claimed with how often it was right, and the equity curve shows what acting on every call would have returned next to just holding. These numbers go back into the prompt so the model can recalibrate. Give it a few weeks before trusting them.
 
-<img src="docs/screenshots/track-record.png" width="60%" align="right" alt="Track record" />
-
-A confidence number means nothing unless you know how often it's right. Every outlook in My Interests is logged as a call on the **next session that hasn't opened yet**, so the AI never gets to peek at the market's reaction. Each call is then graded against the real close ("today" calls on the next close, "this week" calls on the 5th close).
-
-The calibration chart compares what the AI claimed (line) with how often it was right (bar). Below it, the equity curve shows what acting on every daily call would have returned next to simply holding the same tickers (before costs). These numbers go back into the prompt on every run so the model can recalibrate. Give it a few weeks before you trust them.
+Other guards against invented facts:
+- Every level, % and mover number is overwritten from real price data after the AI answers; tickers it can't back are dropped.
+- A hand-checked playbook of past market reactions (`src/lib/analogs.ts`) that the AI must prefer over its memory.
+- When an index is only available through a tracking ETF, the AI is told "level unknown, % moves only".
+- When no AI model works, readers keep the last AI briefing with a banner, and can switch to a rule-based summary.
 
 <br clear="right" />
 
 ## How it works
 
 ```
-GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
-                                          │
-         ┌────────────────────────────────┼─────────────────────────────┐
-         ▼                                ▼                             ▼
-  News: Google News RSS per interest,  Prices: Yahoo (batched),     Track record:
-  Yahoo per-ticker RSS, CNBC,          Nasdaq; Vietnam: DNSE,       grade past calls
-                                       Vietcap, VNDirect
-  MarketWatch, BBC, NPR, Al Jazeera,
-  VnExpress, CafeF, Vietstock,
-  optional Finnhub
-         │  dedupe near-duplicate headlines, tag by interest
-         ▼
-  AI analysis: Claude → Groq → Gemini → rule-based (first one that works)
-  with a curated playbook of historical market reactions + your track record
-         │
-         ▼
-  Upstash Redis (digests, interests, calls) ──► the web page
+Vercel Schedules (every 15 min) ┐
+cron-job.org (every 30 min)     ├──► /api/cron/tick ──► the timetable (src/lib/timetable.ts):
+GitHub Actions (every 3 h)      ┘                       is a slot due? run ONE unit, then call the tick again
+                                                                    │
+     ┌──────────────────────────────────────────────────────────────┼────────────────────────────┐
+     ▼                                                              ▼                            ▼
+News: Google News per interest, Yahoo per-ticker RSS,   Prices: Yahoo (batched) → Nasdaq;     Track record:
+CNBC, BBC, NPR, Al Jazeera, VnExpress, CafeF,           Vietnam: DNSE → Vietcap → VNDirect;   grade past calls
+Vietstock, Tuổi Trẻ, optional Finnhub                   world closes: VNDirect, US Treasury
+     │  dedupe near-duplicates, tag by interest
+     ▼
+AI: each job has its own model order (shared sections: Groq gpt-oss-120b → Gemini Flash-Lite → …),
+token budgets tracked per model per day; rule-based fallback when nothing answers
+     │
+     ▼
+Upstash Redis (briefings, interests, calls) ──► the page, translated per reader (cached per version)
 ```
 
-- **Provider chain.** Free today, Claude later. Free providers get a compact prompt (fewer headlines, only the relevant playbook entries, capped output) so a run stays under their tokens-per-minute limits. With no keys at all you get a rule-based keyword read, which is useful for testing and not much else. Add a free Groq or Gemini key for real analysis. Add `ANTHROPIC_API_KEY` and Claude takes over automatically. If a provider fails (rate limit, outage, bad JSON), the next one runs, and the page shows which one produced the briefing.
-- **Historical playbook** (`src/lib/analogs.ts`): a hand-checked list of past events and how markets reacted (CPI surprises, Fed pivots, tariff shocks, DeepSeek, export controls, and more). The AI is told to prefer these over its own memory, which cuts down on invented history. Add your own entries.
-- **Scheduler.** Vercel's free plan only allows one cron per day, so a GitHub Actions workflow calls the app before the open (twice), at midday, after the close, and on Sunday evening. Vercel's daily cron is a backup.
+- **Schedule** (UTC). Weekdays: World 4×, US 2× (12:30, before the open: the graded call), Vietnam 5× (01:15, before HOSE: the graded call); the admin's interests 6×, other users' 4×. Sunday: each shared section twice. Saturday: nothing. Users' sets are refreshed only if they were seen in the last day; someone back after longer gets a fresh briefing when they open the app. Runs are idempotent (anything written since 30 min before a slot is skipped), and a slot more than an hour late is reported.
+- **One language to write, many to read.** Every briefing is written once in English and translated for readers, cached per version, so switching language never re-runs an analysis.
+- **Free-tier budget.** Groq allows 200K tokens a day per model, Gemini Flash-Lite 500 requests a day each. The app records real use per model, cools a model down after a 429, and reserves the best model's tokens for the shared and admin briefings still due today.
 
 ## Setup (about 15 minutes, all free)
 
-1. **Get a free AI key**: [Groq](https://console.groq.com/keys) (recommended, generous limits) and/or [Gemini](https://aistudio.google.com/apikey). Having both gives you a fallback.
-2. **Deploy to Vercel**: [vercel.com/new](https://vercel.com/new) → import this repo → Deploy.
-3. **Add storage**: in the Vercel project, open Storage → Marketplace → **Upstash for Redis** → free plan → connect to the project. This adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`. Without it, data is lost whenever Vercel recycles the server.
-4. **Environment variables** (Vercel → Settings → Environment Variables), see `.env.example`:
+1. **AI keys**: [Groq](https://console.groq.com/keys) (recommended) and/or [Gemini](https://aistudio.google.com/apikey). Both gives you a fallback.
+2. **Deploy**: [vercel.com/new](https://vercel.com/new) → import this repo → Deploy.
+3. **Storage**: Vercel project → Storage → Marketplace → **Upstash for Redis** (free) → connect. Without it, data is lost whenever Vercel recycles the server.
+4. **Environment variables** (Vercel → Settings → Environment Variables; every option with its default is in [`.env.example`](.env.example)):
    - `GROQ_API_KEY` and/or `GEMINI_API_KEY`
-   - `APP_PASSWORD`: anything you like. The site asks for it once per browser, which keeps strangers from burning your AI quota.
-   - `CRON_SECRET`: a long random string (`openssl rand -hex 24`)
-   - optional `FINNHUB_API_KEY` ([free](https://finnhub.io)) for extra ticker-tagged company news
+   - `APP_PASSWORD`: the site asks for it once per browser, so strangers can't burn your AI quota
+   - `CRON_SECRET`: a long random string. Vercel sends it with its scheduled calls, which turns the scheduler on.
 
    Then redeploy.
-5. **Email alerts (optional, free)**: pick one.
-   - **Resend** (simplest): sign up at [resend.com](https://resend.com) with the email you want alerts at, create an API key, and add `RESEND_API_KEY` in Vercel. Without your own domain, Resend sends from `onboarding@resend.dev` to your own address, which is all you need here.
-   - **Gmail**: turn on 2-step verification, create an [app password](https://myaccount.google.com/apppasswords), and set `SMTP_URL=smtps://you%40gmail.com:APP_PASSWORD@smtp.gmail.com:465`.
-
-   Then in the app go to Settings → Alerts: turn alerts on, enter your email, press **Send test email**.
-6. **Turn on the scheduler**: the timetable is in `src/lib/timetable.ts`; anything that calls `GET https://YOUR-APP/api/cron/tick` with `Authorization: Bearer YOUR_CRON_SECRET` runs whatever is due (extra calls are free). Vercel calls it every 15 minutes on its own (`vercel.json`). For a backup that also emails you when a refresh is late, create a free [cron-job.org](https://cron-job.org) job that calls it every 30 minutes (see `docs/HANDOFF.md`, v13). Optionally add GitHub repo secrets `APP_URL` and `CRON_SECRET` for the GitHub backup (`.github/workflows/refresh.yml`).
-7. Open the site, enter your password, and press **↻ Refresh** on any section (only you, the admin, see that button; everyone else gets the scheduled refreshes).
-
-### Vietnam tab
-
-A full briefing for the Vietnamese market, in the reader's language: headlines from VnExpress, CafeF, Vietstock, Tuổi Trẻ and Google News (Vietnamese and English), and a buy/hold/wait call with confidence, triggers and risks for VN-Index, banks, real estate, securities firms, tech & retail, and steel & industrials. The AI gets Vietnam-specific context: HOSE hours (ICT), State Bank of Vietnam policy, USD/VND, foreign flows, margin debt, the 7% daily limit. Calls are logged and graded like the others.
-
-Prices come from Vietnamese brokers' public chart APIs, free and keyless: DNSE first (daily and 1-minute bars for every stock and index), then Vietcap, then VNDirect (which also prices dozens of symbols in one request for the strip and technicals). Yahoo is the last resort; it has no VN30 or HNX and rate-limits cloud servers. Charts show times in Vietnam time. The scheduler adds two Vietnam-only runs, before the HOSE open (8:15 ICT) and after the close (15:10 ICT). Holidays like Tet aren't modeled in the market clock.
-
-### Where prices come from (and what happens when a source says no)
-
-All sources are free, keyless and unofficial, checked from a cloud server in November 2026:
-
-| Symbols | Order tried |
-|---|---|
-| Vietnamese (`FPT.VN`, `^VNINDEX.VN`, `^VN30.VN`, `^HNX.VN`, `^UPCOM.VN`) | DNSE → Vietcap → VNDirect → Yahoo (stocks only) |
-| Everything else | Yahoo → Nasdaq (US stocks, ETFs, Nasdaq indexes) |
-
-When Yahoo refuses the server, indexes, gold, oil, the dollar, Bitcoin and the VIX are priced from US-listed ETFs that track them (SPY for the S&P 500, EWJ for the Nikkei, GLD for gold, ...) through Nasdaq's public API. Those cards carry a small ETF tag, and the AI is told which prices come from an ETF. Global giants are their US-listed shares (TSMC, ASML, Toyota, Sony, Alibaba, Novo Nordisk, SAP, Shell, HSBC, BHP), so they load either way.
-
-Yahoo throttles busy cloud IPs (a burst of ~60 requests gets "429 Too Many Requests" for minutes, for every symbol). The app keeps well under that: one batch request per 20 symbols, at most 3 Yahoo requests in flight, and after a 429 it stops calling Yahoo for 90 seconds and uses the fallbacks. If nothing answers, the strip shows the last good price (dimmed, "last available price") and charts show the last saved daily history, rather than blank cards. Graded calls never use those stale prices. Stooq and TCBS were dropped: both now put a browser check in front of their data.
+5. **Scheduler backup and late alerts (recommended)**: set `TICK_SECRET` (another random string) in Vercel, then create a free [cron-job.org](https://cron-job.org) job calling `GET https://YOUR-APP/api/cron/tick?src=cron-job.org` every 30 minutes with the header `Authorization: Bearer YOUR_TICK_SECRET`, notifications on failure. It emails you when a refresh slot is late. Optionally add GitHub repo secrets `APP_URL` and `CRON_SECRET` for the GitHub backup.
+6. **Email alerts (optional)**: [Resend](https://resend.com) (`RESEND_API_KEY`; without your own domain it sends to your own address) or Gmail with an app password (`SMTP_URL=smtps://you%40gmail.com:APP_PASSWORD@smtp.gmail.com:465`). Then Settings → Alerts → **Send test email**.
+7. Open the site, enter your password, and press **↻ Refresh** on any section once. The schedule takes over from there.
 
 ### Accounts for other people (optional, free)
 
-By default the app is just for you, behind `APP_PASSWORD`. To let anyone sign in with Google and get their own interests, holdings, alerts and personal briefing:
+To let anyone sign in with Google and get their own interests, holdings, alerts and briefing:
 
-1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → create a project → **OAuth consent screen** (External, add your app name and email) → **Credentials** → Create credentials → OAuth client ID → Web application.
-2. Authorized redirect URI: `https://YOUR-APP.vercel.app/api/auth/callback/google` (add `http://localhost:3000/api/auth/callback/google` too for local dev).
-3. In Vercel add `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET` (`openssl rand -base64 32`) and `OWNER_EMAIL` (your Google email, so you keep your current data and can force refreshes). Redeploy.
-4. While the consent screen is in "Testing", only test users you add can sign in (up to 100). Press **Publish app** when you want anyone in. Basic sign-in (email, name, picture) doesn't need Google's verification review.
+1. [Google Cloud Console](https://console.cloud.google.com/apis/credentials) → project → **OAuth consent screen** (External) → Credentials → OAuth client ID (Web application).
+2. Redirect URI: `https://YOUR-APP.vercel.app/api/auth/callback/google` (plus `http://localhost:3000/api/auth/callback/google` for local dev).
+3. In Vercel add `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `AUTH_SECRET` (`openssl rand -base64 32`) and `OWNER_EMAIL` (your Google email: you keep your data and become the admin). Redeploy.
+4. While the consent screen is in "Testing", only listed test users can sign in. **Publish app** when you want anyone in; basic sign-in needs no verification review.
 
-What changes:
-- Visitors read World, US and Vietnam without signing in, in their language, and land on World (Vietnam for Vietnamese readers). My Interests is personal: visitors see what an account gets and a Google sign-in button. Saving interests, holdings, alerts, Ask AI and refresh need an account. The password prompt goes away.
-- World, US and Vietnam are generated once per language and shared by everyone. Personal briefings are shared too when interests and language match exactly, so 50 people on the defaults cost the same as one.
-- The scheduler refreshes personal sets one per call until none are due: users' sets 4 times a weekday, the admin's 6 times (see `src/lib/timetable.ts`). Signed-in users can also refresh their own My Interests by hand (5 a day, 90 minutes apart, on Gemini Flash-Lite); the admin can refresh any section (10 a day). A new interest set gets its first briefing automatically when it's saved (capped at `AUTOGEN_DAILY_LIMIT`, default 6 a day per user; free if someone already follows the same set). Each job uses its own AI model so the free daily limits don't collide (`src/lib/llm/models.ts`).
-- One language setting per person, for the app, briefings and alert emails. Every briefing is generated in English and translated for each reader, so people with the same interests share one briefing whatever language they read, and switching language never re-runs an analysis.
+Then: visitors read World, US and Vietnam without signing in; My Interests, holdings, alerts, Ask AI and refresh need an account. People with identical interests share one briefing, so 50 people on the defaults cost the same as one. Signed-in users can refresh their own My Interests 5 times a day (90 minutes apart, on a lighter model); the admin can refresh any section 10 times a day.
 
 ### Adding Claude later
 
-Set `ANTHROPIC_API_KEY` in Vercel and redeploy. It defaults to `claude-opus-5-5`. Rough cost: 3 sections × 5 runs a day is about 15 calls a day, roughly $1-2 a day on Opus at the default effort (about $25-40 a month). Set `CLAUDE_MODEL=claude-sonnet-5-5` to cut that roughly in half, or `claude-haiku-5-5` for pennies. Run them side by side for a while and let the track record decide.
+Set `ANTHROPIC_API_KEY` and redeploy: Claude then goes first in every job (default `claude-opus-5-5`; `CLAUDE_MODEL=claude-sonnet-5-5` or `claude-haiku-5-5` costs less). Count the calls before you do: about 17 shared and admin briefings on a weekday, plus users' sets, translations and Ask AI. Check that against Anthropic's current pricing, and let the track record decide whether it's worth it.
+
+### Where prices come from
+
+All free, keyless and unofficial, checked from a cloud server in November 2026:
+
+| Symbols | Order tried |
+|---|---|
+| Vietnamese (`FPT.VN`, `^VNINDEX.VN`, `^VN30.VN`, `^HNX.VN`, `^UPCOM.VN`) | DNSE → Vietcap → VNDirect (→ Yahoo for stocks) |
+| US stocks and ETFs | Yahoo (batched) → Nasdaq |
+| World indexes, oil, gold, currencies | Yahoo → VNDirect's daily world closes (dated); US 10Y from the US Treasury's daily file |
+| Euro Stoxx 50, DXY, VIX, Bitcoin | Yahoo → a tracking ETF (tagged "ETF", % moves only) |
+
+Yahoo refuses most cloud servers, so the fallbacks do real work. Daily-only values carry their date; US index levels between official closes are carried forward from their ETF (shown with ≈). If nothing answers, the strip shows the last good price (dimmed) rather than a blank card. Graded calls never use stale prices.
 
 ## Keyboard shortcuts
 
 | Key | Action |
 |---|---|
 | `1` `2` `3` `4` | Switch section |
-| `R` | Refresh this section |
+| `R` | Refresh this section (if you can) |
+| `N` | Jump to the headlines |
 | `/` | Search headlines |
 | `⌘K` / `Ctrl+K` | Command palette |
 | `A` | Ask AI |
@@ -193,42 +155,40 @@ Set `ANTHROPIC_API_KEY` in Vercel and redeploy. It defaults to `claude-opus-5-5`
 | `L` | Listen to the briefing |
 | `T` | Track record |
 | `D` | Toggle light/dark |
+| `[` / `]` | Wide screens: fold the sidebar / hide the Ask AI panel |
 | `?` | Show shortcuts |
 
 ## Install on your phone
 
-Open the site in Safari (iPhone) or Chrome (Android) → Share → **Add to Home Screen**. It opens full screen like an app.
+Open the site in Safari (iPhone) or Chrome (Android) → Share → **Add to Home Screen**.
 
-## Local development
+## Development
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in at least one AI key
-npm run dev                  # http://localhost:3000
-npm run refresh              # run the pipeline once from the terminal
-npm test                     # offline tests: translations, pipeline, calendar, LLM path and fallback
+cp .env.example .env.local   # at least one AI key
+npm run dev                  # http://localhost:3000, data in .data/ as JSON
+npm run refresh -- world     # run the pipeline once from the terminal
+npm test                     # 16 offline suites (no network)
+npm run typecheck
 ```
 
-Locally, data is stored as JSON in `.data/`.
+[`CLAUDE.md`](CLAUDE.md) has the code map, the architecture and what each test suite covers; [`docs/HANDOFF.md`](docs/HANDOFF.md) has the product decisions and the history of each round.
 
 ## Customizing
 
-- **Interests**: in the app. Name, news search (Google News syntax: `OR`, `"quoted phrases"`), tickers. The first ticker is the benchmark used for the outlook and track record. ETFs work well for themes: QQQ, SPY, SOXX, SMH, XLE, XLF, IBIT.
-- **World/US feeds**: `SECTION_FEEDS` in `src/lib/config.ts`.
-- **Analyst behavior**: `SYSTEM_PROMPT` in `src/lib/llm/prompt.ts`.
-- **Refresh times**: `src/lib/timetable.ts` (UTC).
+- **Interests**: in the app. The first ticker of each interest is its benchmark (for the call and the track record). Theme ETFs work well: QQQ, SPY, SOXX, SMH, XLE, XLF, IBIT.
+- **Refresh times**: `src/lib/timetable.ts` (UTC). Nothing else repeats the times.
+- **Feeds**: `SECTION_FEEDS` in `src/lib/config.ts`. **Analyst rules**: `src/lib/llm/prompt.ts`. **Models**: `src/lib/llm/models.ts` or the env vars in `.env.example`.
 
 ## Known limits, stated plainly
 
-- Headlines only, no full articles. The AI sees what a fast reader would see, not paywalled analysis.
-- "Live" means polled every ~20 seconds, not tick-by-tick streaming. Good for a daily-trend tool. True streaming needs a paid data feed.
-- Price alerts are as fresh as the check interval (~20 min by default).
-- Free feeds and price endpoints are unofficial and can change or rate-limit. Failures show up under "feed(s) failed", and the app keeps going with whatever loaded.
-- When Yahoo refuses the server, world indexes and commodities show their tracking ETF instead (tagged). Yields (US 10Y) and currencies other than the dollar index have no ETF stand-in and show their last available price. Vietnamese prices don't depend on Yahoo.
-- Briefings in other languages are translations of one English briefing (World/US/Vietnam) or of your personal briefing, made once per briefing version and cached for everyone. A translation costs roughly a quarter of a full analysis; the calls and numbers are identical in every language.
-- Free LLM tiers change their limits and models often. If one starts failing, the fallback note on the page will say so. Swap models via `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`; the admin sees each model's use today in `/api/status`.
-- Technical levels and the mood gauge are context computed from price history. They are not signals on their own.
-- Scenario probabilities are the AI's estimates, not market-implied odds.
-- The "followed the AI" curve ignores trading costs and assumes equal weight per call.
-- The grading is a simple direction check. It doesn't measure how big a move was or whether a trade would have made money after costs.
+- Headlines only, no full articles: the AI sees what a fast reader would see.
+- "Live" means polled about every 20 seconds to a minute, not streaming. Price alerts are checked every 20 minutes during US hours.
+- Sources are unofficial and can change or rate-limit; failed feeds are listed under the headlines and the app carries on with what loaded.
+- World closes from VNDirect arrive the next day, so Asian indexes in the early-morning run are one session old (labeled with their date). Non-US listings (Samsung, Tencent, LVMH) have no source while Yahoo refuses the server.
+- The market clocks and grading don't model Vietnamese holidays (Tet).
+- Free AI tiers change their limits and models often. The admin sees each model's use today in `/api/status` (`aiUsage`).
+- Technicals and the mood gauge are context, not signals. Scenario probabilities are the AI's estimates, not market odds. The "followed the AI" curve ignores costs.
+- Grading is a direction check; it doesn't measure the size of a move or profit after costs.
 - AI predictions from public news. They will be wrong regularly. Not financial advice.
