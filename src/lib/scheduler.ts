@@ -18,7 +18,8 @@ import { OWNER, withUser } from "./context";
 import { appUrl } from "./email";
 import { translateLatest } from "./briefings";
 import { interestGroups, loadInterests, withHoldings } from "./interests";
-import { refreshInterestSet, refreshShared } from "./pipeline";
+import { refreshInterestSet, refreshShared, SHARED_CALLS } from "./pipeline";
+import { gradeCalls } from "./track";
 import { loadHoldings } from "./portfolio";
 import { getJSON, releaseLock, setJSON, takeLock } from "./store";
 import { LATE_AFTER_MIN, occurrences, openOccurrences, runKey, type Occurrence, type SlotItem } from "./timetable";
@@ -155,6 +156,18 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
   return a;
 }
 
+/* ------------------------------------------------------------- grading */
+
+const GRADE_KEY = "sched:graded";
+
+/** Grade every call store: the shared sections' and each active interest set's. */
+export async function gradeAll(now = new Date()): Promise<number> {
+  const keys = [...Object.values(SHARED_CALLS), ...[...(await interestGroups()).keys()].map((h) => `calls:${h}`)];
+  let n = 0;
+  for (const k of keys) n += await gradeCalls(now, k).catch(() => 0);
+  return n;
+}
+
 /* -------------------------------------------------------------- alerts */
 
 const ALERTS_KEY = "sched:alerts";
@@ -191,6 +204,7 @@ export interface TickOptions {
 export interface TickResult {
   busy?: boolean;
   alerts?: number;
+  graded?: number;
   unit?: { slot: string; item: SlotItem; set?: string; ok: boolean; note?: string };
   chained?: boolean | string;
 }
@@ -210,6 +224,13 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
         await setJSON(ALERTS_KEY, { at: now.toISOString() });
         out.alerts = Object.keys(await runAlerts(now).catch(() => ({}))).length;
       }
+    }
+    // Grade calls whose session has closed, at most hourly (no AI; prices only when something is due),
+    // so results show up within the hour after each market closes, not at the next briefing.
+    const lastGrade = await getJSON<{ at: string }>(GRADE_KEY);
+    if (!lastGrade || now.getTime() - new Date(lastGrade.at).getTime() >= 55 * MIN) {
+      await setJSON(GRADE_KEY, { at: now.toISOString() });
+      out.graded = await gradeAll(now).catch(() => 0);
     }
     const u = await nextUnit(clock().getTime());
     if (!u) return out;
