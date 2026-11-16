@@ -466,6 +466,19 @@ const en = {
   "strip.est": "Estimated: the last official close moved with the {etf} ETF, which trades in the same hours",
   "strip.closeOf": "Close of {date}. Only daily closes are available for this market",
   "chart.shape": "Official close; the intraday path follows the {etf} ETF",
+  "ask.sWhy": "Why {action} on {name}? What would change that call?",
+  "ask.sEvent": "How could “{title}” affect {name}?",
+  "ask.sMover": "Why did {name} move {chg}?",
+  "ask.sWatch": "What should I watch before {event}?",
+  "ask.sSummary": "Summarize this briefing in 3 points",
+  "ask.fRisks": "What are the main risks?",
+  "ask.fWrong": "What would prove this wrong?",
+  "ask.fSimple": "Explain it more simply",
+  "ask.fAct": "What should I do this week?",
+  "ask.history": "History",
+  "ask.noHistory": "No saved chats yet.",
+  "ask.delete": "Delete chat",
+  "ask.messages": "{n} messages",
 };
 
 export type MsgKey = keyof typeof en;
@@ -745,7 +758,7 @@ const vi: Dict = {
   "cmd.theme": "Đổi sáng/tối",
   "cmd.empty": "Không có kết quả",
   "cmd.hint": "↑↓ để chọn · Enter để mở · Esc để đóng",
-  "sc.palette": "Bảng lệnh",
+  "sc.palette": "Lệnh nhanh",
   "sc.ask": "Hỏi AI",
   "foot.charts": "Biểu đồ bởi TradingView",
   "st.email": "Cảnh báo email",
@@ -933,6 +946,19 @@ const vi: Dict = {
   "strip.est": "Ước tính: giá đóng cửa chính thức gần nhất cộng biến động của quỹ ETF {etf} (giao dịch cùng giờ)",
   "strip.closeOf": "Giá đóng cửa ngày {date}. Thị trường này chỉ có dữ liệu cuối ngày",
   "chart.shape": "Giá đóng cửa chính thức; diễn biến trong phiên theo quỹ ETF {etf}",
+  "ask.sWhy": "Vì sao khuyến nghị {action} với {name}? Điều gì sẽ làm thay đổi nhận định này?",
+  "ask.sEvent": "“{title}” có thể ảnh hưởng thế nào đến {name}?",
+  "ask.sMover": "Vì sao {name} biến động {chg}?",
+  "ask.sWatch": "Cần theo dõi gì trước {event}?",
+  "ask.sSummary": "Tóm tắt bản tin này trong 3 ý",
+  "ask.fRisks": "Rủi ro chính là gì?",
+  "ask.fWrong": "Điều gì sẽ chứng minh nhận định này sai?",
+  "ask.fSimple": "Giải thích đơn giản hơn",
+  "ask.fAct": "Tuần này tôi nên làm gì?",
+  "ask.history": "Lịch sử",
+  "ask.noHistory": "Chưa có cuộc trò chuyện nào được lưu.",
+  "ask.delete": "Xóa cuộc trò chuyện",
+  "ask.messages": "{n} tin nhắn",
 };
 
 const zh: Dict = {
@@ -1397,6 +1423,19 @@ const zh: Dict = {
   "strip.est": "估算值：最近官方收盘价按同时段交易的 {etf} ETF 涨跌推算",
   "strip.closeOf": "{date} 收盘价。该市场只有每日收盘数据",
   "chart.shape": "官方收盘价；盘中走势参考 {etf} ETF",
+  "ask.sWhy": "为什么对{name}的建议是{action}？什么会改变这个判断？",
+  "ask.sEvent": "“{title}”会如何影响{name}？",
+  "ask.sMover": "{name}为何变动{chg}？",
+  "ask.sWatch": "{event}之前应该关注什么？",
+  "ask.sSummary": "用 3 点总结这份简报",
+  "ask.fRisks": "主要风险是什么？",
+  "ask.fWrong": "什么情况会证明这个判断是错的？",
+  "ask.fSimple": "说得更简单一点",
+  "ask.fAct": "这周我该怎么做？",
+  "ask.history": "历史",
+  "ask.noHistory": "还没有保存的对话。",
+  "ask.delete": "删除对话",
+  "ask.messages": "{n} 条消息",
 };
 
 const ja: Dict = {
@@ -1861,6 +1900,19 @@ const ja: Dict = {
   "strip.est": "推定値：直近の公式終値を、同じ時間帯に取引される {etf} ETF の値動きで延長",
   "strip.closeOf": "{date} の終値。この市場は日次終値のみ",
   "chart.shape": "公式終値。日中の推移は {etf} ETF に基づく",
+  "ask.sWhy": "{name}が「{action}」なのはなぜ？何が起きれば判断が変わる？",
+  "ask.sEvent": "「{title}」は{name}にどう影響する？",
+  "ask.sMover": "{name}が{chg}動いたのはなぜ？",
+  "ask.sWatch": "{event}の前に何に注目すべき？",
+  "ask.sSummary": "このブリーフィングを3点で要約して",
+  "ask.fRisks": "主なリスクは？",
+  "ask.fWrong": "何が起きればこの見方は外れる？",
+  "ask.fSimple": "もっと簡単に説明して",
+  "ask.fAct": "今週はどうすればいい？",
+  "ask.history": "履歴",
+  "ask.noHistory": "保存されたチャットはまだありません。",
+  "ask.delete": "チャットを削除",
+  "ask.messages": "{n} 件のメッセージ",
 };
 
 const ko: Dict = {
@@ -2325,6 +2377,19 @@ const ko: Dict = {
   "strip.est": "추정치: 최근 공식 종가에 같은 시간대에 거래되는 {etf} ETF의 등락을 반영",
   "strip.closeOf": "{date} 종가. 이 시장은 일별 종가만 제공됩니다",
   "chart.shape": "공식 종가이며, 장중 흐름은 {etf} ETF를 따름",
+  "ask.sWhy": "{name}에 대해 왜 '{action}'인가요? 무엇이 이 판단을 바꿀까요?",
+  "ask.sEvent": "“{title}”이(가) {name}에 어떤 영향을 줄까요?",
+  "ask.sMover": "{name}이(가) {chg} 움직인 이유는?",
+  "ask.sWatch": "{event} 전에 무엇을 지켜봐야 하나요?",
+  "ask.sSummary": "이 브리핑을 3가지로 요약해 주세요",
+  "ask.fRisks": "주요 위험은 무엇인가요?",
+  "ask.fWrong": "무엇이 이 판단을 틀리게 만들까요?",
+  "ask.fSimple": "더 쉽게 설명해 주세요",
+  "ask.fAct": "이번 주에 무엇을 해야 하나요?",
+  "ask.history": "기록",
+  "ask.noHistory": "저장된 대화가 아직 없습니다.",
+  "ask.delete": "대화 삭제",
+  "ask.messages": "메시지 {n}개",
 };
 
 const es: Dict = {
@@ -2789,6 +2854,19 @@ const es: Dict = {
   "strip.est": "Estimación: el último cierre oficial ajustado con el movimiento del ETF {etf}, que cotiza en el mismo horario",
   "strip.closeOf": "Cierre del {date}. Para este mercado solo hay cierres diarios",
   "chart.shape": "Cierre oficial; el recorrido intradía sigue al ETF {etf}",
+  "ask.sWhy": "¿Por qué {action} en {name}? ¿Qué cambiaría esa recomendación?",
+  "ask.sEvent": "¿Cómo podría afectar “{title}” a {name}?",
+  "ask.sMover": "¿Por qué {name} se movió {chg}?",
+  "ask.sWatch": "¿Qué debo vigilar antes de {event}?",
+  "ask.sSummary": "Resume este informe en 3 puntos",
+  "ask.fRisks": "¿Cuáles son los riesgos principales?",
+  "ask.fWrong": "¿Qué demostraría que esto es incorrecto?",
+  "ask.fSimple": "Explícalo de forma más sencilla",
+  "ask.fAct": "¿Qué debería hacer esta semana?",
+  "ask.history": "Historial",
+  "ask.noHistory": "Aún no hay chats guardados.",
+  "ask.delete": "Eliminar chat",
+  "ask.messages": "{n} mensajes",
 };
 
 const fr: Dict = {
@@ -3253,6 +3331,19 @@ const fr: Dict = {
   "strip.est": "Estimation : dernière clôture officielle ajustée du mouvement de l'ETF {etf}, coté aux mêmes heures",
   "strip.closeOf": "Clôture du {date}. Seules les clôtures quotidiennes sont disponibles pour ce marché",
   "chart.shape": "Clôture officielle ; le tracé intrajournalier suit l'ETF {etf}",
+  "ask.sWhy": "Pourquoi {action} sur {name} ? Qu'est-ce qui changerait cet avis ?",
+  "ask.sEvent": "Quel effet « {title} » pourrait-il avoir sur {name} ?",
+  "ask.sMover": "Pourquoi {name} a-t-il bougé de {chg} ?",
+  "ask.sWatch": "Que surveiller avant {event} ?",
+  "ask.sSummary": "Résume ce briefing en 3 points",
+  "ask.fRisks": "Quels sont les principaux risques ?",
+  "ask.fWrong": "Qu'est-ce qui prouverait que c'est faux ?",
+  "ask.fSimple": "Explique plus simplement",
+  "ask.fAct": "Que devrais-je faire cette semaine ?",
+  "ask.history": "Historique",
+  "ask.noHistory": "Aucune conversation enregistrée pour l'instant.",
+  "ask.delete": "Supprimer la conversation",
+  "ask.messages": "{n} messages",
 };
 
 const de: Dict = {
@@ -3717,6 +3808,19 @@ const de: Dict = {
   "strip.est": "Schätzung: letzter offizieller Schlusskurs, fortgeschrieben mit der Bewegung des ETF {etf} (gleiche Handelszeiten)",
   "strip.closeOf": "Schlusskurs vom {date}. Für diesen Markt gibt es nur Tagesschlusskurse",
   "chart.shape": "Offizieller Schlusskurs; der Tagesverlauf folgt dem ETF {etf}",
+  "ask.sWhy": "Warum {action} bei {name}? Was würde diese Einschätzung ändern?",
+  "ask.sEvent": "Wie könnte „{title}“ {name} beeinflussen?",
+  "ask.sMover": "Warum hat sich {name} um {chg} bewegt?",
+  "ask.sWatch": "Worauf sollte ich vor {event} achten?",
+  "ask.sSummary": "Fasse dieses Briefing in 3 Punkten zusammen",
+  "ask.fRisks": "Was sind die Hauptrisiken?",
+  "ask.fWrong": "Was würde das widerlegen?",
+  "ask.fSimple": "Erkläre es einfacher",
+  "ask.fAct": "Was sollte ich diese Woche tun?",
+  "ask.history": "Verlauf",
+  "ask.noHistory": "Noch keine gespeicherten Chats.",
+  "ask.delete": "Chat löschen",
+  "ask.messages": "{n} Nachrichten",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

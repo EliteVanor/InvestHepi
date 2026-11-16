@@ -49,12 +49,18 @@ export function useLiveQuotes(symbols: string[], market: "us" | "vn" | "world" =
   return map;
 }
 
+/**
+ * Whether a live quote may replace a briefing's quote: same basis (both real, or the same ETF), or a
+ * real level replacing an ETF stand-in. Never an ETF price over a real level. Exported for tests.
+ */
+export const canOverlay = (digestProxy?: string, liveProxy?: string) => (digestProxy ?? "") === (liveProxy ?? "") || (!!digestProxy && !liveProxy);
+
 /** Overlay live prices on digest quotes (keeps the 1-month history for sparklines). */
 export function mergeLive(quotes: Quote[], live: Map<string, LiveQuote>): Quote[] {
   return quotes.map((q) => {
     const l = live.get(q.symbol);
-    // Never mix an index level with its tracking ETF's price.
-    return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, spark: l.intraday ? l.spark : undefined } : q;
+    // Never mix an index level with its tracking ETF's price; a real level may replace an ETF stand-in.
+    return l && canOverlay(q.proxy, l.proxy) ? { ...q, proxy: l.proxy, price: l.price, prevClose: l.prevClose, changePct: l.changePct, spark: l.intraday ? l.spark : undefined } : q;
   });
 }
 
@@ -354,147 +360,6 @@ export function AlertsTab({ prefillSymbol }: { prefillSymbol?: string }) {
         </div>
       )}
     </>
-  );
-}
-
-/* ---------------------------------------------------------------- Ask AI */
-
-interface AskMsg {
-  role: "user" | "assistant";
-  content: string;
-  sources?: { n: number; title: string; link: string; source: string }[];
-  provider?: string;
-  error?: boolean;
-}
-
-function renderAnswer(text: string) {
-  const parts = text.split(/(\[\d{1,2}\])/g);
-  return parts.map((p, i) => (/^\[\d{1,2}\]$/.test(p) ? <span className="cite" key={i}>{p.slice(1, -1)}</span> : <span key={i}>{p}</span>));
-}
-
-export function AskSheet({ onClose, tickers, initial }: { onClose: () => void; tickers: string[]; initial?: string }) {
-  const { t, api, lang } = usePrefs();
-  const [msgs, setMsgs] = useState<AskMsg[]>(() => {
-    try {
-      return JSON.parse(sessionStorage.getItem("ih-ask") ?? "[]");
-    } catch {
-      return [];
-    }
-  });
-  const [q, setQ] = useState("");
-  const [busy, setBusy] = useState(false);
-  const endRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const sentInitial = useRef(false);
-
-  useEffect(() => {
-    try {
-      sessionStorage.setItem("ih-ask", JSON.stringify(msgs.slice(-20)));
-    } catch {}
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [msgs, busy]);
-
-  const send = useCallback(
-    async (question: string) => {
-      const text = question.trim();
-      if (!text || busy) return;
-      const history = msgs.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.content }));
-      setMsgs((m) => [...m, { role: "user", content: text }]);
-      setQ("");
-      setBusy(true);
-      try {
-        const r = await api<{ answer: string; sources: AskMsg["sources"]; provider: string }>("/api/ask", { method: "POST", body: JSON.stringify({ question: text, history, lang }) });
-        setMsgs((m) => [...m, { role: "assistant", content: r.answer, sources: r.sources, provider: r.provider }]);
-      } catch (e) {
-        const em = (e as Error).message;
-        setMsgs((m) => [...m, { role: "assistant", content: em === "NO_PROVIDER" ? t("ask.noProvider") : em, error: true }]);
-      } finally {
-        setBusy(false);
-        inputRef.current?.focus();
-      }
-    },
-    [api, busy, lang, msgs, t],
-  );
-
-  useEffect(() => {
-    if (initial && !sentInitial.current) {
-      sentInitial.current = true;
-      send(initial);
-    }
-  }, [initial, send]);
-
-  const tk = tickers[0] ?? "SPY";
-  const tk2 = tickers.find((x) => x !== tk) ?? tk;
-  const suggestions = [t("ask.s1", { ticker: tk }), t("ask.s2"), t("ask.s3", { ticker: tk2 }), t("ask.s4")];
-
-  return (
-    <Sheet
-      title={
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-          <IconSparkles width={20} height={20} style={{ color: "var(--purple)" }} /> {t("ask.title")}
-        </span>
-      }
-      onClose={onClose}
-      actions={
-        msgs.length > 0 ? (
-          <button className="pill-btn" onClick={() => setMsgs([])}>
-            {t("ask.clear")}
-          </button>
-        ) : undefined
-      }
-    >
-      <div className="chat" aria-live="polite">
-        {msgs.length === 0 && (
-          <>
-            <p className="hint" style={{ margin: 0 }}>{t("ask.intro")}</p>
-            <div className="suggest">
-              {suggestions.map((s) => (
-                <button key={s} onClick={() => send(s)}>
-                  {s}
-                </button>
-              ))}
-            </div>
-          </>
-        )}
-        {msgs.map((m, i) => (
-          <div key={i} className={`bubble ${m.role === "user" ? "me" : "ai"}`} style={m.error ? { color: "var(--red)" } : undefined}>
-            {m.role === "assistant" ? renderAnswer(m.content) : m.content}
-            {m.role === "assistant" && (m.sources?.length || m.provider) ? (
-              <div className="bubble-meta">
-                {m.sources?.map((s) => (
-                  <a key={s.n} href={s.link} target="_blank" rel="noreferrer" title={s.title}>
-                    [{s.n}] {s.source}
-                  </a>
-                ))}
-                {m.provider && <span>· {m.provider.split(":")[0]}</span>}
-              </div>
-            ) : null}
-          </div>
-        ))}
-        {busy && (
-          <div className="bubble ai typing" aria-label={t("ask.thinking")}>
-            <i />
-            <i />
-            <i />
-          </div>
-        )}
-        <div ref={endRef} />
-      </div>
-      <form
-        className="composer"
-        onSubmit={(e) => {
-          e.preventDefault();
-          send(q);
-        }}
-      >
-        <input ref={inputRef} autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("ask.placeholder")} maxLength={500} aria-label={t("ask.placeholder")} />
-        <button type="submit" disabled={!q.trim() || busy} aria-label={t("ask.send")}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M12 19V5M5 12l7-7 7 7" />
-          </svg>
-        </button>
-      </form>
-    </Sheet>
   );
 }
 

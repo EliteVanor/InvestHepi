@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "fs";
 
 process.env.VERCEL = "1";
+process.env.APP_PASSWORD = "pw";
 delete process.env.KV_REST_API_URL;
 
 const DAY = 86400;
@@ -112,6 +113,49 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(P.fmtPrice(53800), "53,800", "whole-number share prices stay whole");
   assert.equal(P.fmtPrice(1.1023, S.priceDigits("EURUSD=X", 1.1023)), "1.1023", "currency pairs: 4 decimals");
   assert.equal(P.fmtPrice(25707, S.priceDigits("VND=X", 25707)), "25,707.00");
+
+  /* ---------------- movers use the snapshot's numbers */
+  const Pl = await import("../src/lib/pipeline");
+  const quotes = [{ symbol: "KDH.VN", price: 15550, prevClose: 15300, changePct: 1.63, history: [], source: "vndirect" as const }];
+  const aligned = Pl.alignMovers([{ ticker: "kdh.vn", changePct: 15.2, why: "5-day gain" }, { ticker: "MADEUP", changePct: 9, why: "x" }], quotes);
+  assert.deepEqual(aligned.map((m) => [m.ticker, m.changePct]), [["KDH.VN", 1.63]], "last-session change from the data; tickers not in the snapshot dropped");
+
+  /* ---------------- live overlay: a real level may replace an ETF stand-in, never the reverse */
+  const V3 = await import("../src/components/v3");
+  assert.equal(V3.canOverlay("SPY", undefined), true, "real S&P level replaces SPY's price");
+  assert.equal(V3.canOverlay(undefined, "SPY"), false, "SPY's price never replaces the real level");
+  assert.equal(V3.canOverlay("EWJ", "EWJ"), true);
+  assert.equal(V3.canOverlay(undefined, undefined), true);
+
+  /* ---------------- Ask AI: suggestions from the briefing, saved chats */
+  const A = await import("../src/components/ask");
+  const { makeT } = await import("../src/lib/i18n");
+  const tv = makeT("vi");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const dg: any = { analysis: { outlook: [{ interest: "Banks", action: "TRIM" }], events: [{ title: "SBV buys USD", importance: 4, impacts: [{ interest: "Banks" }] }], movers: [{ ticker: "VCB.VN", changePct: -0.37 }] } };
+  const cal = [{ date: "2026-11-17", kind: "earnings" as const, title: "NVDA earnings (EPS est. 2.52)", importance: 2 as const }, { date: "2026-11-19", kind: "macro" as const, title: "VN30 futures expiry", importance: 2 as const }];
+  const sug = A.suggestionsFor(tv, dg, cal, "vn");
+  assert.ok(sug[0].includes("Ngân hàng") && sug[0].includes(tv("act.TRIM")), `the call, in Vietnamese: ${sug[0]}`);
+  assert.ok(sug.some((x) => x.includes("SBV buys USD")), "the top event");
+  assert.ok(sug.some((x) => x.includes("VCB") && x.includes("-0.37%")), "the biggest mover with its real change");
+  assert.ok(sug.some((x) => x.includes("Đáo hạn phái sinh VN30")) && !sug.some((x) => x.includes("NVDA")), "shared tabs: macro events only, not personal earnings");
+  assert.ok(A.suggestionsFor(tv, dg, cal, "interests").some((x) => x.includes("NVDA")), "My Interests: the reader's own earnings dates");
+
+  const Ch = await import("../src/lib/chats");
+  const id = await Ch.appendToChat(undefined, "Why TRIM banks?", { role: "assistant", content: "Because..." }, "vn");
+  await Ch.appendToChat(id, "What would change it?", { role: "assistant", content: "If SBV..." });
+  const saved = await Ch.getChat(id);
+  assert.deepEqual([saved?.title, saved?.messages.length, saved?.section], ["Why TRIM banks?", 4, "vn"], "questions and answers kept in order");
+  for (let i = 0; i < 35; i++) await Ch.appendToChat(undefined, `q${i}`, { role: "assistant", content: "a" });
+  assert.equal((await Ch.listChats()).length, Ch.MAX_CHATS, "capped for the free Redis tier");
+  const route = await import("../src/app/api/chats/route");
+  const auth = { headers: { "x-app-password": "pw" } };
+  const list = await (await route.GET(new Request("http://localhost/api/chats", auth))).json();
+  assert.equal(list.chats[0].title, "q34", "newest first");
+  assert.ok(!("messages" in list.chats[0]) && list.chats[0].count === 2, "the list sends titles and counts, not whole chats");
+  await route.DELETE(new Request(`http://localhost/api/chats?id=${list.chats[0].id}`, { method: "DELETE", ...auth }));
+  assert.equal((await route.GET(new Request("http://localhost/api/chats"))).status, 401, "no password, no chats");
+  assert.equal((await Ch.listChats())[0].title, "q33", "deleted");
 
   console.log("V10 OK");
 })().catch((e) => {

@@ -477,10 +477,6 @@ export function Events({ events, news }: { events: KeyEvent[]; news: NewsItem[] 
 
 /* --------------------------------------------------------------- Up next */
 
-function etToday(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
-
 /** What a strip price is when it isn't a live quote: an ETF's price, an estimate, or a dated close. */
 function QuoteTag({ q }: { q: Quote }) {
   const { t, lang } = usePrefs();
@@ -494,9 +490,10 @@ function QuoteTag({ q }: { q: Quote }) {
   return null;
 }
 
-export function UpNext({ events, notes }: { events: CalendarEvent[]; notes: string[] }) {
+export function UpNext({ events, notes, timeZone = "America/New_York" }: { events: CalendarEvent[]; notes: string[]; timeZone?: string }) {
   const { t, lang } = usePrefs();
-  const today = etToday();
+  // "Today" in the tab's market (Hanoi for Vietnam), not always New York.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const tomorrow = new Date(new Date(today + "T12:00:00Z").getTime() + 86400_000).toISOString().slice(0, 10);
   const byDay = useMemo(() => {
     const m = new Map<string, CalendarEvent[]>();

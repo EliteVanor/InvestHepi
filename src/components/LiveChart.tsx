@@ -344,7 +344,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
             <div className={`chart-chg num ${chg >= 0 ? "up" : "down"}`}>
               {data ? `${chg >= 0 ? "+" : ""}${fmtPrice(Math.abs(chg) < 1000 ? chg : Math.round(chg))} (${fmtPct(chgPct)})` : " "}
               <span className="chart-when">
-                {hover ? fmtTime(hover.time, range !== "1d" || !!data?.dailyOnly) : data ? (range === "1d" ? (data.dailyOnly ? t("chart.range.5d") : sessionLabel) : t(`chart.range.${range}`)) : ""}
+                {hover ? fmtTime(hover.time, range !== "1d" || !!data?.dailyOnly) : data ? (range === "1d" ? sessionLabel : t(`chart.range.${range}`)) : ""}
               </span>
             </div>
           </div>
