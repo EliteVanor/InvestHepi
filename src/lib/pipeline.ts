@@ -18,7 +18,8 @@ import { SECTORS } from "./chart";
 import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTION_FEEDS, SECTION_GROUPS, SECTION_MACRO, SECTION_STRIPS, type SharedSection, type StripGroup } from "./config";
 import { GUEST, OWNER, currentUid, ukey, withUser } from "./context";
 import { isLang } from "./languages";
-import { analyze } from "./llm";
+import { analyze, type Route } from "./llm";
+import { analyzeWithRules } from "./llm/rules";
 import { translateDigest } from "./translate";
 import { getQuotes } from "./market";
 import { computeMood } from "./mood";
@@ -157,10 +158,11 @@ const translating = new Map<string, Promise<Digest>>();
  * every reader; concurrent requests share one call). Returns the original if no translation is
  * needed or possible. `onSpend` runs only when a new translation is actually paid for.
  */
-export async function translateLatest(section: SectionId, lang: string, onSpend?: () => Promise<boolean>): Promise<Digest | null> {
-  const d = await loadDigest(section, undefined, lang);
-  if (!d || !isLang(lang) || d.language === lang || d.provider === "rules" || d.translatedFrom) return d;
-  const prefix = section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:${d.language ?? "en"}`;
+export async function translateLatest(section: SectionId, lang: string, onSpend?: () => Promise<boolean>, variant?: "rules"): Promise<Digest | null> {
+  const d = variant === "rules" ? await loadRules(section, lang) : await loadDigest(section, undefined, lang);
+  if (!d || !isLang(lang) || d.language === lang || d.translatedFrom) return d;
+  const base = section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:${d.language ?? "en"}`;
+  const prefix = variant === "rules" ? `${base}:rules` : base;
   const key = trKey(prefix, lang);
   const pending = translating.get(key);
   if (pending) return pending;
@@ -182,6 +184,79 @@ export async function translateLatest(section: SectionId, lang: string, onSpend?
     .finally(() => translating.delete(key));
   translating.set(key, job);
   return job;
+}
+
+/** Where the caller's current briefing for a section lives (English original). */
+async function basePrefix(section: SectionId): Promise<string> {
+  return section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:en`;
+}
+
+/**
+ * When the latest scheduled or manual run couldn't use any AI model, readers keep the last AI
+ * briefing; this returns when that run happened (only if it's newer than the briefing shown).
+ */
+export async function aiFailedSince(section: SectionId, shown: Digest | null): Promise<string | null> {
+  if (!shown || shown.provider === "rules") return null;
+  const f = await getJSON<{ at: string }>(`${await basePrefix(section)}:aifail`);
+  return f && f.at > shown.generatedAt ? f.at : null;
+}
+
+/** Rule-based copies are cached this long; anyone asking within the window shares one. */
+export const RULES_TTL_MS = 15 * 60_000;
+
+/** The cached rule-based copy of a section (translated if a translation of this version exists). */
+export async function loadRules(section: SectionId, lang?: string): Promise<Digest | null> {
+  const prefix = `${await basePrefix(section)}:rules`;
+  const d = await getJSON<Digest>(prefix);
+  if (!d || !lang || d.language === lang) return d;
+  const tr = await getJSON<Digest>(trKey(prefix, lang));
+  return tr && tr.generatedAt === d.generatedAt ? tr : d;
+}
+
+/**
+ * A fresh rule-based copy (latest headlines and prices, no AI) unless one under 15 minutes old exists.
+ * `onBuild` gates the build (per-user daily cap); when it says no, the cached copy is returned.
+ */
+export async function rulesVariant(section: SectionId, lang?: string, onBuild?: () => Promise<boolean>, now = new Date()): Promise<Digest | null> {
+  const cached = await loadRules(section, lang);
+  if (cached && now.getTime() - new Date(cached.generatedAt).getTime() < RULES_TTL_MS) return cached;
+  if (onBuild && !(await onBuild())) return cached;
+  const prefix = `${await basePrefix(section)}:rules`;
+  const job = rulesBuilds.get(prefix) ?? buildRules(section, now).finally(() => rulesBuilds.delete(prefix));
+  rulesBuilds.set(prefix, job);
+  const d = await job;
+  await setJSON(prefix, d);
+  return d;
+}
+
+const rulesBuilds = new Map<string, Promise<Digest>>();
+
+async function buildRules(section: SectionId, now: Date): Promise<Digest> {
+  if (section === "interests") {
+    const { interests, hash } = await currentInterestSet();
+    return buildDigest({ section, interests, lang: "en", callsKey: `calls:${hash}`, now, rulesOnly: true });
+  }
+  const shared = section as SharedSection;
+  return buildDigest({ section, interests: SECTION_GROUPS[shared], lang: "en", callsKey: SHARED_CALLS[shared], now, rulesOnly: true });
+}
+
+/**
+ * Save a new briefing. A rule-based one never replaces an AI briefing: it's kept beside it
+ * (prefix:rules, so readers can switch to it) and the failed attempt is noted (prefix:aifail).
+ * Returns what readers now see and whether the AI briefing was kept.
+ */
+async function storeBriefing(prefix: string, d: Digest): Promise<{ shown: Digest; keptAi: boolean }> {
+  if (d.provider === "rules") {
+    const prev = await getJSON<Digest>(prefix);
+    if (prev && prev.provider !== "rules") {
+      await setJSON(`${prefix}:rules`, d);
+      await setJSON(`${prefix}:aifail`, { at: d.generatedAt, note: d.providerNote });
+      return { shown: prev, keptAi: true };
+    }
+  }
+  await setJSON(prefix, d);
+  await archive(prefix, d).catch(() => {});
+  return { shown: d, keptAi: false };
 }
 
 export interface HistoryEntry extends DigestMeta {
@@ -270,6 +345,10 @@ interface BuildOptions {
   positions?: string;
   extraSymbols?: string[];
   now: Date;
+  /** Which models to use (models.ts routes). */
+  route?: Route;
+  /** Skip AI entirely: the rule-based copy readers can switch to. */
+  rulesOnly?: boolean;
 }
 
 /** Track records of the shared sections (calls on market groups, graded like personal ones). */
@@ -290,6 +369,12 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
   const gauge = computeMood({ spy: technicals[cov.bench], sectors: breadth, macro, quotes, benchSymbol: cov.bench });
   const news = newsRes.items.slice(0, MAX_ITEMS_PER_SECTION);
   const stats = computeStats(await loadCalls(o.callsKey));
+  if (o.rulesOnly) {
+    return {
+      section: o.section, generatedAt: o.now.toISOString(), provider: "rules", providerNote: "Rule-based summary of the latest headlines (no AI).",
+      analysis: analyzeWithRules(news, o.interests, quotes), news, quotes, macro, sectors, technicals, gauge, strip: cov.strip, feedErrors: newsRes.errors, language: "en",
+    };
+  }
   const { analysis, provider, note } = await analyze({
     section: o.section,
     interests: o.interests,
@@ -304,7 +389,7 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
     trackRecord: trackRecordText(stats),
     language: o.lang,
     now: o.now,
-  });
+  }, o.route ?? (o.section === "interests" ? "userAuto" : "shared"));
   return {
     section: o.section,
     generatedAt: o.now.toISOString(),
@@ -324,20 +409,22 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
 }
 
 /** Refresh one shared section in one language. */
-export async function refreshShared(section: SectionId, lang: string, now = new Date()): Promise<Digest> {
+/** A refresh result: the new briefing, flagged when AI failed and readers kept the previous AI one. */
+export type Refreshed = Digest & { keptAi?: boolean };
+
+export async function refreshShared(section: SectionId, lang: string, now = new Date(), route: Route = "shared"): Promise<Refreshed> {
   const shared = section as SharedSection;
   // Each shared section covers its own market groups and keeps its own track record.
   const interests = SECTION_GROUPS[shared];
   const callsKey = SHARED_CALLS[shared];
   await gradeCalls(now, callsKey).catch(() => 0);
-  const d = await buildDigest({ section, interests, lang, callsKey, now });
+  const d = await buildDigest({ section, interests, lang, callsKey, now, route });
   // Calls are keyed by date + ticker + horizon, so refreshing in several languages doesn't double-count.
   await recordCalls(d.analysis.outlook, interests, d.provider, now, callsKey).catch(() => {});
   const prefix = prefixFor(section, lang);
-  await setJSON(prefix, d);
-  await archive(prefix, d).catch(() => {});
-  await setJSON(`${prefix}:last`, { at: d.generatedAt, provider: d.provider, ok: true });
-  return d;
+  const { keptAi } = await storeBriefing(prefix, d);
+  await setJSON(`${prefix}:last`, { at: d.generatedAt, provider: d.provider, ok: !keptAi });
+  return keptAi ? { ...d, keptAi } : d;
 }
 
 /**
@@ -345,7 +432,7 @@ export async function refreshShared(section: SectionId, lang: string, now = new 
  * exactly this set. Positions only shape the briefing in single-user mode (briefings are shared
  * in multi-user mode; Ask AI is still position-aware there).
  */
-export async function refreshInterestSet(interests: Interest[], lang: string, uids: string[], now = new Date()): Promise<Digest> {
+export async function refreshInterestSet(interests: Interest[], lang: string, uids: string[], now = new Date(), route: Route = uids.includes(OWNER) ? "adminAuto" : "userAuto"): Promise<Refreshed> {
   const hash = interestHash(interests, lang);
   const callsKey = await callsKeyFor(hash);
   await gradeCalls(now, callsKey).catch(() => 0);
@@ -360,13 +447,13 @@ export async function refreshInterestSet(interests: Interest[], lang: string, ui
     positions: holdings.length ? positionsAsText(holdings, (await marketData(coverage("interests", interests, holdings.map((h) => h.symbol)))).quotes) : undefined,
     extraSymbols: holdings.map((h) => h.symbol),
     now,
+    route,
   });
   await recordCalls(d.analysis.outlook, interests, d.provider, now, callsKey);
-  await setJSON(`ib:${hash}`, d);
-  await archive(`ib:${hash}`, d).catch(() => {});
-  await setJSON(`ib:${hash}:last`, { at: d.generatedAt, provider: d.provider, ok: true });
+  const { keptAi } = await storeBriefing(`ib:${hash}`, d);
+  await setJSON(`ib:${hash}:last`, { at: d.generatedAt, provider: d.provider, ok: !keptAi });
   for (const uid of uids) await withUser(uid, () => runAlerts(prev)).catch(() => {});
-  return d;
+  return keptAi ? { ...d, keptAi } : d;
 }
 
 /** Refresh a section as the current caller (their interest set / their language). */
@@ -417,41 +504,41 @@ export async function interestGroups(): Promise<Map<string, Group>> {
   return groups;
 }
 
+/** Minimum gap between automatic refreshes of one interest set: the admin's set and everyone else's. */
+export const AUTO_MIN_AGE_MIN = { admin: 60, user: 90 };
+
 /**
- * Scheduled refresh. Shared sections: every language in use. Interests: the stalest sets first,
- * at most `batch` per call (free AI tiers allow roughly one briefing a minute).
+ * Scheduled refresh (see refresh.yml for the times).
+ * Shared sections: written once in English, then pre-translated into Vietnamese only (the main
+ * audience); other languages are translated when their first reader opens the briefing.
+ * Interests: `scope` "admin" refreshes only the admin's set (the admin-only slots), "all" every set
+ * that's due, stalest first, `batch` per call (default 1: one briefing per minute fits Groq's
+ * per-minute limit). The admin's set uses the adminAuto route, others userAuto.
  */
-export async function refreshScheduled(section: SectionId, opts: { batch?: number; minAgeMin?: number } = {}, now = new Date()) {
-  const results: { key: string; ok: boolean; provider?: string; error?: string }[] = [];
-  const run = async (key: string, fn: () => Promise<Digest>) => {
+export async function refreshScheduled(section: SectionId, opts: { batch?: number; scope?: "all" | "admin" } = {}, now = new Date()) {
+  const results: { key: string; ok: boolean; provider?: string; keptAi?: boolean; error?: string }[] = [];
+  const run = async (key: string, fn: () => Promise<Refreshed>) => {
     try {
       const d = await fn();
-      results.push({ key, ok: true, provider: d.provider });
+      results.push({ key, ok: true, provider: d.provider, keptAi: d.keptAi });
     } catch (e) {
       results.push({ key, ok: false, error: (e as Error).message });
     }
   };
   if (section !== "interests") {
-    // Write the section once (English), then translate it for the other languages readers use:
-    // a translation costs about a quarter of a full analysis and keeps the calls identical.
-    await run(`${section}:en`, () => refreshShared(section, "en", now));
-    for (const lang of (await sharedLanguages()).filter((l) => l !== "en")) {
-      await run(`${section}:${lang}`, async () => (await translateLatest(section, lang)) ?? Promise.reject(new Error("no briefing")));
-    }
-    return { results };
+    await run(`${section}:en`, () => refreshShared(section, "en", now, "shared"));
+    await run(`${section}:vi`, async () => (await translateLatest(section, "vi")) ?? Promise.reject(new Error("no briefing")));
+    return { results, pending: 0 };
   }
-  const batch = opts.batch ?? (Number(process.env.INTEREST_BATCH) || 2);
-  // 60 min: the closest scheduled runs are 80 min apart (11:50 and 13:10 UTC), so each run still refreshes.
-  const minAge = (opts.minAgeMin ?? 60) * 60_000;
-  const groups = [...(await interestGroups()).entries()];
+  const batch = opts.batch ?? (Number(process.env.INTEREST_BATCH) || 1);
+  const groups = [...(await interestGroups()).entries()].filter(([, g]) => opts.scope !== "admin" || g.uids.includes(OWNER));
   const ages = await Promise.all(groups.map(async ([h]) => (await getJSON<{ at: string }>(`ib:${h}:last`))?.at ?? "1970-01-01"));
   const due = groups
-    .map(([h, g], i) => ({ h, g, at: ages[i] }))
-    .filter((x) => now.getTime() - new Date(x.at).getTime() >= minAge)
-    .sort((a, b) => a.at.localeCompare(b.at))
-    .slice(0, batch);
-  for (const x of due) await run(`interests:${x.h}`, () => refreshInterestSet(x.g.interests, x.g.lang, x.g.uids, now));
-  return { results, pending: Math.max(0, groups.length - due.length) };
+    .map(([h, g], i) => ({ h, g, at: ages[i], admin: g.uids.includes(OWNER) }))
+    .filter((x) => now.getTime() - new Date(x.at).getTime() >= (x.admin ? AUTO_MIN_AGE_MIN.admin : AUTO_MIN_AGE_MIN.user) * 60_000)
+    .sort((a, b) => Number(b.admin) - Number(a.admin) || a.at.localeCompare(b.at));
+  for (const x of due.slice(0, batch)) await run(`interests:${x.h}`, () => refreshInterestSet(x.g.interests, x.g.lang, x.g.uids, now, x.admin ? "adminAuto" : "userAuto"));
+  return { results, pending: Math.max(0, due.length - batch) };
 }
 
 /* -------------------------------------------------------------- alerts */

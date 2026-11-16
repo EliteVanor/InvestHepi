@@ -189,8 +189,15 @@ export function briefingText(d: Digest, t: ReturnType<typeof usePrefs>["t"]): st
 }
 
 export function Briefing({
-  digest, viewingOld, onBackToLatest, onHistory, onCatchUp, translating, translateFailed,
-}: { digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void; onCatchUp: () => void; translating?: boolean; translateFailed?: boolean }) {
+  digest, viewingOld, onBackToLatest, onHistory, onCatchUp, translating, translateFailed, aiFailedAt, rulesView, onToggleRules,
+}: {
+  digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void; onCatchUp: () => void; translating?: boolean; translateFailed?: boolean;
+  /** The latest run couldn't use AI (when): the briefing shown is the last AI one. */
+  aiFailedAt?: string | null;
+  /** Showing the rule-based copy instead. */
+  rulesView?: boolean;
+  onToggleRules?: (on: boolean) => void;
+}) {
   const { t, lang } = usePrefs();
   const a = digest.analysis;
   const [speaking, setSpeaking] = useState(false);
@@ -248,6 +255,17 @@ export function Briefing({
 
   return (
     <section className="card hero" aria-labelledby="brief-h">
+      {aiFailedAt && !viewingOld && onToggleRules && (
+        <div className="banner ai-fallback top" role="status">
+          <IconInfo16 />
+          <span>
+            {rulesView
+              ? t("ai.rulesBanner")
+              : t("ai.failedBanner", { age: relTime(digest.generatedAt, lang), time: new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" }).format(new Date(aiFailedAt)) })}
+          </span>
+          <button onClick={() => onToggleRules(!rulesView)}>{rulesView ? t("ai.backToAi") : t("ai.showRules")}</button>
+        </div>
+      )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span className="chip accent">
           <IconSparkles width={13} height={13} /> {t("brief.title")}
@@ -581,7 +599,7 @@ export function Headlines({
       {list.length === 0 && <p className="muted" style={{ padding: "12px 0" }}>{filter === "saved" && !needle ? t("news.savedEmpty") : t("news.none")}</p>}
       {list.map((n) => (
         <div className={`news ${newIds.has(n.id) ? "is-new" : ""}`} key={n.id}>
-          <a href={n.link} target="_blank" rel="noreferrer">
+          <a href={n.link} target="_blank" rel="noreferrer" title={n.titleOrig}>
             {n.title}
           </a>
           <div className="news-actions">

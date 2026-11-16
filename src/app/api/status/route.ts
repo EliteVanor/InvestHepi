@@ -1,6 +1,7 @@
 import { role } from "@/lib/auth";
 import { emailProvider } from "@/lib/email";
 import { providerChain } from "@/lib/llm";
+import { usageReport } from "@/lib/llm/models";
 import { multiUser } from "@/lib/mode";
 import { currentInterestSet } from "@/lib/pipeline";
 import { getJSON, storeKind } from "@/lib/store";
@@ -27,6 +28,8 @@ export async function GET(req: Request) {
       cronSecret: Boolean(process.env.CRON_SECRET),
       email: emailProvider(),
       lastRefresh: last,
+      // Admin only: today's AI use per model against its free allowance.
+      aiUsage: user?.admin || (!multi && role(req) === "owner") ? await usageReport() : undefined,
     });
   });
 }

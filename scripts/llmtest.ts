@@ -66,7 +66,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return real(input, init);
   }) as typeof fetch;
   const d2 = await refreshSection("world");
-  assert.equal(d2.provider, "gemini:gemini-flash-latest", "falls back to Gemini on Groq 429");
+  assert.equal(d2.provider, "gemini:gemini-3.5-flash-lite", "falls back to Gemini (Flash-Lite: 500 requests a day) on Groq 429");
   assert.ok(d2.providerNote?.includes("429"), "fallback note mentions the 429");
   assert.equal(d2.analysis.movers.length, 1, "movers parsed");
   const { loadCalls } = await import("../src/lib/track");

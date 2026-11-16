@@ -15,7 +15,10 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - **Sections:** My Interests (personal), World, US, Vietnam.
 - **Shared sections never show personal stocks.** World = world indexes + global giants + macro. US = S&P 500, Dow, Nasdaq 100, Russell 2000 + mega caps. Vietnam = VN-Index, VN30, HNX, UPCoM + banks + large caps. The AI's calls in shared sections are on market groups, not users' stocks.
 - **World has no market open/closed pill** (it spans many exchanges).
-- **Users can't refresh any section.** Briefings refresh on the GitHub Actions schedule. Only the admin (owner) can force a refresh. A newly saved interest set gets its first briefing automatically, once.
+- **Refreshing (decided Nov 16):** briefings refresh on the GitHub Actions schedule. Users' interest sets refresh automatically 4 times a weekday (01:15, 08:10, 12:30, 21:20 UTC), the admin's 6 times. Signed-in users can also refresh their own My Interests by hand: 5 a day, 90 minutes apart, on a lighter model (Gemini Flash-Lite); every press writes a new briefing and tells them how many presses are left. The admin can refresh any section, 10 a day, on the best model. Shared sections can't be refreshed by users. A newly saved interest set gets its first briefing automatically, once.
+- **Schedule:** weekdays World 4, US 2 (12:30 UTC pre-open is the graded call), Vietnam 5 (01:15 UTC pre-HOSE is the graded call). Sunday: each shared section twice, the admin's set 3 times, users none. Saturday: nothing.
+- **Models:** shared on gpt-oss-120b (budget reserved), personal overflow on gpt-oss-20b, translation on qwen, Gemini Flash-Lite as backup; Ask AI on 20b. Shared sections use 20b only as the very last resort.
+- **When no AI model works:** keep the last AI briefing and explain it in a banner; readers can switch to a rule-based summary of the latest news (only they see it; cached).
 - **One language setting per person**, used for the app, briefings and alert emails. **Every briefing is generated in English and translated** (cached per briefing version). Never regenerate a briefing to change its language.
 - **Signed-out visitors** can read World / US / Vietnam; My Interests shows a sign-in invitation. Visitors land on World (Vietnam if their language is Vietnamese).
 - **Search like Apple Stocks:** find any US, Vietnamese or global stock / ETF / index (accents optional), tap + to follow. Following creates a one-ticker interest.
@@ -35,10 +38,10 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 
 - `main` = v8, deployed on Vercel at `investhepi.vercel.app`.
 - Multi-user mode is on (Google sign-in via Auth.js). Vercel env vars in use: AI keys (`GROQ_API_KEY`, `GEMINI_API_KEY`), Upstash (`KV_REST_API_*`), `APP_PASSWORD`, `CRON_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `OWNER_EMAIL`, optionally `CONTACT_EMAIL` (shown on `/privacy` and `/terms`). GitHub repo secrets `APP_URL`, `CRON_SECRET` drive the scheduler.
-- Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT`, `ASK_DAILY_LIMIT`, `INTEREST_BATCH`, repo variable `INTEREST_ROUNDS`, `SHARED_LANGUAGES`.
+- Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT` (admin, 10), `USER_REFRESH_DAILY_LIMIT` (5), `USER_REFRESH_GAP_MIN` (90), `RULES_DAILY_LIMIT` (30), `ASK_DAILY_LIMIT`, `INTEREST_BATCH` (1), repo variable `INTEREST_ROUNDS` (15 calls per run), model overrides `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, limits `GROQ_TPD`, `GEMINI_RPD`.
 - Google OAuth consent screen: branding filled in, privacy/terms pages exist; publishing needs no logo (a logo triggers brand verification).
 - A personal Claude cloud environment named `invest-helper` exists with network access to the market-data hosts (Yahoo, Nasdaq, DNSE, Vietcap, VNDirect, ...) for live testing. Node needs `NODE_USE_ENV_PROXY=1` there.
-- Tests: 11 offline suites (`npm test`), all passing (v9test added by the Nov 16 stress test).
+- Tests: 12 offline suites (`npm test`), all passing (v9test and budgettest added Nov 16).
 
 ## Stress test, Nov 16 2026 (branch `claude/stoic-davinci-nncgqw`)
 
@@ -52,14 +55,21 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Analogs: the prompt padded every day with three US entries, so a China slowdown got "hot CPI 2022" and the raw tag showed in the UI. Only matching entries now, plain descriptions, China and Vietnam entries added, Vietnamese keywords added.
 - Untranslated UI: market group names, calendar titles and notes, mood details, macro labels, a few aria labels. VN30 futures expiry (third Thursday) added to the calendar.
 
+## Budget round, Nov 16 2026 (same branch)
+
+- Groq limits are per model (gpt-oss-120b, gpt-oss-20b, qwen3.8-27b: 200K tokens/day each). Gemini free tier on this project: Flash models 20 requests/day (the old default `gemini-flash-latest` was at 23/20), Flash-Lite 3.5 and 3.1 500/day each. Defaults now use Flash-Lite.
+- Translation now includes headlines (cited ones + top 20, skipping ones already in the reader's language) and runs on qwen, so it no longer competes with briefings.
+- Yahoo returns 429 to GitHub Actions runners too (tested Nov 16 with a Yahoo-only workflow run), so the planned price relay was dropped.
+- The admin can see per-model use today in `/api/status` (`aiUsage`).
+
 ## Open items / known gaps
 
 - BLS release dates (CPI, jobs) return 403 to Vercel, so the calendar has no US macro releases; the AI was inventing dates (now told not to). Options: hardcode the BLS schedule yearly like FOMC (needs dates checked on bls.gov), or fetch it from GitHub Actions.
 - FOMC 2027 dates aren't in `calendar.ts`; needed before mid-December 2026.
-- Yahoo is blocked from Vercel: no real index levels, US 10Y, USD/VND or non-US listings in production. Idea: let the GitHub Actions refresh job fetch the few Yahoo-only series and post them to the app (needs a test of whether Yahoo accepts GitHub's runners). Free official alternatives to research: US Treasury yield data, Vietcombank's public exchange-rate feed.
+- Yahoo is blocked from Vercel and from GitHub's runners: no real index levels, US 10Y, USD/VND or non-US listings in production. Free official alternatives to research: US Treasury yield data, Vietcombank's public exchange-rate feed.
 - Nasdaq has no intraday data for share classes (BRK-B): those get no 1-day chart while Yahoo is blocked.
-- News headlines are shown in their original language (not translated). Translating the visible ones would roughly double translation tokens.
-- Briefings from the rule-based fallback are never translated.
+- Usage counters aren't atomic (two calls at once can undercount slightly); the 3% headroom absorbs it. Groq's daily reset time isn't documented; the tracker assumes UTC midnight.
+- Gemini model ids `gemini-3.5-flash-lite` / `gemini-3.1-flash-lite` are assumed from AI Studio's names; override with `GEMINI_MODEL` / `GEMINI_FALLBACK_MODEL` if the API names differ (a 404 just falls through to the next model; check `aiUsage.lastError`).
 - `/api/status` tells anonymous visitors which AI providers and services are configured (no secrets).
 
 - Translations are covered by tests with a fake AI but haven't been checked with a real AI key; verify output quality on the live site.

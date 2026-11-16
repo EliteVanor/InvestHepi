@@ -453,6 +453,15 @@ const en = {
   "ui.sections": "Sections",
   "ui.condition": "Condition",
   "brief.translateFailed": "Translation isn't available right now, so this briefing is shown in English.",
+  "refresh.left": "{n} of {limit} refreshes left today",
+  "refresh.doneLeft": "Updated. {n} of {limit} refreshes left today.",
+  "refresh.waitUntil": "Next refresh available at {time}",
+  "refresh.limit": "You've used all {limit} refreshes for today. Your briefing still updates automatically.",
+  "refresh.keptAi": "AI is unavailable right now, so your last AI briefing stays. A rule-based summary of the latest news is available.",
+  "ai.failedBanner": "This AI briefing is from {age}. The update at {time} couldn't use AI (today's free AI quota is used up or the service is busy), so it was kept.",
+  "ai.showRules": "See the latest headlines with a basic rule-based summary",
+  "ai.rulesBanner": "You're viewing a rule-based summary: the latest headlines and prices sorted by simple keyword rules, without AI analysis. Calls here are rough.",
+  "ai.backToAi": "Back to the AI briefing",
 };
 
 export type MsgKey = keyof typeof en;
@@ -907,6 +916,15 @@ const vi: Dict = {
   "ui.sections": "Chuyên mục",
   "ui.condition": "Điều kiện",
   "brief.translateFailed": "Hiện chưa dịch được, bản tin đang hiển thị bằng tiếng Anh.",
+  "refresh.left": "Còn {n}/{limit} lượt làm mới hôm nay",
+  "refresh.doneLeft": "Đã cập nhật. Còn {n}/{limit} lượt làm mới hôm nay.",
+  "refresh.waitUntil": "Lượt làm mới tiếp theo lúc {time}",
+  "refresh.limit": "Bạn đã dùng hết {limit} lượt làm mới hôm nay. Bản tin vẫn tự cập nhật theo lịch.",
+  "refresh.keptAi": "AI hiện không khả dụng nên bản tin AI gần nhất được giữ lại. Bạn có thể xem bản tóm tắt theo quy tắc với tin mới nhất.",
+  "ai.failedBanner": "Bản tin AI này được viết {age}. Lần cập nhật lúc {time} không dùng được AI (hết hạn mức AI miễn phí hôm nay hoặc dịch vụ đang bận) nên bản tin này được giữ lại.",
+  "ai.showRules": "Xem tin mới nhất với bản tóm tắt cơ bản theo quy tắc",
+  "ai.rulesBanner": "Bạn đang xem bản tóm tắt theo quy tắc: tin và giá mới nhất được sắp xếp bằng quy tắc từ khóa đơn giản, không có phân tích AI. Các nhận định ở đây chỉ mang tính tham khảo sơ bộ.",
+  "ai.backToAi": "Quay lại bản tin AI",
 };
 
 const zh: Dict = {
@@ -1358,6 +1376,15 @@ const zh: Dict = {
   "ui.sections": "栏目",
   "ui.condition": "条件",
   "brief.translateFailed": "暂时无法翻译，本简报以英文显示。",
+  "refresh.left": "今天还剩 {n}/{limit} 次刷新",
+  "refresh.doneLeft": "已更新。今天还剩 {n}/{limit} 次刷新。",
+  "refresh.waitUntil": "下次可刷新时间：{time}",
+  "refresh.limit": "今天的 {limit} 次刷新已用完。简报仍会按计划自动更新。",
+  "refresh.keptAi": "AI 暂时不可用，因此保留上一份 AI 简报。可查看基于规则的最新新闻摘要。",
+  "ai.failedBanner": "这份 AI 简报写于{age}。{time} 的更新无法使用 AI（今日免费额度已用完或服务繁忙），因此保留了这份。",
+  "ai.showRules": "查看最新新闻的基础规则摘要",
+  "ai.rulesBanner": "您正在查看基于规则的摘要：按简单关键词规则整理的最新新闻和价格，没有 AI 分析。其中的判断较为粗略。",
+  "ai.backToAi": "返回 AI 简报",
 };
 
 const ja: Dict = {
@@ -1809,6 +1836,15 @@ const ja: Dict = {
   "ui.sections": "セクション",
   "ui.condition": "条件",
   "brief.translateFailed": "現在翻訳できないため、英語で表示しています。",
+  "refresh.left": "本日の更新はあと {n}/{limit} 回",
+  "refresh.doneLeft": "更新しました。本日の更新はあと {n}/{limit} 回です。",
+  "refresh.waitUntil": "次の更新は {time} から",
+  "refresh.limit": "本日の更新 {limit} 回を使い切りました。ブリーフィングは引き続き自動で更新されます。",
+  "refresh.keptAi": "AIが現在利用できないため、前回のAIブリーフィングを残しています。最新ニュースのルールベース要約も見られます。",
+  "ai.failedBanner": "このAIブリーフィングは{age}のものです。{time}の更新ではAIを使えなかったため（本日の無料枠の上限、またはサービスの混雑）、こちらを残しています。",
+  "ai.showRules": "最新ニュースを簡易ルールベース要約で見る",
+  "ai.rulesBanner": "ルールベースの要約を表示中です。最新ニュースと価格を単純なキーワードルールで整理したもので、AIによる分析はありません。判断はおおまかな目安です。",
+  "ai.backToAi": "AIブリーフィングに戻る",
 };
 
 const ko: Dict = {
@@ -2260,6 +2296,15 @@ const ko: Dict = {
   "ui.sections": "섹션",
   "ui.condition": "조건",
   "brief.translateFailed": "지금은 번역할 수 없어 영어로 표시합니다.",
+  "refresh.left": "오늘 새로고침 {n}/{limit}회 남음",
+  "refresh.doneLeft": "업데이트했습니다. 오늘 새로고침 {n}/{limit}회 남았습니다.",
+  "refresh.waitUntil": "다음 새로고침 가능 시간: {time}",
+  "refresh.limit": "오늘 새로고침 {limit}회를 모두 사용했습니다. 브리핑은 계속 자동으로 업데이트됩니다.",
+  "refresh.keptAi": "지금은 AI를 사용할 수 없어 마지막 AI 브리핑을 유지합니다. 최신 뉴스의 규칙 기반 요약을 볼 수 있습니다.",
+  "ai.failedBanner": "이 AI 브리핑은 {age}에 작성되었습니다. {time} 업데이트에서는 AI를 사용할 수 없어(오늘 무료 한도 소진 또는 서비스 혼잡) 이 브리핑을 유지했습니다.",
+  "ai.showRules": "최신 뉴스를 기본 규칙 기반 요약으로 보기",
+  "ai.rulesBanner": "규칙 기반 요약을 보고 있습니다. 최신 뉴스와 가격을 간단한 키워드 규칙으로 정리한 것으로 AI 분석은 없습니다. 여기의 판단은 대략적입니다.",
+  "ai.backToAi": "AI 브리핑으로 돌아가기",
 };
 
 const es: Dict = {
@@ -2711,6 +2756,15 @@ const es: Dict = {
   "ui.sections": "Secciones",
   "ui.condition": "Condición",
   "brief.translateFailed": "La traducción no está disponible ahora; el resumen se muestra en inglés.",
+  "refresh.left": "Te quedan {n} de {limit} actualizaciones hoy",
+  "refresh.doneLeft": "Actualizado. Te quedan {n} de {limit} actualizaciones hoy.",
+  "refresh.waitUntil": "Próxima actualización disponible a las {time}",
+  "refresh.limit": "Ya usaste las {limit} actualizaciones de hoy. Tu resumen se sigue actualizando solo.",
+  "refresh.keptAi": "La IA no está disponible ahora, así que se mantiene tu último resumen con IA. Hay un resumen basado en reglas con las últimas noticias.",
+  "ai.failedBanner": "Este resumen con IA es de {age}. La actualización de las {time} no pudo usar IA (se agotó la cuota gratuita de hoy o el servicio está ocupado), así que se mantuvo.",
+  "ai.showRules": "Ver los últimos titulares con un resumen básico por reglas",
+  "ai.rulesBanner": "Estás viendo un resumen basado en reglas: los últimos titulares y precios ordenados con reglas simples de palabras clave, sin análisis de IA. Las recomendaciones son aproximadas.",
+  "ai.backToAi": "Volver al resumen con IA",
 };
 
 const fr: Dict = {
@@ -3162,6 +3216,15 @@ const fr: Dict = {
   "ui.sections": "Rubriques",
   "ui.condition": "Condition",
   "brief.translateFailed": "La traduction n'est pas disponible pour le moment ; le briefing s'affiche en anglais.",
+  "refresh.left": "Il vous reste {n} actualisations sur {limit} aujourd'hui",
+  "refresh.doneLeft": "Mis à jour. Il vous reste {n} actualisations sur {limit} aujourd'hui.",
+  "refresh.waitUntil": "Prochaine actualisation possible à {time}",
+  "refresh.limit": "Vous avez utilisé vos {limit} actualisations du jour. Votre briefing continue de se mettre à jour automatiquement.",
+  "refresh.keptAi": "L'IA n'est pas disponible pour le moment, votre dernier briefing IA reste affiché. Un résumé à base de règles des dernières nouvelles est disponible.",
+  "ai.failedBanner": "Ce briefing IA date de {age}. La mise à jour de {time} n'a pas pu utiliser l'IA (quota gratuit du jour épuisé ou service saturé), il a donc été conservé.",
+  "ai.showRules": "Voir les derniers titres avec un résumé basique à base de règles",
+  "ai.rulesBanner": "Vous consultez un résumé à base de règles : derniers titres et prix triés par de simples règles de mots-clés, sans analyse IA. Les recommandations sont approximatives.",
+  "ai.backToAi": "Revenir au briefing IA",
 };
 
 const de: Dict = {
@@ -3613,6 +3676,15 @@ const de: Dict = {
   "ui.sections": "Bereiche",
   "ui.condition": "Bedingung",
   "brief.translateFailed": "Die Übersetzung ist gerade nicht verfügbar, daher wird das Briefing auf Englisch angezeigt.",
+  "refresh.left": "Heute noch {n} von {limit} Aktualisierungen",
+  "refresh.doneLeft": "Aktualisiert. Heute noch {n} von {limit} Aktualisierungen.",
+  "refresh.waitUntil": "Nächste Aktualisierung ab {time}",
+  "refresh.limit": "Du hast heute alle {limit} Aktualisierungen genutzt. Dein Briefing aktualisiert sich weiterhin automatisch.",
+  "refresh.keptAi": "Die KI ist gerade nicht verfügbar, daher bleibt dein letztes KI-Briefing. Eine regelbasierte Zusammenfassung der neuesten Nachrichten ist verfügbar.",
+  "ai.failedBanner": "Dieses KI-Briefing ist von {age}. Das Update um {time} konnte keine KI nutzen (das kostenlose Tageskontingent ist aufgebraucht oder der Dienst ausgelastet), daher wurde es beibehalten.",
+  "ai.showRules": "Neueste Schlagzeilen mit einfacher regelbasierter Zusammenfassung ansehen",
+  "ai.rulesBanner": "Du siehst eine regelbasierte Zusammenfassung: neueste Schlagzeilen und Kurse, nach einfachen Stichwortregeln sortiert, ohne KI-Analyse. Die Einschätzungen sind grob.",
+  "ai.backToAi": "Zurück zum KI-Briefing",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

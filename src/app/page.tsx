@@ -51,8 +51,32 @@ function App() {
   const [readOnly, setReadOnly] = useState(false);
   const [account, setAccount] = useState<Account>({ mode: "single", user: null, admin: false });
   const [accountKnown, setAccountKnown] = useState(false);
-  // Briefings refresh on a schedule; only the admin (the single-user owner, or OWNER_EMAIL) can force one.
-  const canRefresh = account.admin;
+  // Briefings refresh on a schedule. The admin can force any section (10 a day); signed-in users can
+  // refresh their own My Interests (5 a day, 90 minutes apart, on a lighter model).
+  const canRefresh = account.admin || (account.mode === "multi" && !!account.user && tab === "interests");
+  const quota = account.refresh ?? null;
+  const waitUntil = !account.admin && quota?.nextAt && new Date(quota.nextAt) > new Date() ? quota.nextAt : null;
+  const refreshBlocked = !account.admin && !!quota && (quota.left <= 0 || !!waitUntil);
+  const fmtClock = (iso: string) => new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+  const refreshTitle = account.admin
+    ? `${t("nav.refresh")} (R)`
+    : waitUntil
+      ? t("refresh.waitUntil", { time: fmtClock(waitUntil) })
+      : quota && quota.left <= 0
+        ? t("refresh.limit", { limit: quota.limit })
+        : t("refresh.left", { n: quota?.left ?? 0, limit: quota?.limit ?? 0 });
+  // The last run couldn't use AI: per section, when. Readers may switch to a rule-based copy (saved per device).
+  const [aiFail, setAiFail] = useState<Partial<Record<SectionId, string | null>>>({});
+  const [rulesView, setRulesView] = useState<Set<SectionId>>(() => new Set());
+  const [rulesDigests, setRulesDigests] = useState<Partial<Record<SectionId, Digest | null>>>({});
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("ih-rules-view") ?? "[]") as SectionId[];
+      setRulesView(new Set(saved.filter((s) => SECTION_IDS.includes(s))));
+    } catch {}
+  }, []);
+  // Only while the AI briefing is behind: once a newer AI briefing arrives, it shows again.
+  const isRulesTab = rulesView.has(tab) && !!aiFail[tab];
   const [signIn, setSignIn] = useState(false);
   useEffect(() => {
     const on = () => setSignIn(true);
@@ -101,8 +125,9 @@ function App() {
   const loadDigest = useCallback(
     async (s: SectionId) => {
       // ?lang= lets signed-out visitors read shared sections in their language.
-      const j = await api<{ digest: Digest | null }>(`/api/digest?section=${s}&lang=${lang}`);
+      const j = await api<{ digest: Digest | null; aiFailedAt?: string | null }>(`/api/digest?section=${s}&lang=${lang}`);
       setDigests((d) => ({ ...d, [s]: j.digest }));
+      setAiFail((a) => ({ ...a, [s]: j.aiFailedAt ?? null }));
     },
     [api, lang],
   );
@@ -199,7 +224,7 @@ function App() {
   }, [digests]);
 
   // Viewing a section for a few seconds marks its headlines as seen (dots stay until "mark all read").
-  const active = digests[tab];
+  const active = isRulesTab && rulesDigests[tab] ? rulesDigests[tab] : digests[tab];
   useEffect(() => {
     if (!active) return;
     const id = setTimeout(() => markSeen(active.news.map((n) => n.id)), 4000);
@@ -218,19 +243,53 @@ function App() {
       setRefreshing(s);
       setError("");
       try {
-        const r = await api<{ results: { ok: boolean; error?: string }[] }>(`/api/refresh?section=${s}&lang=${lang}`, { method: "POST" });
+        const r = await api<{ results: { ok: boolean; error?: string; keptAi?: boolean }[]; quota?: Account["refresh"] }>(`/api/refresh?section=${s}&lang=${lang}`, { method: "POST" });
+        if (r.quota) setAccount((a) => ({ ...a, refresh: r.quota }));
         const failed = r.results?.find((x) => !x.ok);
         if (failed) setError(failed.error ?? "Refresh failed");
         setOldDigest(null);
+        setRulesDigests((all) => ({ ...all, [s]: undefined }));
         await Promise.all([loadDigest(s), loadCalendar()]);
-        if (!failed) toast(t("toast.updated"));
+        // Users see how many presses they have left after each one.
+        const left = r.quota && !account.admin ? { n: r.quota.left, limit: r.quota.limit } : null;
+        if (!failed) toast(r.results?.[0]?.keptAi ? t("refresh.keptAi") + (left ? ` ${t("refresh.left", left)}.` : "") : left ? t("refresh.doneLeft", left) : t("toast.updated"));
       } catch (e) {
-        if (!["401", "signin"].includes((e as Error).message)) setError((e as Error).message);
+        const m = (e as Error).message;
+        if (m === "wait") toast(waitUntil ? t("refresh.waitUntil", { time: fmtClock(waitUntil) }) : t("refresh.limit", { limit: quota?.limit ?? 5 }));
+        else if (m === "limit") toast(t("refresh.limit", { limit: quota?.limit ?? 5 }));
+        else if (!["401", "signin"].includes(m)) setError(m);
       } finally {
         setRefreshing(null);
       }
     },
-    [api, loadDigest, loadCalendar, toast, t, lang],
+    [api, loadDigest, loadCalendar, toast, t, lang, account.admin, waitUntil, quota?.limit],
+  );
+
+  // Rule-based copy: fetched when a reader switches to it (cached server-side for 15 minutes).
+  const loadRules = useCallback(
+    (s: SectionId) =>
+      api<{ digest: Digest | null }>(`/api/digest?section=${s}&lang=${lang}&variant=rules`)
+        .then((j) => setRulesDigests((all) => ({ ...all, [s]: j.digest })))
+        .catch(() => {}),
+    [api, lang],
+  );
+  useEffect(() => {
+    if (isRulesTab && rulesDigests[tab] === undefined) loadRules(tab);
+  }, [isRulesTab, tab, rulesDigests, loadRules]);
+  const toggleRules = useCallback(
+    (s: SectionId, on: boolean) => {
+      setRulesView((cur) => {
+        const next = new Set(cur);
+        if (on) next.add(s);
+        else next.delete(s);
+        try {
+          localStorage.setItem("ih-rules-view", JSON.stringify([...next]));
+        } catch {}
+        return next;
+      });
+      if (on) loadRules(s);
+    },
+    [loadRules],
   );
 
   // A briefing written in another language is translated (not regenerated): the server caches each
@@ -239,17 +298,19 @@ function App() {
   const [translatingTab, setTranslatingTab] = useState<SectionId | null>(null);
   const [translateFailed, setTranslateFailed] = useState<Set<string>>(new Set());
   useEffect(() => {
-    const d = digests[tab];
-    if (!d || oldDigest || d.provider === "rules" || !d.language || d.language === lang) return;
-    const k = `${tab}:${lang}:${d.generatedAt}`;
+    const rules = isRulesTab && !!rulesDigests[tab];
+    const d = rules ? rulesDigests[tab] : digests[tab];
+    if (!d || oldDigest || !d.language || d.language === lang) return;
+    const k = `${tab}:${lang}:${d.generatedAt}:${rules ? "rules" : ""}`;
     if (tried.current.has(k)) return;
     tried.current.add(k);
     setTranslatingTab(tab);
-    api<{ digest: Digest | null }>(`/api/translate?section=${tab}&lang=${lang}`, { method: "POST" })
-      .then((j) => j.digest && setDigests((all) => ({ ...all, [tab]: j.digest })))
+    const save = rules ? setRulesDigests : setDigests;
+    api<{ digest: Digest | null }>(`/api/translate?section=${tab}&lang=${lang}${rules ? "&variant=rules" : ""}`, { method: "POST" })
+      .then((j) => j.digest && save((all) => ({ ...all, [tab]: j.digest })))
       .catch(() => setTranslateFailed((f) => new Set(f).add(k)))
       .finally(() => setTranslatingTab((x) => (x === tab ? null : x)));
-  }, [digests, tab, lang, oldDigest, api]);
+  }, [digests, rulesDigests, isRulesTab, tab, lang, oldDigest, api]);
 
   const pickHistory = async (key: string | null) => {
     setSheet(null);
@@ -418,9 +479,10 @@ function App() {
           </button>
           {readOnly && account.mode !== "multi" && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
           {canRefresh && (
-            <button className="icon-btn" aria-label={t("nav.refresh")} title={`${t("nav.refresh")} (R)`} onClick={() => refresh(tab)} disabled={!!refreshing}>
-            <IconRefresh className={refreshing ? "spin" : ""} />
-          </button>
+            <button className="icon-btn refresh-btn" aria-label={`${t("nav.refresh")}: ${refreshTitle}`} title={refreshTitle} onClick={() => refresh(tab)} disabled={!!refreshing || refreshBlocked}>
+              <IconRefresh className={refreshing ? "spin" : ""} />
+              {!account.admin && quota && <span className="refresh-left num">{quota.left}</span>}
+            </button>
           )}
           <AccountButton />
           <button className="icon-btn" aria-label={t("nav.settings")} title={t("nav.settings")} onClick={() => setSheet({ kind: "settings" })}>
@@ -497,7 +559,7 @@ function App() {
                 <SinceLastVisit digest={interestsDigest} quotes={interestsLive} newCount={newSnap.interests?.ids.size ?? 0} onTicker={openTicker} />
               </div>
             )}
-            <Briefing digest={shown} translating={translatingTab === tab} translateFailed={translateFailed.has(`${tab}:${lang}:${shown.generatedAt}`)} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} onCatchUp={() => setSheet({ kind: "catchup" })} />
+            <Briefing digest={shown} translating={translatingTab === tab} translateFailed={translateFailed.has(`${tab}:${lang}:${shown.generatedAt}:${isRulesTab && rulesDigests[tab] ? "rules" : ""}`)} aiFailedAt={oldDigest ? null : (aiFail[tab] ?? null)} rulesView={isRulesTab && !!rulesDigests[tab]} onToggleRules={(on) => toggleRules(tab, on)} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} onCatchUp={() => setSheet({ kind: "catchup" })} />
             <Calls outlook={shown.analysis.outlook} onTicker={openTicker} />
             <ScenariosCard scenarios={shown.analysis.scenarios} />
             {isHome && <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />}

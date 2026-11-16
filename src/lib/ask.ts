@@ -75,7 +75,7 @@ export async function ask(question: string, history: ChatMessage[], digests: Dig
   const ctx = buildAskContext(digests, calendar, trackRecord, positions);
   const system = `${askSystemPrompt(lang)}\n\n# CONTEXT\n${ctx.text}`;
   const messages: ChatMessage[] = [...history.slice(-6), { role: "user", content: question }];
-  const { text, provider } = await complete(system, messages);
+  const { text, provider } = await complete(system, messages, { route: "ask" });
   const cited = new Set([...text.matchAll(/\[(\d{1,2})\]/g)].map((m) => Number(m[1])));
   return { answer: text, provider, sources: ctx.sources.filter((s) => cited.has(s.n)) };
 }

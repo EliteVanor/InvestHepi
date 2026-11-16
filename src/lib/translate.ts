@@ -6,7 +6,7 @@
  */
 import { langInfo } from "./languages";
 import { complete } from "./llm";
-import type { Analysis, Digest } from "./types";
+import type { Analysis, Digest, NewsItem } from "./types";
 
 type Setter = (v: string) => void;
 
@@ -91,26 +91,58 @@ export function chunkSlots<T extends { text: string }>(slots: T[], maxChars = 22
  */
 export const translateBudget = (chars: number) => Math.ceil(chars * 0.8) + 800;
 
-/** A copy of `d` with its text in `lang`. Throws if no AI provider can do it. */
+/** Headlines translated per briefing: the ones its events cite, plus the top of the list. */
+export const TOP_HEADLINES = 20;
+
+const VI_MARKS = /[ăâđêôơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỵỷỹ]/i;
+
+/** Rough language of a headline: Vietnamese (diacritics), English (plain Latin), or other. Exported for tests. */
+export function headlineLang(title: string): "vi" | "en" | "other" {
+  if (VI_MARKS.test(title)) return "vi";
+  const letters = title.replace(/[^\p{L}]/gu, "");
+  const latin = letters.replace(/[^A-Za-z]/g, "");
+  return letters.length && latin.length / letters.length > 0.95 ? "en" : "other";
+}
+
+/**
+ * Headlines worth translating for a reader of `lang`: cited by an event or in the top 20, and not
+ * already in that language (Vietnamese headlines on the Vietnam tab cost nothing for Vietnamese
+ * readers). Exported for tests.
+ */
+export function headlineSlots(news: NewsItem[], a: Analysis, lang: string): { text: string; set: Setter }[] {
+  const cited = new Set(a.events.flatMap((e) => e.sourceIds));
+  return news
+    .map((n, i) => ({ n, i }))
+    .filter(({ n, i }) => (i < TOP_HEADLINES || cited.has(i)) && n.title?.trim() && headlineLang(n.title) !== lang)
+    .map(({ n }) => ({
+      text: n.title,
+      set: (v: string) => {
+        n.titleOrig = n.title;
+        n.title = v;
+      },
+    }));
+}
+
+/** A copy of `d` with its text (and its main headlines) in `lang`. Throws if no AI provider can do it. */
 export async function translateDigest(d: Digest, lang: string): Promise<Digest> {
   const copy: Digest = JSON.parse(JSON.stringify(d));
-  const slots = textSlots(copy.analysis);
+  const slots = [...textSlots(copy.analysis), ...headlineSlots(copy.news ?? [], copy.analysis, lang)];
   if (!slots.length) return { ...copy, language: lang };
   const target = langInfo(lang).english;
-  const system = `You translate a stock-market briefing into ${target}. You get a JSON array of strings. Return ONLY a JSON array with the same number of strings, in the same order, each translated into natural, concise ${target} as a financial journalist would write it. Keep tickers, numbers, percentages, dates, index and company names, and units exactly as they are. Do not add, merge, drop or explain anything.`;
-  // Chunks run in parallel: total tokens are the same as one request, and it stays well inside 60 s.
-  const results = await Promise.all(
-    chunkSlots(slots).map(async (chunk) => {
-      const texts = chunk.map((s) => s.text);
-      const json = JSON.stringify(texts);
-      const { text, provider } = await complete(system, [{ role: "user", content: json }], {
-        maxTokens: translateBudget(json.length),
-        timeoutMs: 25_000,
-        accept: (t) => parseTranslations(t, texts.length) != null,
-      });
-      return { chunk, out: parseTranslations(text, texts.length)!, provider };
-    }),
-  );
+  const system = `You translate a stock-market briefing and news headlines into ${target}. You get a JSON array of strings. Return ONLY a JSON array with the same number of strings, in the same order, each translated into natural, concise ${target} as a financial journalist would write it. Keep tickers, numbers, percentages, dates, index and company names, and units exactly as they are. Do not add, merge, drop or explain anything.`;
+  // One chunk at a time: Groq counts tokens per minute, and parallel chunks would trip it.
+  const results: { chunk: typeof slots; out: string[]; provider: string }[] = [];
+  for (const chunk of chunkSlots(slots)) {
+    const texts = chunk.map((s) => s.text);
+    const json = JSON.stringify(texts);
+    const { text, provider } = await complete(system, [{ role: "user", content: json }], {
+      route: "translate",
+      maxTokens: translateBudget(json.length),
+      timeoutMs: 20_000,
+      accept: (t) => parseTranslations(t, texts.length) != null,
+    });
+    results.push({ chunk, out: parseTranslations(text, texts.length)!, provider });
+  }
   for (const { chunk, out } of results) out.forEach((v, i) => chunk[i].set(v));
   return { ...copy, language: lang, translatedFrom: d.language, translatedBy: results[0].provider.split(":")[0] };
 }
