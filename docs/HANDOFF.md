@@ -30,7 +30,7 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - Direct, concise, natural writing. No em dashes, buzzwords or jargon. Explain decisions plainly.
 - Wants ideas stress-tested and different perspectives; first-principles reasoning; propose the cheaper option when token cost is involved.
 - Wants research before building when data sources are involved (test real endpoints from a cloud server).
-- **Git:** work on a new branch (`v9`, `v10`, ...), run `npm test` + `npm run build`, push, then **ask before merging to `main`** (merging deploys to production) unless the owner says to merge right away.
+- **Git:** work on a short-named branch (`v11`, `v12`, ...; the owner asked for these, not long auto names), run `npm test` + `npm run build`, push, then **ask before merging to `main`** (merging deploys to production) unless the owner says to merge right away.
 - Commits end with the `Co-Authored-By` / `Claude-Session` lines the session provides.
 - Keep the owner's personal details (email) out of code, docs and requests to outside services.
 
@@ -69,6 +69,14 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Real world levels without Yahoo: VNDirect's public data API (world indexes, commodities, FX) and the US Treasury's daily yield file. Briefings now quote real levels with dates; ETF stand-ins remain only for Euro Stoxx 50, DXY, VIX and Bitcoin. World strip: Sensex replaced by Nifty 50 (real data available).
 - Owner's idea of asking Yahoo in small chunks doesn't help (Yahoo refuses Vercel and GitHub on the first request) and would be rate-limit dodging, which the rules exclude.
 - Wide-screen layout (left sidebar, Ask AI docked right), saved chat history per account, briefing-based suggestions.
+
+## v11 (in progress, branch `v11`, Nov 16 2026)
+
+- Phone sheets fit the visible screen (iOS `vh` counted the area behind the browser bars, so the stock sheet's title/close/follow slid off the top). Overlays track `visualViewport` (`--app-h`), keep the header outside the scrolling body, and lock the page the iOS way (`openOverlay` in `primitives.tsx`).
+- Wide sidebar: "Headlines" item jumps to the news list (also `N`), top-5 headlines open articles; sidebar folds to an icon rail (`[`), Ask AI dock hides (`]`), both saved per device.
+- Feeds from `.vn` sites that stamp Hanoi time as UTC (Tuổi Trẻ, 7 h in the future) are shifted back (`fixFeedTimes` in `news.ts`).
+- Audit of the first v10 briefing (VN, 07:20 UTC, Groq 120b): levels, RSI, ranges and movers' numbers all matched the data. Fixed: movers' reasons now need a cited headline that names the company (`alignMovers`/`headlineMentions`), Vietnam rules explain SBV dollar buying/selling, names copied exactly. Gemini 3.5/3.1 Flash-Lite model ids confirmed working (they wrote World/US when Groq 120b hit its daily limit).
+- GitHub's scheduler is unreliable: since Nov 15 only one scheduled run fired (01:15 slot ran at 02:22); the Sunday 22:35 slot never ran; others were manual. Consider a more reliable free trigger (e.g. Upstash QStash schedules or cron-job.org with the CRON_SECRET header) if this continues.
 
 ## Open items / known gaps
 

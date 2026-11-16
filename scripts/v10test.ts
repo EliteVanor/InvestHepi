@@ -134,6 +134,33 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   const aligned = Pl.alignMovers([{ ticker: "kdh.vn", changePct: 15.2, why: "5-day gain" }, { ticker: "MADEUP", changePct: 9, why: "x" }], quotes);
   assert.deepEqual(aligned.map((m) => [m.ticker, m.changePct]), [["KDH.VN", 1.63]], "last-session change from the data; tickers not in the snapshot dropped");
 
+  /* ---------------- movers: a reason only when a cited headline is about the company */
+  const hq = [
+    { symbol: "VHM.VN", price: 62800, prevClose: 62200, changePct: 0.96, history: [], source: "vndirect" as const },
+    { symbol: "VIC.VN", price: 248300, prevClose: 243000, changePct: 2.18, history: [], source: "vndirect" as const },
+    { symbol: "NVDA", price: 162.85, prevClose: 166.2, changePct: -2.0, history: [], source: "nasdaq" as const },
+  ];
+  const hn = [
+    { id: "0", title: "Novaland chuyển đổi trái phiếu quốc tế thành cổ phiếu", link: "", source: "x", publishedAt: "" },
+    { id: "1", title: "Vingroup lãi đột biến quý III, cổ phiếu VIC tăng mạnh", link: "", source: "x", publishedAt: "" },
+    { id: "2", title: "Nvidia shares slide as chip export curbs tighten", link: "", source: "x", publishedAt: "" },
+  ];
+  const mv = Pl.alignMovers(
+    [
+      { ticker: "VHM.VN", changePct: 1, why: "Recent earnings beat", sourceIds: [] },
+      { ticker: "VIC.VN", changePct: 1, why: "Novaland conversion boosts the sector", sourceIds: [0] },
+      { ticker: "VIC.VN", changePct: 1, why: "Q3 profit jump", sourceIds: [1] },
+      { ticker: "NVDA", changePct: 1, why: "Export curbs", sourceIds: [2] },
+    ],
+    hq,
+    hn,
+  );
+  assert.equal(mv[0].why, "No clear news in today's headlines.", "no cited headline: no invented cause");
+  assert.equal(mv[1].why, "No clear news in today's headlines.", "a headline about another company doesn't count");
+  assert.equal(mv[2].why, "Q3 profit jump", "a headline naming the stock keeps the reason");
+  assert.equal(mv[3].why, "Export curbs", "company name (Nvidia) matches NVDA");
+  assert.ok(Pl.headlineMentions("Cổ phiếu VIC tăng trần", "VIC.VN") && !Pl.headlineMentions("VICTORY Securities tăng", "VIC.VN"), "codes match as whole words only");
+
   /* ---------------- live overlay: a real level may replace an ETF stand-in, never the reverse */
   const V3 = await import("../src/components/v3");
   assert.equal(V3.canOverlay("SPY", undefined), true, "real S&P level replaces SPY's price");
