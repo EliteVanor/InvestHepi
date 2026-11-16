@@ -1,5 +1,4 @@
-import { authorized, isCron, unauthorized } from "@/lib/auth";
-import { currentInterestSet, refreshInterestSet, refreshScheduled, refreshShared, translateLatest } from "@/lib/pipeline";
+import { currentInterestSet, refreshInterestSet, refreshShared, translateLatest } from "@/lib/pipeline";
 import { hit, limits, markUserRefresh, userRefreshQuota } from "@/lib/ratelimit";
 import { isLang } from "@/lib/languages";
 import { SECTION_IDS, type SectionId } from "@/lib/types";
@@ -13,13 +12,7 @@ async function handle(req: Request) {
   const s = params.get("section");
   const section = (s && SECTION_IDS.includes(s as SectionId) ? s : "interests") as SectionId;
 
-  // Scheduler: shared sections (English + Vietnamese); interests = the due sets, one per call.
-  // scope=admin (the admin-only slots) refreshes just the admin's set.
-  if (isCron(req)) {
-    if (!authorized(req, { allowCron: true })) return unauthorized();
-    return Response.json(await refreshScheduled(section, { scope: params.get("scope") === "admin" ? "admin" : "all" }));
-  }
-
+  // Manual refresh only; the timetable runs through /api/cron/tick (scheduler.ts).
   return gate(req, { user: true }, async (user) => {
     const set = await currentInterestSet();
     const { interests } = set;

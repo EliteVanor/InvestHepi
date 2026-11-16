@@ -4,6 +4,7 @@ import { providerChain } from "@/lib/llm";
 import { usageReport } from "@/lib/llm/models";
 import { multiUser } from "@/lib/mode";
 import { currentInterestSet } from "@/lib/pipeline";
+import { scheduleReport } from "@/lib/scheduler";
 import { getJSON, storeKind } from "@/lib/store";
 import { SHARED_SECTIONS } from "@/lib/types";
 import { gate, listUsers } from "@/lib/users";
@@ -17,6 +18,9 @@ export async function GET(req: Request) {
     const last: Record<string, unknown> = { interests: await getJSON(`ib:${hash}:last`) };
     for (const s of SHARED_SECTIONS) last[s] = (await getJSON(`digest:${s}:${lang}:last`)) ?? (await getJSON(`lastRefresh:${s}`));
     const multi = multiUser();
+    // Opt-in (a few store reads): slot states and the last tick, no secrets. Public on purpose so
+    // anyone can check the schedule is running without signing in.
+    const schedule = new URL(req.url).searchParams.get("schedule") ? await scheduleReport() : undefined;
     return Response.json({
       role: multi ? (user ? "owner" : "viewer") : role(req),
       mode: multi ? "multi" : "single",
@@ -28,6 +32,7 @@ export async function GET(req: Request) {
       cronSecret: Boolean(process.env.CRON_SECRET),
       email: emailProvider(),
       lastRefresh: last,
+      schedule,
       // Admin only: today's AI use per model against its free allowance.
       aiUsage: user?.admin || (!multi && role(req) === "owner") ? await usageReport() : undefined,
     });

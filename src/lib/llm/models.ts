@@ -18,6 +18,7 @@
  * when the provider says the daily quota is gone) so we stop knocking on a closed door.
  */
 import { getJSON, setJSON } from "../store";
+import { plannedPerDay } from "../timetable";
 import { geminiProvider, groqProvider, type CompatProvider } from "./openai-compat";
 
 export type ModelKey = "groq120" | "groq20" | "qwen" | "gem35" | "gem31";
@@ -115,12 +116,9 @@ export async function recordRefusal(def: ModelDef, status: number, retryAfterSec
 
 /* ------------------------------------------------------------ budget */
 
-/** Shared and admin briefings the schedule still has to write today (UTC), per refresh.yml. */
+/** Shared and admin briefings the timetable writes today (UTC): see timetable.ts. */
 export function scheduledPerDay(now = new Date()): { shared: number; admin: number } {
-  const wd = now.getUTCDay();
-  if (wd === 6) return { shared: 0, admin: 0 };
-  if (wd === 0) return { shared: 6, admin: 3 };
-  return { shared: 11, admin: 6 };
+  return plannedPerDay(now);
 }
 
 const AVG_BRIEFING_TOKENS = 7000;
