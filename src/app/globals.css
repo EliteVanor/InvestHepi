@@ -742,3 +742,15 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
   .topbar-inner { gap: 4px; padding: 0 12px; }
   .signin-pill { padding: 0 12px; }
 }
+
+/* ---------- Legal pages ---------- */
+.legal { max-width: 680px; margin: 0 auto; padding: 32px 16px 64px; line-height: 1.6; font-size: 15px; }
+.legal h1 { font-size: 32px; letter-spacing: -0.02em; margin: 16px 0 4px; }
+.legal h2 { font-size: 18px; margin: 28px 0 8px; }
+.legal ul { padding-left: 20px; }
+.legal li { margin: 6px 0; }
+.legal a { color: var(--accent); }
+.legal hr { border: 0; border-top: 0.5px solid var(--sep); margin: 32px 0 0; }
+.legal-back { font-size: 14px; text-decoration: none; }
+.legal-updated { color: var(--label-2); font-size: 13px; margin: 0 0 20px; }
+.legal-foot { margin-top: 40px; font-size: 13px; color: var(--label-3); text-align: center; }

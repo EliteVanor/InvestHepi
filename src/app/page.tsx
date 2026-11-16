@@ -416,6 +416,10 @@ function App() {
           <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
             {t("foot.charts")}
           </a>
+          {" · "}
+          <a href="/privacy" style={{ color: "inherit" }}>{t("foot.privacy")}</a>
+          {" · "}
+          <a href="/terms" style={{ color: "inherit" }}>{t("foot.terms")}</a>
         </footer>
       </main>
 

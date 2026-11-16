@@ -385,6 +385,8 @@ const en = {
   "int.vnPreset": "Add Vietnam stocks",
   "mkt.break": "Lunch break",
   "mkt.breakIn": "Lunch break in {t}",
+  "foot.privacy": "Privacy",
+  "foot.terms": "Terms",
 };
 
 export type MsgKey = keyof typeof en;
@@ -771,6 +773,8 @@ const vi: Dict = {
   "int.vnPreset": "Thêm cổ phiếu Việt Nam",
   "mkt.break": "Nghỉ trưa",
   "mkt.breakIn": "Nghỉ trưa sau {t}",
+  "foot.privacy": "Quyền riêng tư",
+  "foot.terms": "Điều khoản",
 };
 
 const zh: Dict = {
@@ -1154,6 +1158,8 @@ const zh: Dict = {
   "int.vnPreset": "添加越南股票",
   "mkt.break": "午间休市",
   "mkt.breakIn": "{t}后午休",
+  "foot.privacy": "隐私",
+  "foot.terms": "条款",
 };
 
 const ja: Dict = {
@@ -1537,6 +1543,8 @@ const ja: Dict = {
   "int.vnPreset": "ベトナム株を追加",
   "mkt.break": "昼休み",
   "mkt.breakIn": "あと{t}で昼休み",
+  "foot.privacy": "プライバシー",
+  "foot.terms": "利用規約",
 };
 
 const ko: Dict = {
@@ -1920,6 +1928,8 @@ const ko: Dict = {
   "int.vnPreset": "베트남 주식 추가",
   "mkt.break": "점심 휴장",
   "mkt.breakIn": "{t} 후 점심 휴장",
+  "foot.privacy": "개인정보",
+  "foot.terms": "이용약관",
 };
 
 const es: Dict = {
@@ -2303,6 +2313,8 @@ const es: Dict = {
   "int.vnPreset": "Añadir acciones de Vietnam",
   "mkt.break": "Pausa de mediodía",
   "mkt.breakIn": "Pausa en {t}",
+  "foot.privacy": "Privacidad",
+  "foot.terms": "Términos",
 };
 
 const fr: Dict = {
@@ -2686,6 +2698,8 @@ const fr: Dict = {
   "int.vnPreset": "Ajouter des actions vietnamiennes",
   "mkt.break": "Pause déjeuner",
   "mkt.breakIn": "Pause dans {t}",
+  "foot.privacy": "Confidentialité",
+  "foot.terms": "Conditions",
 };
 
 const de: Dict = {
@@ -3069,6 +3083,8 @@ const de: Dict = {
   "int.vnPreset": "Vietnam-Aktien hinzufügen",
   "mkt.break": "Mittagspause",
   "mkt.breakIn": "Mittagspause in {t}",
+  "foot.privacy": "Datenschutz",
+  "foot.terms": "Nutzungsbedingungen",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };
