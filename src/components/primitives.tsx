@@ -3,10 +3,12 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import type { Direction } from "@/lib/types";
 import { IconX } from "./Icons";
+import { usePrefs } from "./prefs";
 
 /** Bottom sheet on phones, centered panel on desktop. Esc and scrim click close it. */
 export function Sheet({ title, onClose, children, actions, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; actions?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
+  const { t } = usePrefs();
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
@@ -44,7 +46,7 @@ export function Sheet({ title, onClose, children, actions, wide }: { title: Reac
           <h2>{title}</h2>
           <span className="spacer" />
           {actions}
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button className="icon-btn" onClick={onClose} aria-label={t("set.close")}>
             <IconX />
           </button>
         </div>

@@ -75,9 +75,9 @@ export async function analyzeWithCompat(p: CompatProvider, system: string, user:
 }
 
 /** Plain-text answer (used by Ask AI). */
-export async function completeWithCompat(p: CompatProvider, system: string, messages: { role: "user" | "assistant"; content: string }[], maxTokens = 1500): Promise<string> {
+export async function completeWithCompat(p: CompatProvider, system: string, messages: { role: "user" | "assistant"; content: string }[], maxTokens = 1500, timeoutMs = 60_000): Promise<string> {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), 60_000);
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(`${p.baseUrl}/chat/completions`, {
       method: "POST",

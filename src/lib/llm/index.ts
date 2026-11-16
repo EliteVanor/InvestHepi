@@ -78,17 +78,27 @@ export async function analyze(input: PromptInput): Promise<{ analysis: Analysis;
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
+export interface CompleteOptions {
+  maxTokens?: number;
+  /** Per-provider timeout, so a slow provider still leaves time for the next one (Vercel stops at 60 s). */
+  timeoutMs?: number;
+  /** Reject a reply (malformed, truncated) and move on to the next provider instead of failing. */
+  accept?: (text: string) => boolean;
+}
+
 /** Free-form text completion through the same provider chain (no rule-based fallback). */
-export async function complete(system: string, messages: ChatMessage[]): Promise<{ text: string; provider: string }> {
+export async function complete(system: string, messages: ChatMessage[], opts: CompleteOptions = {}): Promise<{ text: string; provider: string }> {
   const failures: string[] = [];
   const forced = process.env.LLM_PROVIDER?.toLowerCase();
   const chain: { id: string; run: () => Promise<string> }[] = [];
-  if (process.env.ANTHROPIC_API_KEY) chain.push({ id: `claude:${CLAUDE_MODEL}`, run: () => completeWithClaude(system, messages) });
-  for (const p of [groqProvider(), geminiProvider()]) if (p) chain.push({ id: `${p.id}:${p.model}`, run: () => completeWithCompat(p, system, messages) });
+  if (process.env.ANTHROPIC_API_KEY) chain.push({ id: `claude:${CLAUDE_MODEL}`, run: () => completeWithClaude(system, messages, opts.maxTokens) });
+  for (const p of [groqProvider(), geminiProvider()]) if (p) chain.push({ id: `${p.id}:${p.model}`, run: () => completeWithCompat(p, system, messages, opts.maxTokens, opts.timeoutMs) });
   if (forced && forced !== "rules") chain.sort((a, b) => Number(b.id.startsWith(forced)) - Number(a.id.startsWith(forced)));
   for (const step of chain) {
     try {
-      return { text: await step.run(), provider: step.id };
+      const text = await step.run();
+      if (opts.accept && !opts.accept(text)) throw new Error("reply rejected (malformed or cut off)");
+      return { text, provider: step.id };
     } catch (e) {
       failures.push(`${step.id}: ${(e as Error).message.slice(0, 160)}`);
     }

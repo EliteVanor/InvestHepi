@@ -3,11 +3,12 @@
  *   - Vietnamese listings (VNDirect, accent-insensitive: "vinamilk", "hoa phat", "HPG")
  *   - built-in index names ("S&P 500", "VN30", "Nikkei")
  *   - Yahoo's global search (through the shared rate-limit guard in yahoo.ts)
- *   - a built-in list of big US names if Yahoo is unavailable
+ *   - when Yahoo is unavailable (it refuses Vercel's servers): Nasdaq's public autocomplete (every
+ *     US-listed stock and ETF, including foreign companies' US listings) plus a built-in list
  * Results are ranked by match quality; Vietnamese results get a boost for Vietnamese readers or
  * queries typed with Vietnamese accents.
  */
-import { SYMBOL_LABELS } from "./symbols";
+import { PROXIES, SYMBOL_LABELS } from "./symbols";
 import { ALIASES } from "./tickers";
 import { fold, scoreVn, searchVn } from "./vnlist";
 import { yahooJson } from "./yahoo";
@@ -38,6 +39,36 @@ export function parseYahooSearch(j: unknown): SearchHit[] {
     .map((q) => ({ symbol: q.symbol, name: q.shortname ?? q.longname ?? q.symbol, type: q.quoteType, exchange: q.exchDisp, region: q.symbol.endsWith(".VN") ? "vn" : "intl" }));
 }
 
+/** Parse Nasdaq's autocomplete. Exported for tests. */
+export function parseNasdaqSearch(j: unknown): SearchHit[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const rows: any[] = (j as any)?.data ?? [];
+  return rows
+    .filter((r) => (r?.asset === "STOCKS" || r?.asset === "ETF") && /^[A-Z]{1,5}(\.[A-Z])?$/.test(String(r.symbol ?? "")))
+    .slice(0, 8)
+    .map((r) => ({
+      symbol: String(r.symbol).replace(".", "-"), // Yahoo-style share classes (BRK-B), used everywhere else
+      name: String(r.name ?? r.symbol).replace(/\s+(Common Stock|Class [A-Z] Common Stock|Ordinary Shares|American Depositary Shares).*$/i, "").trim(),
+      type: r.asset === "ETF" ? "ETF" : "EQUITY",
+      exchange: r.exchange || undefined,
+      region: "intl" as const,
+    }));
+}
+
+async function nasdaqSearch(q: string): Promise<SearchHit[]> {
+  const res = await fetch(`https://api.nasdaq.com/api/autocomplete/slookup/10?search=${encodeURIComponent(q)}`, {
+    // Same headers as the Nasdaq price calls in chart.ts.
+    headers: { "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36", Accept: "application/json, text/plain, */*", Origin: "https://www.nasdaq.com", Referer: "https://www.nasdaq.com/" },
+    cache: "no-store",
+    signal: AbortSignal.timeout(5000),
+  });
+  if (!res.ok) throw new Error(`nasdaq search ${res.status}`);
+  return parseNasdaqSearch(await res.json());
+}
+
+/** Symbols only Yahoo can price (foreign listings, yields): don't offer them while Yahoo is unreachable. */
+export const yahooOnly = (s: string) => !s.endsWith(".VN") && !PROXIES[s] && s !== "^IXIC" && /[\^=.]|-USD$/.test(s);
+
 export function localSearch(q: string): SearchHit[] {
   const needle = q.toLowerCase();
   return Object.entries(ALIASES)
@@ -47,7 +78,7 @@ export function localSearch(q: string): SearchHit[] {
 }
 
 /** Indexes, currencies and commodities by name ("s&p", "vn30", "gold"). */
-function labelSearch(q: string): { hit: SearchHit; score: number }[] {
+function labelSearch(q: string, yahooUp = true): { hit: SearchHit; score: number }[] {
   const fq = fold(q);
   if (!fq) return [];
   const out: { hit: SearchHit; score: number }[] = [];
@@ -55,7 +86,7 @@ function labelSearch(q: string): { hit: SearchHit; score: number }[] {
     const fl = fold(label);
     const fs = fold(symbol);
     const score = fl === fq || fs === fq ? 90 : fl.startsWith(fq) || fs.startsWith(fq) ? 72 : fq.length >= 3 && fl.includes(fq) ? 40 : 0;
-    if (!score) continue;
+    if (!score || (!yahooUp && yahooOnly(symbol))) continue;
     const isIndex = symbol.startsWith("^") || symbol === "000001.SS";
     out.push({ hit: { symbol, name: label, type: isIndex ? "INDEX" : undefined, region: symbol.endsWith(".VN") ? "vn" : "intl" }, score });
   }
@@ -74,7 +105,9 @@ export async function searchTickers(query: string, opts: { lang?: string } = {})
   const hit = cache.get(key);
   if (hit && Date.now() - hit.at < 6 * 3600_000) return hit.hits;
 
-  const [yahoo, vn] = await Promise.all([yahooSearch(q).catch(() => [] as SearchHit[]), searchVn(q, 8).catch(() => [])]);
+  const [yahooRes, vn] = await Promise.all([yahooSearch(q).then((h) => ({ ok: true, h }), () => ({ ok: false, h: [] as SearchHit[] })), searchVn(q, 8).catch(() => [])]);
+  // Nasdaq only when Yahoo failed: one extra request at most, and only on servers Yahoo refuses.
+  const yahoo = yahooRes.ok ? yahooRes.h : await nasdaqSearch(q).catch(() => [] as SearchHit[]);
   const vnBoost = opts.lang === "vi" || /[^\x00-\x7F]/.test(q) ? 14 : 0;
   const upper = q.toUpperCase();
   const scored: { hit: SearchHit; score: number }[] = [
@@ -82,10 +115,10 @@ export async function searchTickers(query: string, opts: { lang?: string } = {})
       hit: { symbol: `${l.code}.VN`, name: l.short, sub: l.name !== l.short ? l.name : l.nameEn, exchange: l.floor, type: l.type === "ETF" ? "ETF" : "EQUITY", region: "vn" as const },
       score: scoreVn(l, q) + vnBoost,
     })),
-    ...labelSearch(q),
+    ...labelSearch(q, yahooRes.ok),
     ...yahoo.map((h, i) => ({ hit: h, score: (h.symbol === upper ? 100 : 70 - i * 4) + (h.region === "vn" ? vnBoost : 0) })),
   ];
-  if (!yahoo.length) scored.push(...localSearch(q).map((h, i) => ({ hit: h, score: (h.symbol === upper ? 100 : 60 - i * 4) })));
+  if (!yahooRes.ok) scored.push(...localSearch(q).filter((h) => !yahooOnly(h.symbol)).map((h, i) => ({ hit: h, score: (h.symbol === upper ? 100 : 60 - i * 4) })));
 
   const seen = new Set<string>();
   const hits = scored

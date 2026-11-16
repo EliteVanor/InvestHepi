@@ -164,11 +164,20 @@ export async function translateLatest(section: SectionId, lang: string, onSpend?
   const key = trKey(prefix, lang);
   const pending = translating.get(key);
   if (pending) return pending;
+  // A briefing that just failed to translate isn't retried for 10 minutes: otherwise every reader
+  // triggers another AI call and the daily translation cap is gone in an hour.
+  const failKey = `${key}:failed`;
+  const failed = await getJSON<{ at: number; v: string }>(failKey).catch(() => null);
+  if (failed && failed.v === d.generatedAt && Date.now() - failed.at < 10 * 60_000) throw new Error("translation unavailable, retrying later");
   if (onSpend && !(await onSpend())) return d;
   const job = translateDigest(d, lang)
     .then(async (t) => {
       await setJSON(key, t);
       return t;
+    })
+    .catch(async (e) => {
+      await setJSON(failKey, { at: Date.now(), v: d.generatedAt }).catch(() => {});
+      throw e;
     })
     .finally(() => translating.delete(key));
   translating.set(key, job);

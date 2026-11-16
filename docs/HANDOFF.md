@@ -38,9 +38,29 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT`, `ASK_DAILY_LIMIT`, `INTEREST_BATCH`, repo variable `INTEREST_ROUNDS`, `SHARED_LANGUAGES`.
 - Google OAuth consent screen: branding filled in, privacy/terms pages exist; publishing needs no logo (a logo triggers brand verification).
 - A personal Claude cloud environment named `invest-helper` exists with network access to the market-data hosts (Yahoo, Nasdaq, DNSE, Vietcap, VNDirect, ...) for live testing. Node needs `NODE_USE_ENV_PROXY=1` there.
-- Tests: 10 offline suites (`npm test`), all passing at v8.
+- Tests: 11 offline suites (`npm test`), all passing (v9test added by the Nov 16 stress test).
+
+## Stress test, Nov 16 2026 (branch `claude/stoic-davinci-nncgqw`)
+
+Checked against production. Fixed on the branch (not deployed yet):
+- Vietnam briefing could not be translated into Vietnamese (reply cut off at 1,500 tokens). Translation is now chunked with a per-chunk output budget, falls through to the next provider on a malformed reply, and a failed briefing isn't retried for 10 minutes (it was burning the daily cap).
+- Yahoo refuses Vercel, so indexes, oil, gold, dollar and VIX are ETF stand-ins in production. The AI was given those ETF prices as levels and wrote "oil below $144", "Hang Seng support 22.8", "USD/VND above 29.6". The prompt now gets "level unknown, % moves only" for proxied rows, distances instead of levels in technicals, and "unavailable" for missing macro rows. The mood gauge no longer scores the VIXY price as the VIX.
+- VNDirect history used unadjusted prices (FPT's stock dividend looked like a crash). Now uses the adjusted columns.
+- US/global search found only a built-in list in production (no Coca-Cola, Costco, Walmart, Berkshire). Falls back to Nasdaq's autocomplete when Yahoo fails; Yahoo-only symbols (Tencent HK, Samsung, LVMH, US 10Y) aren't offered then. BRK-B style share classes now chart via Nasdaq.
+- Nasdaq intraday charts were 4-5 hours off (Nasdaq sends New York wall time as UTC).
+- Track record graded Vietnam and Asian calls on sessions that were already open or closed when the call was made. Calls now target the next session on their own exchange.
+- Analogs: the prompt padded every day with three US entries, so a China slowdown got "hot CPI 2022" and the raw tag showed in the UI. Only matching entries now, plain descriptions, China and Vietnam entries added, Vietnamese keywords added.
+- Untranslated UI: market group names, calendar titles and notes, mood details, macro labels, a few aria labels. VN30 futures expiry (third Thursday) added to the calendar.
 
 ## Open items / known gaps
+
+- BLS release dates (CPI, jobs) return 403 to Vercel, so the calendar has no US macro releases; the AI was inventing dates (now told not to). Options: hardcode the BLS schedule yearly like FOMC (needs dates checked on bls.gov), or fetch it from GitHub Actions.
+- FOMC 2027 dates aren't in `calendar.ts`; needed before mid-December 2026.
+- Yahoo is blocked from Vercel: no real index levels, US 10Y, USD/VND or non-US listings in production. Idea: let the GitHub Actions refresh job fetch the few Yahoo-only series and post them to the app (needs a test of whether Yahoo accepts GitHub's runners). Free official alternatives to research: US Treasury yield data, Vietcombank's public exchange-rate feed.
+- Nasdaq has no intraday data for share classes (BRK-B): those get no 1-day chart while Yahoo is blocked.
+- News headlines are shown in their original language (not translated). Translating the visible ones would roughly double translation tokens.
+- Briefings from the rule-based fallback are never translated.
+- `/api/status` tells anonymous visitors which AI providers and services are configured (no secrets).
 
 - Translations are covered by tests with a fake AI but haven't been checked with a real AI key; verify output quality on the live site.
 - When Yahoo refuses Vercel, US 10Y and USD/VND have no ETF stand-in and only show their last known value.

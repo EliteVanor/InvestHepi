@@ -63,6 +63,34 @@ export function parseTranslations(text: string, n: number): string[] | null {
   }
 }
 
+/**
+ * Split strings into chunks of about `maxChars`. One big request for a long briefing (the Vietnam tab
+ * has 60+ strings) needed more output tokens than the reply was allowed, so it came back cut off.
+ * Exported for tests.
+ */
+export function chunkSlots<T extends { text: string }>(slots: T[], maxChars = 2200): T[][] {
+  const out: T[][] = [];
+  let cur: T[] = [];
+  let size = 0;
+  for (const s of slots) {
+    if (cur.length && size + s.text.length > maxChars) {
+      out.push(cur);
+      cur = [];
+      size = 0;
+    }
+    cur.push(s);
+    size += s.text.length + 4;
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+/**
+ * Output budget for translating `chars` characters of English: Vietnamese, Chinese, Japanese and
+ * Korean take up to ~2-3x the tokens of the English, plus room for a reasoning model's thinking.
+ */
+export const translateBudget = (chars: number) => Math.ceil(chars * 0.8) + 800;
+
 /** A copy of `d` with its text in `lang`. Throws if no AI provider can do it. */
 export async function translateDigest(d: Digest, lang: string): Promise<Digest> {
   const copy: Digest = JSON.parse(JSON.stringify(d));
@@ -70,9 +98,19 @@ export async function translateDigest(d: Digest, lang: string): Promise<Digest> 
   if (!slots.length) return { ...copy, language: lang };
   const target = langInfo(lang).english;
   const system = `You translate a stock-market briefing into ${target}. You get a JSON array of strings. Return ONLY a JSON array with the same number of strings, in the same order, each translated into natural, concise ${target} as a financial journalist would write it. Keep tickers, numbers, percentages, dates, index and company names, and units exactly as they are. Do not add, merge, drop or explain anything.`;
-  const { text, provider } = await complete(system, [{ role: "user", content: JSON.stringify(slots.map((s) => s.text)) }]);
-  const out = parseTranslations(text, slots.length);
-  if (!out) throw new Error("translation came back malformed");
-  out.forEach((v, i) => slots[i].set(v));
-  return { ...copy, language: lang, translatedFrom: d.language, translatedBy: provider.split(":")[0] };
+  // Chunks run in parallel: total tokens are the same as one request, and it stays well inside 60 s.
+  const results = await Promise.all(
+    chunkSlots(slots).map(async (chunk) => {
+      const texts = chunk.map((s) => s.text);
+      const json = JSON.stringify(texts);
+      const { text, provider } = await complete(system, [{ role: "user", content: json }], {
+        maxTokens: translateBudget(json.length),
+        timeoutMs: 25_000,
+        accept: (t) => parseTranslations(t, texts.length) != null,
+      });
+      return { chunk, out: parseTranslations(text, texts.length)!, provider };
+    }),
+  );
+  for (const { chunk, out } of results) out.forEach((v, i) => chunk[i].set(v));
+  return { ...copy, language: lang, translatedFrom: d.language, translatedBy: results[0].provider.split(":")[0] };
 }

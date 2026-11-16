@@ -64,11 +64,18 @@ export function computeMood(input: { spy?: Technicals; sectors: Quote[]; macro: 
   // 4. Volatility: VIX level (12 → 100, 30 → 0) blended with VIX vs its 1-month average.
   const vix = input.macro.find((m) => m.symbol === "^VIX");
   if (vix) {
-    const level = clamp(((30 - vix.price) / 18) * 100);
     const hist = vix.history.map((h) => h[1]);
     const avg = hist.length >= 5 ? hist.reduce((a, b) => a + b, 0) / hist.length : undefined;
-    const relative = avg ? clamp(50 - (vix.price / avg - 1) * 250) : level;
-    parts.push({ key: "volatility", score: (level + relative) / 2, detail: `VIX ${vix.price.toFixed(1)}` });
+    if (!vix.proxy) {
+      const level = clamp(((30 - vix.price) / 18) * 100);
+      const relative = avg ? clamp(50 - (vix.price / avg - 1) * 250) : level;
+      parts.push({ key: "volatility", score: (level + relative) / 2, detail: `VIX ${vix.price.toFixed(1)}` });
+    } else if (avg) {
+      // Priced via the VIXY futures ETF: its price says nothing about the VIX level and it moves about
+      // half as much, so score only its move against its own 1-month average (doubled).
+      const d = (vix.price / avg - 1) * 100;
+      parts.push({ key: "volatility", score: clamp(50 - d * 5), detail: `${vix.proxy} ${pct(d)} vs 1mo` });
+    }
   }
   // 5. Safe-haven demand: stocks vs gold over ~1 month (±10 points maps to 0/100).
   const spyQ = input.quotes.find((q) => q.symbol === (input.benchSymbol ?? "SPY"));

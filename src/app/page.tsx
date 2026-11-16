@@ -237,6 +237,7 @@ function App() {
   // translation per briefing version, so only the first reader of a new briefing costs an AI call.
   const tried = useRef(new Set<string>());
   const [translatingTab, setTranslatingTab] = useState<SectionId | null>(null);
+  const [translateFailed, setTranslateFailed] = useState<Set<string>>(new Set());
   useEffect(() => {
     const d = digests[tab];
     if (!d || oldDigest || d.provider === "rules" || !d.language || d.language === lang) return;
@@ -246,7 +247,7 @@ function App() {
     setTranslatingTab(tab);
     api<{ digest: Digest | null }>(`/api/translate?section=${tab}&lang=${lang}`, { method: "POST" })
       .then((j) => j.digest && setDigests((all) => ({ ...all, [tab]: j.digest })))
-      .catch(() => {})
+      .catch(() => setTranslateFailed((f) => new Set(f).add(k)))
       .finally(() => setTranslatingTab((x) => (x === tab ? null : x)));
   }, [digests, tab, lang, oldDigest, api]);
 
@@ -397,7 +398,7 @@ function App() {
             <span>{isMobile && titleHidden ? t(`sec.${tab}` as MsgKey) : "InvestHepi"}</span>
           </div>
           <span className="spacer" />
-          <nav className="segmented desktop-only" aria-label="Sections">
+          <nav className="segmented desktop-only" aria-label={t("ui.sections")}>
             {SECTION_IDS.map((s, i) => (
               <button key={s} aria-pressed={tab === s} onClick={() => switchTab(s)} title={`${t(`sec.${s}` as MsgKey)} (${i + 1})`}>
                 {t(`sec.${s}` as MsgKey)}
@@ -496,7 +497,7 @@ function App() {
                 <SinceLastVisit digest={interestsDigest} quotes={interestsLive} newCount={newSnap.interests?.ids.size ?? 0} onTicker={openTicker} />
               </div>
             )}
-            <Briefing digest={shown} translating={translatingTab === tab} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} onCatchUp={() => setSheet({ kind: "catchup" })} />
+            <Briefing digest={shown} translating={translatingTab === tab} translateFailed={translateFailed.has(`${tab}:${lang}:${shown.generatedAt}`)} viewingOld={!!oldDigest} onBackToLatest={() => setOldDigest(null)} onHistory={() => setSheet({ kind: "history" })} onCatchUp={() => setSheet({ kind: "catchup" })} />
             <Calls outlook={shown.analysis.outlook} onTicker={openTicker} />
             <ScenariosCard scenarios={shown.analysis.scenarios} />
             {isHome && <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />}
@@ -559,7 +560,7 @@ function App() {
         </footer>
       </main>
 
-      <nav className="tabbar" role="tablist" aria-label="Sections">
+      <nav className="tabbar" role="tablist" aria-label={t("ui.sections")}>
         {SECTION_IDS.map((s) => {
           const Icon = s === "interests" ? IconStar : s === "world" ? IconGlobe : s === "vn" ? IconVn : IconFlag;
           return (
