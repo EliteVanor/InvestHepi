@@ -46,7 +46,8 @@ export const SECTION_STRIPS: Record<SharedSection, StripGroup[]> = {
   ],
   world: [
     { key: "indexes", symbols: ["^GSPC", "^STOXX50E", "^FTSE", "^GDAXI", "^N225", "^HSI", "000001.SS", "^KS11", "^BSESN"] },
-    { key: "giants", symbols: ["TSM", "ASML", "005930.KS", "0700.HK", "7203.T", "MC.PA"] },
+    // US-listed shares of the largest non-US companies: priced by Yahoo and by Nasdaq as a backup.
+    { key: "giants", symbols: ["TSM", "ASML", "TM", "SONY", "BABA", "NVO", "SAP", "SHEL", "HSBC", "BHP"] },
   ],
   vn: [
     { key: "indexes", symbols: ["^VNINDEX.VN", "^VN30.VN", "^HNX.VN", "^UPCOM.VN"] },

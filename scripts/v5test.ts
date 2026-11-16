@@ -48,7 +48,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   }
   if (url.includes("api.groq.com")) {
     aiCalls++;
-    const sys: string = JSON.parse(String(init?.body)).messages[0].content;
+    const msgs = JSON.parse(String(init?.body)).messages;
+    const sys: string = msgs[0].content;
+    if (sys.startsWith("You translate")) {
+      const arr: string[] = JSON.parse(msgs[1].content);
+      return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(arr.map((s) => `vi:${s}`)) } }] }), { status: 200 });
+    }
     return new Response(JSON.stringify({ choices: [{ message: { content: reply(sys.includes("Vietnamese") ? "vi" : "en") } }] }), { status: 200 });
   }
   feedsHit.push(url);
@@ -138,10 +143,13 @@ const OWNER_EMAIL = "owner@example.com";
   const ownerI = await d("interests", OWNER_EMAIL);
   assert.equal(bobI.generatedAt, ownerI.generatedAt, "same interests → same shared briefing");
   assert.ok((await d("interests", A)).quotes.some((q: { symbol: string }) => q.symbol === "FPT.VN"), "Alice's briefing covers her tickers");
-  assert.equal((await d("world", C)).analysis.headline, "headline-vi", "Carol reads World in Vietnamese");
+  const carolWorld = await d("world", C);
+  assert.equal(carolWorld.analysis.headline, "vi:headline-en", "Carol reads World in Vietnamese (a translation of the one English briefing)");
+  assert.equal(carolWorld.translatedFrom, "en");
   assert.equal((await d("world", B)).analysis.headline, "headline-en");
   assert.equal((await d("interests")).generatedAt, bobI.generatedAt, "guests see the default briefing");
-  assert.equal((await d("world", undefined, "&lang=vi")).analysis.headline, "headline-vi", "guests can read Vietnamese with ?lang=vi");
+  assert.equal((await d("world", undefined, "&lang=vi")).analysis.headline, "vi:headline-en", "guests read the cached Vietnamese translation with ?lang=vi");
+  assert.equal((await d("world", B, "&lang=vi")).analysis.headline, "vi:headline-en", "signed-in readers follow their interface language too");
   assert.ok(await d("vn", B), "Vietnam section available");
 
   // ---- track records follow the interest set

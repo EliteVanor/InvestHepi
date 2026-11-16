@@ -1,6 +1,7 @@
 import { authorized, isCron, unauthorized } from "@/lib/auth";
-import { currentInterestSet, loadDigest, refreshInterestSet, refreshScheduled, refreshShared } from "@/lib/pipeline";
+import { currentInterestSet, loadDigest, refreshInterestSet, refreshScheduled, refreshShared, translateLatest } from "@/lib/pipeline";
 import { hit, limits } from "@/lib/ratelimit";
+import { isLang } from "@/lib/languages";
 import { getJSON } from "@/lib/store";
 import { SECTION_IDS, type SectionId } from "@/lib/types";
 import { gate } from "@/lib/users";
@@ -22,20 +23,26 @@ async function handle(req: Request) {
   }
 
   return gate(req, { user: true }, async (user) => {
-    const { interests, lang, hash } = await currentInterestSet();
-    const key = section === "interests" ? `ib:${hash}:last` : `digest:${section}:${lang}:last`;
+    const set = await currentInterestSet();
+    const { interests, hash } = set;
+    // Shared sections are written once in English and translated for the reader (?lang=); personal
+    // briefings use the saved briefing language and are translated for display the same way.
+    const asked = new URL(req.url).searchParams.get("lang");
+    const lang = asked && isLang(asked) ? asked : set.lang;
+    const key = section === "interests" ? `ib:${hash}:last` : `digest:${section}:en:last`;
     const last = await getJSON<{ at: string }>(key);
     const ageMin = last ? (Date.now() - new Date(last.at).getTime()) / 60_000 : Infinity;
     // Shared sections are the same for everyone, and an interest set may be shared by several users:
     // if it was refreshed moments ago, hand back the fresh copy instead of paying for another AI call.
     const cooldown = section === "interests" ? OWN_COOLDOWN_MIN : SHARED_COOLDOWN_MIN;
     if (ageMin < cooldown && !user?.admin) {
-      return Response.json({ results: [{ section, ok: true, cached: true }], digest: await loadDigest(section) });
+      return Response.json({ results: [{ section, ok: true, cached: true }], digest: await loadDigest(section, undefined, lang) });
     }
     const rl = await hit("refresh", limits.refresh());
     if (!rl.ok) return Response.json({ error: `Daily manual refresh limit reached (${rl.limit}). Scheduled refreshes still run.` }, { status: 429 });
     try {
-      const d = section === "interests" ? await refreshInterestSet(interests, lang, [user?.uid ?? "owner"]) : await refreshShared(section, lang);
+      const d = section === "interests" ? await refreshInterestSet(interests, set.lang, [user?.uid ?? "owner"]) : await refreshShared(section, "en");
+      if (d.language !== lang) await translateLatest(section, lang).catch(() => null);
       return Response.json({ results: [{ section, ok: true, provider: d.provider }] });
     } catch (e) {
       return Response.json({ results: [{ section, ok: false, error: (e as Error).message }] });

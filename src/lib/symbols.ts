@@ -19,6 +19,14 @@ export const SYMBOL_LABELS: Record<string, string> = {
   "0700.HK": "Tencent",
   "7203.T": "Toyota",
   "MC.PA": "LVMH",
+  TM: "Toyota",
+  SONY: "Sony",
+  BABA: "Alibaba",
+  NVO: "Novo Nordisk",
+  SAP: "SAP",
+  SHEL: "Shell",
+  HSBC: "HSBC",
+  BHP: "BHP",
   // Vietnam
   "^VNINDEX.VN": "VN-Index",
   "^VN30.VN": "VN30",
@@ -37,6 +45,31 @@ export const SYMBOL_LABELS: Record<string, string> = {
   "EURUSD=X": "EUR/USD",
   "JPY=X": "USD/JPY",
   "CNY=X": "USD/CNY",
+};
+
+/**
+ * US-listed ETFs that track a Yahoo-only symbol (indexes, futures, FX). Used only when Yahoo refuses
+ * the server: Nasdaq's public API prices these. The strip labels the card with the ETF, and a
+ * quote's history is always one series, so moves and grading stay consistent.
+ */
+export const PROXIES: Record<string, string> = {
+  "^GSPC": "SPY",
+  "^DJI": "DIA",
+  "^NDX": "QQQ",
+  "^RUT": "IWM",
+  "^STOXX50E": "FEZ",
+  "^FTSE": "EWU",
+  "^GDAXI": "EWG",
+  "^N225": "EWJ",
+  "^HSI": "EWH",
+  "000001.SS": "ASHR",
+  "^KS11": "EWY",
+  "^BSESN": "INDA",
+  "GC=F": "GLD",
+  "CL=F": "USO",
+  "BTC-USD": "IBIT",
+  "DX-Y.NYB": "UUP",
+  "^VIX": "VIXY",
 };
 
 /** "^VNINDEX.VN" → "VN-Index", "FPT.VN" → "FPT", "AAPL" → "AAPL". */

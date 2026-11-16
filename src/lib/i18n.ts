@@ -38,7 +38,7 @@ const en = {
   "brief.latest": "Latest",
   "brief.viewingOld": "You're viewing an earlier briefing.",
   "brief.backToLatest": "Back to latest",
-  "brief.langMismatch": "This briefing was written in {lang}. Change the briefing language in Settings.",
+  "brief.langMismatch": "This briefing is in {lang} for now.",
   "mood.risk-on": "Risk-on",
   "mood.risk-off": "Risk-off",
   "mood.mixed": "Mixed",
@@ -416,6 +416,8 @@ const en = {
   "gate.browse": "Browse the news",
   "empty.waitTitle": "Briefing on its way",
   "empty.waitBody": "Briefings refresh automatically several times a day. Check back soon.",
+  "brief.translating": "Translating into {lang}…",
+  "strip.via": "Priced from the {etf} ETF, which tracks it (the usual source is unavailable right now)",
 };
 
 export type MsgKey = keyof typeof en;
@@ -455,7 +457,7 @@ const vi: Dict = {
   "brief.latest": "Mới nhất",
   "brief.viewingOld": "Bạn đang xem một bản tin cũ.",
   "brief.backToLatest": "Về bản mới nhất",
-  "brief.langMismatch": "Bản tin này được viết bằng {lang}. Đổi ngôn ngữ bản tin trong Cài đặt.",
+  "brief.langMismatch": "Bản tin này hiện chỉ có bằng {lang}.",
   "mood.risk-on": "Ưa rủi ro",
   "mood.risk-off": "Né rủi ro",
   "mood.mixed": "Lẫn lộn",
@@ -833,6 +835,8 @@ const vi: Dict = {
   "gate.browse": "Xem tin tức",
   "empty.waitTitle": "Bản tin đang được chuẩn bị",
   "empty.waitBody": "Bản tin tự động cập nhật nhiều lần mỗi ngày. Hãy quay lại sau ít phút.",
+  "brief.translating": "Đang dịch sang {lang}…",
+  "strip.via": "Giá lấy từ quỹ ETF {etf} mô phỏng chỉ số này (nguồn thường dùng đang không khả dụng)",
 };
 
 const zh: Dict = {
@@ -869,7 +873,7 @@ const zh: Dict = {
   "brief.latest": "最新",
   "brief.viewingOld": "你正在查看较早的简报。",
   "brief.backToLatest": "返回最新",
-  "brief.langMismatch": "此简报以{lang}撰写。可在设置中更改简报语言。",
+  "brief.langMismatch": "此简报目前仅有{lang}版本。",
   "mood.risk-on": "风险偏好",
   "mood.risk-off": "避险",
   "mood.mixed": "分化",
@@ -1247,6 +1251,8 @@ const zh: Dict = {
   "gate.browse": "浏览新闻",
   "empty.waitTitle": "简报即将生成",
   "empty.waitBody": "简报每天自动更新数次，请稍后再来。",
+  "brief.translating": "正在翻译成{lang}…",
+  "strip.via": "价格取自跟踪它的 {etf} ETF（常用数据源暂时不可用）",
 };
 
 const ja: Dict = {
@@ -1283,7 +1289,7 @@ const ja: Dict = {
   "brief.latest": "最新",
   "brief.viewingOld": "過去のブリーフィングを表示中です。",
   "brief.backToLatest": "最新に戻る",
-  "brief.langMismatch": "このブリーフィングは{lang}で書かれています。設定で言語を変更できます。",
+  "brief.langMismatch": "このブリーフィングは現在{lang}のみです。",
   "mood.risk-on": "リスクオン",
   "mood.risk-off": "リスクオフ",
   "mood.mixed": "まちまち",
@@ -1661,6 +1667,8 @@ const ja: Dict = {
   "gate.browse": "ニュースを見る",
   "empty.waitTitle": "ブリーフィングを準備中",
   "empty.waitBody": "ブリーフィングは1日に数回自動更新されます。しばらくしてからご確認ください。",
+  "brief.translating": "{lang}に翻訳中…",
+  "strip.via": "連動する ETF {etf} の価格です（通常のデータ元が現在利用できません）",
 };
 
 const ko: Dict = {
@@ -1697,7 +1705,7 @@ const ko: Dict = {
   "brief.latest": "최신",
   "brief.viewingOld": "이전 브리핑을 보고 있습니다.",
   "brief.backToLatest": "최신으로",
-  "brief.langMismatch": "이 브리핑은 {lang}로 작성되었습니다. 설정에서 브리핑 언어를 바꿀 수 있습니다.",
+  "brief.langMismatch": "이 브리핑은 현재 {lang}로만 제공됩니다.",
   "mood.risk-on": "위험 선호",
   "mood.risk-off": "위험 회피",
   "mood.mixed": "혼조",
@@ -2075,6 +2083,8 @@ const ko: Dict = {
   "gate.browse": "뉴스 보기",
   "empty.waitTitle": "브리핑 준비 중",
   "empty.waitBody": "브리핑은 하루에 여러 번 자동으로 업데이트됩니다. 잠시 후 다시 확인하세요.",
+  "brief.translating": "{lang}로 번역 중…",
+  "strip.via": "이를 추종하는 {etf} ETF 가격입니다 (평소 데이터 소스를 지금 사용할 수 없음)",
 };
 
 const es: Dict = {
@@ -2111,7 +2121,7 @@ const es: Dict = {
   "brief.latest": "Último",
   "brief.viewingOld": "Estás viendo un resumen anterior.",
   "brief.backToLatest": "Volver al último",
-  "brief.langMismatch": "Este resumen está escrito en {lang}. Cambia el idioma del resumen en Ajustes.",
+  "brief.langMismatch": "Por ahora este resumen está en {lang}.",
   "mood.risk-on": "Apetito de riesgo",
   "mood.risk-off": "Aversión al riesgo",
   "mood.mixed": "Mixto",
@@ -2489,6 +2499,8 @@ const es: Dict = {
   "gate.browse": "Ver las noticias",
   "empty.waitTitle": "El resumen está en camino",
   "empty.waitBody": "Los resúmenes se actualizan solos varias veces al día. Vuelve en un rato.",
+  "brief.translating": "Traduciendo al {lang}…",
+  "strip.via": "Precio del ETF {etf}, que lo replica (la fuente habitual no está disponible ahora)",
 };
 
 const fr: Dict = {
@@ -2525,7 +2537,7 @@ const fr: Dict = {
   "brief.latest": "Dernière",
   "brief.viewingOld": "Vous consultez une synthèse précédente.",
   "brief.backToLatest": "Revenir à la dernière",
-  "brief.langMismatch": "Cette synthèse est rédigée en {lang}. Changez la langue des synthèses dans les Réglages.",
+  "brief.langMismatch": "Cette synthèse est pour l'instant en {lang}.",
   "mood.risk-on": "Appétit pour le risque",
   "mood.risk-off": "Aversion au risque",
   "mood.mixed": "Mitigé",
@@ -2903,6 +2915,8 @@ const fr: Dict = {
   "gate.browse": "Voir les actualités",
   "empty.waitTitle": "Synthèse en préparation",
   "empty.waitBody": "Les synthèses se mettent à jour automatiquement plusieurs fois par jour. Revenez bientôt.",
+  "brief.translating": "Traduction en {lang}…",
+  "strip.via": "Prix de l'ETF {etf}, qui le réplique (la source habituelle est indisponible pour le moment)",
 };
 
 const de: Dict = {
@@ -2939,7 +2953,7 @@ const de: Dict = {
   "brief.latest": "Aktuell",
   "brief.viewingOld": "Du siehst ein früheres Briefing.",
   "brief.backToLatest": "Zum aktuellen",
-  "brief.langMismatch": "Dieses Briefing ist auf {lang} geschrieben. Die Briefing-Sprache lässt sich in den Einstellungen ändern.",
+  "brief.langMismatch": "Dieses Briefing gibt es vorerst auf {lang}.",
   "mood.risk-on": "Risikofreude",
   "mood.risk-off": "Risikoscheu",
   "mood.mixed": "Gemischt",
@@ -3317,6 +3331,8 @@ const de: Dict = {
   "gate.browse": "Nachrichten ansehen",
   "empty.waitTitle": "Briefing ist unterwegs",
   "empty.waitBody": "Briefings aktualisieren sich mehrmals am Tag automatisch. Schau bald wieder vorbei.",
+  "brief.translating": "Wird auf {lang} übersetzt…",
+  "strip.via": "Kurs des ETF {etf}, der ihn abbildet (die übliche Quelle ist gerade nicht erreichbar)",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

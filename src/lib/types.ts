@@ -43,6 +43,8 @@ export interface Quote {
   source: "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "stooq";
   /** Filled from the last good copy because every source failed this time. */
   stale?: boolean;
+  /** Priced from this US-listed ETF because the symbol's own source refused (see PROXIES). */
+  proxy?: string;
 }
 
 export type Direction = "up" | "down" | "flat";
@@ -118,6 +120,9 @@ export interface Holding {
 }
 
 export interface Digest {
+  /** Set on translated copies: the language it was written in, and which AI translated it. */
+  translatedFrom?: string;
+  translatedBy?: string;
   /** Shared sections: labeled groups for the price strip (World/US/Vietnam). */
   strip?: { key: string; symbols: string[] }[];
   section: SectionId;

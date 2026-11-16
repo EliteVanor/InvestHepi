@@ -6,7 +6,7 @@
  *   Vietnamese symbols (*.VN): one VNDirect request for all of them, then DNSE/Vietcap per symbol.
  */
 import { getChart, type Bar } from "./chart";
-import { symLabel } from "./symbols";
+import { PROXIES, symLabel } from "./symbols";
 import type { Quote } from "./types";
 import { getJSON, setJSON } from "./store";
 import { isVnSymbol, pool, vnDaily, vndirectDaily } from "./vnmarket";
@@ -38,7 +38,8 @@ async function singleQuote(symbol: string): Promise<Quote | null> {
     }
     const d = await getChart(symbol, "1mo");
     // 1mo charts are hourly; collapse to daily closes.
-    return quoteFromCloses(symbol, d.bars.map((b) => [b.t, b.c]), d.source);
+    const q = quoteFromCloses(symbol, d.bars.map((b) => [b.t, b.c]), d.source);
+    return q && d.proxy ? { ...q, proxy: d.proxy } : q;
   } catch {
     return null;
   }
@@ -100,8 +101,14 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
   ]);
   const missing = uniq.filter((s) => !got.has(s));
   // Per-symbol fallbacks, bounded: a rate-limited minute shouldn't fan out into dozens of requests.
-  const filled = await pool(missing.slice(0, 12), 3, singleQuote);
+  const filled = await pool(missing.slice(0, 30), 4, singleQuote);
   filled.forEach((q) => q && got.set(q.symbol, q));
+  // Yahoo-only symbols (indexes, futures, FX): a tracking ETF priced by Nasdaq beats a stale price.
+  const proxied = uniq.filter((s) => !got.has(s) && PROXIES[s]);
+  if (proxied.length) {
+    const px = await pool(proxied, 3, async (s) => ({ s, q: got.get(PROXIES[s]) ?? (await singleQuote(PROXIES[s])) }));
+    for (const { s, q } of px) if (q && !q.stale) got.set(s, { ...q, symbol: s, proxy: PROXIES[s] });
+  }
   await rememberAndFill(uniq, got, opts.allowStale !== false);
   return uniq.map((s) => got.get(s)).filter((q): q is Quote => q != null);
 }
@@ -120,7 +127,7 @@ export function quotesAsText(quotes: Quote[]): string {
       const mo = h.length > 1 ? ((q.price - h[0][1]) / h[0][1]) * 100 : NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       const name = symLabel(q.symbol);
-      return `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}: ${q.price.toFixed(2)}${q.stale ? " [stale, from an earlier fetch]" : ""} (last session ${f(q.changePct)}, 5d ${f(wk)}, 1mo ${f(mo)})`;
+      return `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}${q.proxy ? ` [priced via the ${q.proxy} ETF]` : ""}: ${q.price.toFixed(2)}${q.stale ? " [stale, from an earlier fetch]" : ""} (last session ${f(q.changePct)}, 5d ${f(wk)}, 1mo ${f(mo)})`;
     })
     .join("\n");
 }

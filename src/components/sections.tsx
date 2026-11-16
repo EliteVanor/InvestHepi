@@ -142,7 +142,10 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
                   <span>{symLabel(q.symbol)}</span>
                   <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
                 </div>
-                <div className="px num">{fmtPrice(q.price)}</div>
+                <div className="px num">
+                  {fmtPrice(q.price)}
+                  {q.proxy && <span className="via" title={t("strip.via", { etf: q.proxy })}>{q.proxy}</span>}
+                </div>
                 <Sparkline values={q.history.map((h) => h[1])} />
               </button>
             ))}
@@ -154,7 +157,10 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
             <div className="sym">
               <span>{symLabel(q.symbol)}</span>
             </div>
-            <div className="px num">{isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : fmtPrice(q.price)}</div>
+            <div className="px num">
+              {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : fmtPrice(q.price)}
+              {q.proxy && <span className="via" title={t("strip.via", { etf: q.proxy })}>{q.proxy}</span>}
+            </div>
             <div className={`chg num ${q.changePct >= 0 ? "up" : "down"}`} style={{ fontSize: 12, fontWeight: 600 }}>
               {fmtPct(q.changePct)}
             </div>
@@ -182,8 +188,8 @@ export function briefingText(d: Digest, t: ReturnType<typeof usePrefs>["t"]): st
 }
 
 export function Briefing({
-  digest, viewingOld, onBackToLatest, onHistory, onCatchUp,
-}: { digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void; onCatchUp: () => void }) {
+  digest, viewingOld, onBackToLatest, onHistory, onCatchUp, translating,
+}: { digest: Digest; viewingOld: boolean; onBackToLatest: () => void; onHistory: () => void; onCatchUp: () => void; translating?: boolean }) {
   const { t, lang } = usePrefs();
   const a = digest.analysis;
   const [speaking, setSpeaking] = useState(false);
@@ -263,7 +269,7 @@ export function Briefing({
       {langMismatch && !viewingOld && (
         <div className="banner info">
           <IconInfo16 />
-          <span>{t("brief.langMismatch", { lang: langInfo(digest.language!).native })}</span>
+          <span>{translating ? t("brief.translating", { lang: langInfo(lang).native }) : t("brief.langMismatch", { lang: langInfo(digest.language!).native })}</span>
         </div>
       )}
       <div className="hero-meta">

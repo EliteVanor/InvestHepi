@@ -872,3 +872,4 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 @media (max-width: 719px) { .follow-btn.labeled span { display: none; } .follow-btn.labeled { width: 34px; padding: 0; } }
 .flat-bg { background: #8e8e93; }
 .track-seg { display: flex; width: max-content; max-width: 100%; overflow-x: auto; margin: 2px 0 6px; }
+.qcard .via { margin-left: 6px; font-family: var(--font); font-size: 10px; font-weight: 600; letter-spacing: 0.02em; padding: 1px 5px; border-radius: 5px; color: var(--label-2); background: var(--fill); vertical-align: 2px; }
