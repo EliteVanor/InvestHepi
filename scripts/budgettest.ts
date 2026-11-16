@@ -110,7 +110,7 @@ const reset = () => {
   await setJSON("llm:usage:groq120", { day: M.dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} });
 
   /* ---------------- keep the last AI briefing when no AI model works; rule-based copy on request */
-  const P = await import("../src/lib/pipeline");
+  const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   reset();
   const first = await P.refreshShared("us", "en");
   assert.equal(first.provider, "groq:openai/gpt-oss-120b");

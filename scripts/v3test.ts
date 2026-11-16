@@ -144,7 +144,7 @@ async function main() {
   assert.ok(sent[3].subject.includes("60%"), `weekly subject has hit rate (${sent[3].subject})`);
 
   // ---- localization of emails follows briefing language
-  const { saveSettings } = await import("../src/lib/pipeline");
+  const { saveSettings } = await import("../src/lib/interests");
   await saveSettings({ briefingLanguage: "vi" });
   const res = await A.sendTestEmail("me@example.com");
   assert.ok(res.ok);

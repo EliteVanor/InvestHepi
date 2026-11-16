@@ -1,5 +1,6 @@
 import { gate } from "@/lib/users";
-import { SHARED_CALLS, currentCallsKey } from "@/lib/pipeline";
+import { currentCallsKey } from "@/lib/interests";
+import { SHARED_CALLS } from "@/lib/pipeline";
 import { computeStats, loadCalls } from "@/lib/track";
 
 export const dynamic = "force-dynamic";
@@ -9,7 +10,7 @@ export async function GET(req: Request) {
     const p = new URL(req.url).searchParams;
     // ?section=world|us|vn → that shared section's calls; otherwise the caller's own interest set.
     const section = p.get("section") as keyof typeof SHARED_CALLS | null;
-    const key = section && SHARED_CALLS[section] ? SHARED_CALLS[section] : await currentCallsKey(p.get("lang") ?? undefined);
+    const key = section && SHARED_CALLS[section] ? SHARED_CALLS[section] : await currentCallsKey();
     const calls = await loadCalls(key);
     if (new URL(req.url).searchParams.get("format") === "csv") {
       const head = "session,horizon,ticker,interest,direction,action,confidence,provider,base_close,outcome_close,return_pct,correct,made_at";

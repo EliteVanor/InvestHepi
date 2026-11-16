@@ -40,7 +40,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 
 (async () => {
   await fs.rm(".data", { recursive: true, force: true });
-  const { refreshSection, saveSettings } = await import("../src/lib/pipeline");
+  const { refreshSection } = await import("../src/lib/pipeline");
+  const { saveSettings } = await import("../src/lib/interests");
   await saveSettings({ briefingLanguage: "vi" });
   const d = await refreshSection("interests");
   assert.equal(d.provider, "groq:openai/gpt-oss-120b");
@@ -73,7 +74,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   assert.deepEqual([parsed.movers[0].ticker, parsed.movers[0].changePct], ["NVDA", 3.2], "movers parsed from the model's reply");
   assert.equal(d2.analysis.movers.length, 0, "but a mover with no price in the snapshot is dropped (this test has no price data)");
   const { loadCalls } = await import("../src/lib/track");
-  const { currentCallsKey } = await import("../src/lib/pipeline");
+  const { currentCallsKey } = await import("../src/lib/interests");
   const calls = await loadCalls(await currentCallsKey());
   assert.deepEqual(calls.map((c) => c.id.split(":").slice(1).join(":")).sort(), ["QQQ:w", "SOXX:d"]);
   console.log("LLM PATH OK", calls.map((c) => c.id));

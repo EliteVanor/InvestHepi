@@ -1,6 +1,8 @@
 import { background } from "@/lib/background";
 import { withUser } from "@/lib/context";
-import { CATCH_UP_AFTER_MS, currentInterestSet, ensureInterestBriefing, interestBriefingStale } from "@/lib/pipeline";
+import { interestBriefingStale } from "@/lib/briefings";
+import { currentInterestSet } from "@/lib/interests";
+import { CATCH_UP_AFTER_MS, ensureInterestBriefing } from "@/lib/pipeline";
 import { autogenAllowed, limits, peek, userRefreshQuota } from "@/lib/ratelimit";
 import { asCaller, multiUser, touchUser, type User } from "@/lib/users";
 

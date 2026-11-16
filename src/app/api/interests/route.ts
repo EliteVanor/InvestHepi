@@ -3,7 +3,8 @@ import { z } from "zod";
 import { DEFAULT_INTERESTS } from "@/lib/config";
 import { background } from "@/lib/background";
 import { OWNER, withUser } from "@/lib/context";
-import { ensureInterestBriefing, loadInterests, saveInterests } from "@/lib/pipeline";
+import { loadInterests, saveInterests } from "@/lib/interests";
+import { ensureInterestBriefing } from "@/lib/pipeline";
 import { autogenAllowed } from "@/lib/ratelimit";
 
 export const maxDuration = 300;
