@@ -15,7 +15,7 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - **Sections:** My Interests (personal), World, US, Vietnam.
 - **Shared sections never show personal stocks.** World = world indexes + global giants + macro. US = S&P 500, Dow, Nasdaq 100, Russell 2000 + mega caps. Vietnam = VN-Index, VN30, HNX, UPCoM + banks + large caps. The AI's calls in shared sections are on market groups, not users' stocks.
 - **World has no market open/closed pill** (it spans many exchanges).
-- **Refreshing (decided Nov 16):** briefings refresh on the GitHub Actions schedule. Users' interest sets refresh automatically 4 times a weekday (01:15, 08:10, 12:30, 21:20 UTC), the admin's 6 times. Signed-in users can also refresh their own My Interests by hand: 5 a day, 90 minutes apart, on a lighter model (Gemini Flash-Lite); every press writes a new briefing and tells them how many presses are left. The admin can refresh any section, 10 a day, on the best model. Shared sections can't be refreshed by users. A newly saved interest set gets its first briefing automatically, once.
+- **Refreshing (decided Nov 16, mechanism changed in v13):** briefings refresh on the app's own timetable (`src/lib/timetable.ts`), run by a tick that Vercel Schedules, cron-job.org and GitHub poke on a plain interval; a run that's late or duplicated never spends AI twice, and a slot more than an hour late is reported. Users' interest sets refresh automatically 4 times a weekday (01:15, 08:10, 12:30, 21:20 UTC), the admin's 6 times. Signed-in users can also refresh their own My Interests by hand: 5 a day, 90 minutes apart, on a lighter model (Gemini Flash-Lite); every press writes a new briefing and tells them how many presses are left. The admin can refresh any section, 10 a day, on the best model. Shared sections can't be refreshed by users. A newly saved interest set gets its first briefing automatically, once.
 - **Schedule:** weekdays World 4, US 2 (12:30 UTC pre-open is the graded call), Vietnam 5 (01:15 UTC pre-HOSE is the graded call). Sunday: each shared section twice, the admin's set 3 times, users none. Saturday: nothing.
 - **Models:** shared on gpt-oss-120b (budget reserved), personal overflow on gpt-oss-20b, translation on qwen, Gemini Flash-Lite as backup; Ask AI on 20b. Shared sections use 20b only as the very last resort.
 - **When no AI model works:** keep the last AI briefing and explain it in a banner; readers can switch to a rule-based summary of the latest news (only they see it; cached).
@@ -31,9 +31,9 @@ The working rules (session start, stress testing, research and ideas, delivering
 
 ## Current state
 
-- `main` = v11, deployed on Vercel at `investhepi.vercel.app`.
-- Multi-user mode is on (Google sign-in via Auth.js). Vercel env vars in use: AI keys (`GROQ_API_KEY`, `GEMINI_API_KEY`), Upstash (`KV_REST_API_*`), `APP_PASSWORD`, `CRON_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `OWNER_EMAIL`, optionally `CONTACT_EMAIL` (shown on `/privacy` and `/terms`). GitHub repo secrets `APP_URL`, `CRON_SECRET` drive the scheduler.
-- Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT` (admin, 10), `USER_REFRESH_DAILY_LIMIT` (5), `USER_REFRESH_GAP_MIN` (90), `RULES_DAILY_LIMIT` (30), `ASK_DAILY_LIMIT`, `INTEREST_BATCH` (1), repo variable `INTEREST_ROUNDS` (15 calls per run), model overrides `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, limits `GROQ_TPD`, `GEMINI_RPD`.
+- `main` = v13, deployed on Vercel at `investhepi.vercel.app`.
+- Multi-user mode is on (Google sign-in via Auth.js). Vercel env vars in use: AI keys (`GROQ_API_KEY`, `GEMINI_API_KEY`), Upstash (`KV_REST_API_*`), `APP_PASSWORD`, `CRON_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `OWNER_EMAIL`, optionally `CONTACT_EMAIL` (shown on `/privacy` and `/terms`). GitHub repo secrets `APP_URL`, `CRON_SECRET` drive the GitHub backup poker.
+- Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT` (admin, 10), `USER_REFRESH_DAILY_LIMIT` (5), `USER_REFRESH_GAP_MIN` (90), `RULES_DAILY_LIMIT` (30), `ASK_DAILY_LIMIT`, `TICK_SECRET` (lets cron-job.org poke the scheduler and nothing else), model overrides `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, limits `GROQ_TPD`, `GEMINI_RPD`.
 - Google OAuth consent screen: branding filled in, privacy/terms pages exist; publishing needs no logo (a logo triggers brand verification).
 - A personal Claude cloud environment named `invest-helper` exists with network access to the market-data hosts (Yahoo, Nasdaq, DNSE, Vietcap, VNDirect, ...) for live testing. Node needs `NODE_USE_ENV_PROXY=1` there.
 - Tests: 13 offline suites (`npm test`), all passing (v9test, budgettest, v10test added Nov 16).
@@ -75,6 +75,35 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Movers carry `source_ids` (schema + prompt); a mover's reason is kept only if a cited headline names the stock.
 - GitHub's scheduler is unreliable: since Nov 15 only one scheduled run fired (01:15 slot ran at 02:22); the Sunday 22:35 slot never ran; the Monday 08:10 slot hadn't started by 08:41. **Most urgent fix:** move the timetable to an external free scheduler (cron-job.org or Upstash QStash) calling `/api/refresh` with `Authorization: Bearer $CRON_SECRET`, keep GitHub as backup.
 - Competitor and AI-for-stocks report (private artifact, owner's account): https://claude.ai/artifact/KNXDbKGgFtLiGQ7iBVHw1S. Main takeaways: make the graded track record the front door (with a do-nothing baseline), get a Vietnamese legal read on publishing buy/hold/wait calls (the SSC warned about unlicensed recommendations in 2026), add fundamentals and foreign flows for VN tickers, web push; don't build order books, screeners, community or trading.
+
+## v13 (branch `v13`, Nov 16 2026): a scheduler that runs
+
+**Why scheduled refreshes didn't run.** GitHub dropped them: since Nov 15 only one of about 12 refresh slots fired (67 min late) and the price-alert workflow never ran (0 of 8 weekday slots by 15:25 UTC Nov 16), although both workflows were "active", the cron lines were valid and manual runs worked. Not a bot-actor issue (alerts.yml was last edited by the owner; the one scheduled run's actor was the owner) and not billing. It matches many 2026 GitHub community reports of schedules never or rarely firing on new private repos on the Free plan; GitHub documents that scheduled runs can be delayed or dropped under load. The legacy Vercel cron (10:30 admin interests) showed no invocations either, and Vercel now marks Cron Jobs "Legacy" in favor of Schedules.
+
+**What changed (and what was removed).**
+- One timetable in code (`timetable.ts`); `scheduledPerDay` counts from it, so the 120b reserve can't drift from the schedule again.
+- `GET /api/cron/tick` (`scheduler.ts`): lock, alerts if due, one unit, chain to the next tick. Idempotent (skip anything written since 30 min before the slot, manual refreshes included), one retry 20 min after an AI failure, slots open until the next slot (max 6 h). 503 for an hour after a slot goes late.
+- Pokers only poke on an interval: Vercel Schedules every 15 min Sun-Fri (`vercel.json`, about 2,500 of Hobby's 5,000 runs a month), cron-job.org every 30 min (owner sets it up, it's also the watchdog that emails), GitHub every 3 h (about 200 Action minutes a month instead of about 1,500).
+- Removed: `refreshScheduled`, `AUTO_MIN_AGE_MIN`, `INTEREST_BATCH`, `INTEREST_ROUNDS`, the shell loop in refresh.yml, alerts.yml and `/api/alerts/check` (alerts run in the tick), the cron branch of `/api/refresh`, the legacy `crons` entry.
+- Monitoring: `/api/status?schedule=1` (public, no secrets: last tick and its source, last 24 h of slots as done / partial / running / late / missed); a "Scheduler" row in the admin's Status panel (8 languages).
+
+**Rejected:** an external cron dispatching the GitHub workflow (a third party holding a repo-write token, still GitHub's queue and minutes); QStash (works, but no failure emails and an unverified free schedule count, and Vercel Schedules does the same without a new account); one Vercel schedule per slot (15-min jitter would collide sections on Groq's per-minute limit, and the times would be duplicated); making the repo public (doesn't make GitHub's scheduler reliable, would publish the prompts and these notes).
+
+**Verified:** `npm test` (new `v13test.ts`: timetable math, order, 65 s gap, skip rules, retry and give-up, lock, late/missed, alerts window, route auth and 503, public report), v5test now runs the multi-user grouping through the tick; typecheck; build with and without `AUTH_*`. A production build run locally: the tick answered in 36 ms, then one poke ran a whole slot (us, world, vn, the interest set) 65 s apart through the self-chain and stopped on its own.
+
+**Not verified yet:** Vercel accepting the `schedules` block on Hobby and the chain on Vercel (checked after the merge with `/api/status?schedule=1`); cron-job.org until the owner sets it up.
+
+**Owner setup (once):**
+1. Make a long random secret (e.g. a password manager's generator, 40+ characters). This is `TICK_SECRET`. Don't reuse `CRON_SECRET`: `TICK_SECRET` can only poke the scheduler, which never spends AI twice.
+2. Vercel → the project → Settings → Environment Variables → add `TICK_SECRET` (Production) → Save. Then Deployments → the latest production deployment → ⋯ → Redeploy (env vars apply on the next deploy).
+3. cron-job.org → sign up (free) → Create cronjob:
+   - URL: `https://investhepi.vercel.app/api/cron/tick?src=cron-job.org`
+   - Schedule: every 30 minutes
+   - Advanced → Headers → add `Authorization` with the value `Bearer ` followed by the secret (one space after Bearer). Method GET.
+   - Notifications: on for "execution fails" and "succeeds after failure".
+   - Save, then "Test run": expect HTTP 200 and `{"ok":true,"late":[]}`. 401 means the header or the Vercel variable doesn't match (or the redeploy hasn't happened).
+4. Vercel → the project → Schedules: `tick` should be listed and active; the old Cron Jobs entry is gone. Its history shows each run.
+5. Optional clean-up: delete the GitHub repo variable `INTEREST_ROUNDS` and any `INTEREST_BATCH` env var (both unused now). GitHub secrets `APP_URL` and `CRON_SECRET` stay.
 
 ## Open items / known gaps
 

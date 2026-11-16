@@ -25,9 +25,10 @@ export async function getJSON<T>(key: string): Promise<T | null> {
   }
 }
 
-export async function setJSON<T>(key: string, value: T): Promise<void> {
+/** `ttlSec` lets Redis expire the key (local files keep it; they're for development only). */
+export async function setJSON<T>(key: string, value: T, ttlSec?: number): Promise<void> {
   if (redis) {
-    await redis.set(key, value);
+    await (ttlSec ? redis.set(key, value, { ex: ttlSec }) : redis.set(key, value));
     return;
   }
   await fs.mkdir(dir, { recursive: true });
@@ -40,4 +41,22 @@ export async function delJSON(key: string): Promise<void> {
     return;
   }
   await fs.rm(fileFor(key), { force: true });
+}
+
+/**
+ * A lock that expires on its own: returns a token if taken, null if someone else holds it.
+ * Atomic on Redis (SET NX EX); the local file version is good enough for one dev server.
+ */
+export async function takeLock(key: string, ttlSec: number): Promise<string | null> {
+  const token = Math.random().toString(36).slice(2);
+  if (redis) return (await redis.set(key, token, { nx: true, ex: ttlSec })) === "OK" ? token : null;
+  const held = await getJSON<{ token: string; until: number }>(key);
+  if (held && held.until > Date.now()) return null;
+  await setJSON(key, { token, until: Date.now() + ttlSec * 1000 });
+  return token;
+}
+
+export async function releaseLock(key: string, token: string): Promise<void> {
+  const held = redis ? await redis.get<string>(key) : (await getJSON<{ token: string }>(key))?.token;
+  if (held === token) await delJSON(key);
 }

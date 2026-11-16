@@ -129,18 +129,24 @@ const OWNER_EMAIL = "owner@example.com";
   assert.equal(groups.size, 2, "the default set and Alice's set");
 
   const refresh = await import("../src/app/api/refresh/route");
-  const cron = (section: string) => refresh.GET(req(`/api/refresh?section=${section}`, undefined, { headers: { authorization: "Bearer cron" } }));
-  aiCalls = 0;
-  const [, iv] = await json(await cron("interests"));
-  assert.equal(iv.results.length, 1, "only the default set is due (Alice's was just made)");
-  const [, iv3] = await json(await cron("interests"));
-  assert.equal(iv3.results.length, 0, "nothing due once all are fresh");
-  assert.equal(aiCalls, 1, "2 distinct sets for 4 users, one already fresh → 1 AI call");
-  const [, w] = await json(await cron("world"));
-  assert.deepEqual(w.results.map((r: { key: string }) => r.key).sort(), ["world:en", "world:vi"]);
+  // The tick runs a weekday 12:30 slot (us, world, vn, interest sets), one unit per call.
+  const S = await import("../src/lib/scheduler");
+  const TT = await import("../src/lib/timetable");
+  const slot = TT.occurrences(Date.now() - 8 * 86400_000, Date.now()).filter((o) => o.slot.id === "wd-1230").pop()!;
+  let t = slot.start + 60_000;
+  const tickOpts = { now: () => new Date(t), sleep: async (ms: number) => void (t += ms) };
   feedsHit.length = 0;
   quoted.length = 0;
-  await cron("vn");
+  const units: { item: string; set?: string; ok: boolean }[] = [];
+  for (let i = 0; i < 10; i++) {
+    const r = await S.runTick(tickOpts);
+    if (!r.unit) break;
+    units.push(r.unit);
+    t += 30_000;
+  }
+  assert.deepEqual(units.map((u) => u.item), ["us", "world", "vn", "interests:all"], "graded US call first, then world, vn, interest sets");
+  assert.equal(units.filter((u) => u.set).length, 1, "2 distinct sets for 4 users; Alice's was just made, so only the default set is due");
+  assert.ok(units.every((u) => u.ok));
   assert.ok(feedsHit.some((u) => u.includes("vnexpress.net")) && feedsHit.some((u) => u.includes("cafef.vn")), "Vietnamese news feeds used");
   assert.ok(feedsHit.some((u) => u.includes("hl=vi&gl=VN")), "Google News searched in Vietnamese");
   assert.ok(feedsHit.some((u) => u.includes("vndirect") && u.includes("FPT") && u.includes("VCB")), "Vietnam market symbols priced in one VNDirect batch");
@@ -187,10 +193,9 @@ const OWNER_EMAIL = "owner@example.com";
   const [, r2] = await json(await refresh.POST(req("/api/refresh?section=world", OWNER_EMAIL, { method: "POST" })));
   assert.equal(r2.results[0].ok && !r2.results[0].cached, true, "the owner can force a refresh");
 
-  // ---- alerts check is scheduler-only in multi-user mode
-  const check = await import("../src/app/api/alerts/check/route");
-  assert.equal((await check.GET(req("/api/alerts/check", A))).status, 401);
-  assert.equal((await check.GET(req("/api/alerts/check", undefined, { headers: { authorization: "Bearer cron" } }))).status, 200);
+  // ---- the scheduler tick (alerts run inside it) is scheduler-only, also for signed-in users
+  const tick = await import("../src/app/api/cron/tick/route");
+  assert.equal((await tick.GET(req("/api/cron/tick", A))).status, 401);
 
   // ---- owner keeps the original single-user keys
   const { getJSON } = await import("../src/lib/store");

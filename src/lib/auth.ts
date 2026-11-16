@@ -63,6 +63,12 @@ export function passwordRequired(): Response | null {
   return null;
 }
 
+/** The scheduler tick: CRON_SECRET (Vercel sends it), or TICK_SECRET, which can only poke the tick. */
+export function isScheduler(req: Request): boolean {
+  const got = req.headers.get("authorization") ?? "";
+  return [process.env.CRON_SECRET, process.env.TICK_SECRET].some((s) => !!s?.trim() && got === `Bearer ${s.trim()}`);
+}
+
 export function isCron(req: Request): boolean {
   const cron = process.env.CRON_SECRET;
   return !!cron && req.headers.get("authorization") === `Bearer ${cron}`;

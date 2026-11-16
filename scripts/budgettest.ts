@@ -1,7 +1,7 @@
 /**
  * Free-tier budget: which model each job uses, daily usage tracking, the 120b reserve for shared and
  * admin briefings, cooldowns after a 429, keeping the last AI briefing when AI fails (with a
- * rule-based copy readers can switch to), scheduler scopes, and translated headlines.
+ * rule-based copy readers can switch to), and translated headlines (the scheduler is in v13test).
  * `npx tsx scripts/budgettest.ts`
  */
 import assert from "node:assert/strict";
@@ -156,19 +156,6 @@ const reset = () => {
   assert.equal(firstEver.keptAi, undefined, "nothing to keep: not reported as kept");
   assert.equal((await P.loadDigest("vn", undefined, "en"))!.provider, "rules");
 
-  /* ---------------- scheduler: English + Vietnamese only; admin scope; one set per call */
-  reset();
-  await setJSON("llm:usage:qwen", { day: M.dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} }); // end the cooldown from above
-  const sch = await P.refreshScheduled("world", {}, new Date(Date.now() + 180_000));
-  assert.deepEqual(sch.results.map((r) => r.key), ["world:en", "world:vi"], "shared: written in English, pre-translated into Vietnamese only");
-  assert.ok(calls.some((c) => c.model.includes("qwen") && c.system.startsWith("You translate")), "the Vietnamese copy comes from the translation model");
-  reset();
-  const own = await P.refreshScheduled("interests", { scope: "admin" }, new Date(Date.now() + 240_000));
-  assert.equal(own.results.length, 1, "the admin's set");
-  assert.equal(calls[0].model, "openai/gpt-oss-120b", "admin's set on the best model");
-  const again = await P.refreshScheduled("interests", { scope: "all" }, new Date(Date.now() + 300_000));
-  assert.equal(again.results.length, 0, "not due again within 60 minutes");
-
   /* ---------------- translated headlines: cited + top 20, skipping ones already in the language */
   const T = await import("../src/lib/translate");
   assert.equal(T.headlineLang("Chứng khoán tăng điểm"), "vi");
@@ -183,6 +170,8 @@ const reset = () => {
   assert.ok(toVi.some((s) => s.text === "Stocks rise 25"), "a cited headline is included even outside the top 20");
   assert.equal(T.headlineSlots(news, an, "en").map((s) => s.text).join(), "Chứng khoán tăng điểm", "English readers only need the Vietnamese one");
   reset();
+  await setJSON("llm:usage:qwen", { day: M.dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} }); // end the cooldown from above
+  await P.refreshShared("world", "en", new Date(Date.now() + 180_000));
   const d = await P.loadDigest("world", undefined, "en");
   const vi = await T.translateDigest(d!, "vi");
   const translated = vi.news.filter((n) => n.titleOrig);

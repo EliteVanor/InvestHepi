@@ -542,43 +542,6 @@ export async function interestGroups(): Promise<Map<string, Group>> {
   return groups;
 }
 
-/** Minimum gap between automatic refreshes of one interest set: the admin's set and everyone else's. */
-export const AUTO_MIN_AGE_MIN = { admin: 60, user: 90 };
-
-/**
- * Scheduled refresh (see refresh.yml for the times).
- * Shared sections: written once in English, then pre-translated into Vietnamese only (the main
- * audience); other languages are translated when their first reader opens the briefing.
- * Interests: `scope` "admin" refreshes only the admin's set (the admin-only slots), "all" every set
- * that's due, stalest first, `batch` per call (default 1: one briefing per minute fits Groq's
- * per-minute limit). The admin's set uses the adminAuto route, others userAuto.
- */
-export async function refreshScheduled(section: SectionId, opts: { batch?: number; scope?: "all" | "admin" } = {}, now = new Date()) {
-  const results: { key: string; ok: boolean; provider?: string; keptAi?: boolean; error?: string }[] = [];
-  const run = async (key: string, fn: () => Promise<Refreshed>) => {
-    try {
-      const d = await fn();
-      results.push({ key, ok: true, provider: d.provider, keptAi: d.keptAi });
-    } catch (e) {
-      results.push({ key, ok: false, error: (e as Error).message });
-    }
-  };
-  if (section !== "interests") {
-    await run(`${section}:en`, () => refreshShared(section, "en", now, "shared"));
-    await run(`${section}:vi`, async () => (await translateLatest(section, "vi")) ?? Promise.reject(new Error("no briefing")));
-    return { results, pending: 0 };
-  }
-  const batch = opts.batch ?? (Number(process.env.INTEREST_BATCH) || 1);
-  const groups = [...(await interestGroups()).entries()].filter(([, g]) => opts.scope !== "admin" || g.uids.includes(OWNER));
-  const ages = await Promise.all(groups.map(async ([h]) => (await getJSON<{ at: string }>(`ib:${h}:last`))?.at ?? "1970-01-01"));
-  const due = groups
-    .map(([h, g], i) => ({ h, g, at: ages[i], admin: g.uids.includes(OWNER) }))
-    .filter((x) => now.getTime() - new Date(x.at).getTime() >= (x.admin ? AUTO_MIN_AGE_MIN.admin : AUTO_MIN_AGE_MIN.user) * 60_000)
-    .sort((a, b) => Number(b.admin) - Number(a.admin) || a.at.localeCompare(b.at));
-  for (const x of due.slice(0, batch)) await run(`interests:${x.h}`, () => refreshInterestSet(x.g.interests, x.g.lang, x.g.uids, now, x.admin ? "adminAuto" : "userAuto"));
-  return { results, pending: Math.max(0, due.length - batch) };
-}
-
 /* -------------------------------------------------------------- alerts */
 
 /** Adds held tickers (not already followed) as one extra group so alerts cover them too. */

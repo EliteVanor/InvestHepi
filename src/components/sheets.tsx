@@ -242,6 +242,7 @@ interface Status {
   cronSecret: boolean;
   email: "resend" | "smtp" | "none";
   lastRefresh: Record<SectionId, { at: string; ok: boolean; provider?: string; error?: string } | null>;
+  schedule?: { lastTick: { at: string; src: string } | null; late: string[] };
 }
 
 function StatusTab() {
@@ -249,7 +250,7 @@ function StatusTab() {
   const [s, setS] = useState<Status | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => {
-    api<Status>("/api/status").then(setS).catch((e) => setErr((e as Error).message));
+    api<Status>("/api/status?schedule=1").then(setS).catch((e) => setErr((e as Error).message));
   }, [api]);
   const onOff = (b: boolean) => <span className={b ? "ok" : "bad"}>{b ? t("st.on") : t("st.off")}</span>;
   if (err) return <p className="hint bad">{err}</p>;
@@ -280,6 +281,16 @@ function StatusTab() {
           <div className="row"><span className="label">{t("st.finnhub")}</span>{onOff(s.finnhub)}</div>
           <div className="row"><span className="label">{t("st.password")}</span>{onOff(s.password)}</div>
           <div className="row"><span className="label">{t("st.cron")}</span>{onOff(s.cronSecret)}</div>
+          {s.schedule && (
+            <div className="row">
+              <span className="label">{t("st.sched")}</span>
+              {s.schedule.late.length ? (
+                <span className="value bad">{t("st.late")}: {s.schedule.late.join(", ")}</span>
+              ) : (
+                <span className="value">{s.schedule.lastTick ? `${relTime(s.schedule.lastTick.at, lang)} · ${s.schedule.lastTick.src}` : t("st.never")}</span>
+              )}
+            </div>
+          )}
           <div className="row"><span className="label">{t("st.email")}</span>{s.email === "none" ? onOff(false) : <span className="ok">{s.email === "resend" ? "Resend" : "SMTP"}</span>}</div>
         </div>
       </div>
