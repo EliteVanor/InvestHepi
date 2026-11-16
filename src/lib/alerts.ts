@@ -400,7 +400,7 @@ function shell({ lang, preheader, title, body, t }: { lang: LangCode; preheader:
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="bg" style="background:#f5f5f7"><tr><td align="center" style="padding:28px 12px">
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px">
 <tr><td style="padding:0 6px 14px;font:600 15px/1.2 -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif" class="tx">
-<span style="display:inline-block;width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#0a84ff,#5e5ce6,#bf5af2);vertical-align:-3px;margin-right:8px"></span>Invest Helper</td></tr>
+<span style="display:inline-block;width:18px;height:18px;border-radius:5px;background:linear-gradient(135deg,#0a84ff,#5e5ce6,#bf5af2);vertical-align:-3px;margin-right:8px"></span>InvestHepi</td></tr>
 <tr><td class="card" style="background:#ffffff;border-radius:20px;padding:28px 26px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1d1d1f">
 <div class="tx" style="font-size:24px;line-height:1.25;font-weight:700;letter-spacing:-0.02em;margin:0 0 16px">${esc(title)}</div>
 ${body}

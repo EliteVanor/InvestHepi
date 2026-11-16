@@ -148,7 +148,7 @@ async function main() {
   await saveSettings({ briefingLanguage: "vi" });
   const res = await A.sendTestEmail("me@example.com");
   assert.ok(res.ok);
-  assert.equal(sent[4].subject, "Email thử từ Invest Helper", "test email localized to briefing language");
+  assert.equal(sent[4].subject, "Email thử từ InvestHepi", "test email localized to briefing language");
   await saveSettings({ briefingLanguage: "en" });
 
   // ---- chart parsing + live quotes

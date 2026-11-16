@@ -851,7 +851,7 @@ export function TrackExtras({ stats }: { stats: TrackStats }) {
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement("a");
       a.href = url;
-      a.download = "invest-helper-calls.csv";
+      a.download = "investhepi-calls.csv";
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch (e) {

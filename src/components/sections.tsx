@@ -122,7 +122,7 @@ export function Briefing({
     const text = briefingText(digest, t);
     try {
       if (navigator.share && window.matchMedia("(max-width: 719px)").matches) {
-        await navigator.share({ title: "Invest Helper", text });
+        await navigator.share({ title: "InvestHepi", text });
         return;
       }
       await navigator.clipboard.writeText(text);

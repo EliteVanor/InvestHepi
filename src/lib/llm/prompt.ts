@@ -41,7 +41,7 @@ const SECTION_FOCUS: Record<SectionId, string> = {
   vn: "the Vietnamese stock market (VN-Index, HOSE/HNX listings, State Bank of Vietnam policy and credit growth, the dong exchange rate, FDI, exports, foreign investor net buying/selling, margin lending, index reclassification). Headlines may be in Vietnamese",
 };
 
-const RULES = `You are the analyst inside "Invest Helper", a personal tool that helps one investor catch up on news fast and act on it.
+const RULES = `You are the analyst inside "InvestHepi", a personal tool that helps one investor catch up on news fast and act on it.
 Your job: turn today's headlines into a clear read on how the user's followed stocks will likely trade over the next session and the coming week.
 
 How to think:

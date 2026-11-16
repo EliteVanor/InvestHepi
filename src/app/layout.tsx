@@ -3,10 +3,10 @@ import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Invest Helper",
+  title: "InvestHepi",
   description: "Catch up on market news fast, with an AI read on what it means for your stocks.",
-  applicationName: "Invest Helper",
-  appleWebApp: { capable: true, title: "Invest Helper", statusBarStyle: "black-translucent" },
+  applicationName: "InvestHepi",
+  appleWebApp: { capable: true, title: "InvestHepi", statusBarStyle: "black-translucent" },
   formatDetection: { telephone: false },
 };
 

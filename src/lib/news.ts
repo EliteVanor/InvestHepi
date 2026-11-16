@@ -3,7 +3,7 @@ import type { Feed } from "./config";
 import type { Interest, NewsItem } from "./types";
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", textNodeName: "#text" });
-const UA = "Mozilla/5.0 (compatible; InvestHelper/0.1; personal news reader)";
+const UA = "Mozilla/5.0 (compatible; InvestHepi/0.1; personal news reader)";
 
 function text(v: unknown): string {
   if (v == null) return "";

@@ -1,4 +1,4 @@
-# Invest Helper
+# InvestHepi
 
 A personal news site that catches you up on market news fast and tells you what it likely means for the stocks you follow.
 
@@ -133,7 +133,7 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
    - **Gmail**: turn on 2-step verification, create an [app password](https://myaccount.google.com/apppasswords), and set `SMTP_URL=smtps://you%40gmail.com:APP_PASSWORD@smtp.gmail.com:465`.
 
    Then in the app go to Settings → Alerts: turn alerts on, enter your email, press **Send test email**.
-6. **Turn on the scheduler**: GitHub repo → Settings → Secrets and variables → Actions → add `APP_URL` (your Vercel URL, e.g. `https://invest-helper-xyz.vercel.app`) and `CRON_SECRET` (same value as in Vercel). Run it once by hand from the Actions tab → "Refresh briefings" → Run workflow. A second workflow, "Price alerts", checks prices every 20 minutes during US market hours (no AI, ~600 of the 2,000 free monthly Action minutes on a private repo). Want it every minute? Create a free job at [cron-job.org](https://cron-job.org) that calls `GET https://YOUR-APP/api/alerts/check` with the header `Authorization: Bearer YOUR_CRON_SECRET`.
+6. **Turn on the scheduler**: GitHub repo → Settings → Secrets and variables → Actions → add `APP_URL` (your Vercel URL, e.g. `https://investhepi-xyz.vercel.app`) and `CRON_SECRET` (same value as in Vercel). Run it once by hand from the Actions tab → "Refresh briefings" → Run workflow. A second workflow, "Price alerts", checks prices every 20 minutes during US market hours (no AI, ~600 of the 2,000 free monthly Action minutes on a private repo). Want it every minute? Create a free job at [cron-job.org](https://cron-job.org) that calls `GET https://YOUR-APP/api/alerts/check` with the header `Authorization: Bearer YOUR_CRON_SECRET`.
 7. Open the site, enter your password, and press **↻ Refresh** on any section.
 
 ### Vietnam tab

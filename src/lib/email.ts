@@ -31,10 +31,10 @@ function fromAddress(): string {
   if (emailProvider() === "smtp") {
     try {
       const u = new URL(process.env.SMTP_URL!);
-      return `Invest Helper <${decodeURIComponent(u.username)}>`;
+      return `InvestHepi <${decodeURIComponent(u.username)}>`;
     } catch {}
   }
-  return "Invest Helper <onboarding@resend.dev>";
+  return "InvestHepi <onboarding@resend.dev>";
 }
 
 export async function sendEmail(msg: EmailMessage): Promise<EmailResult> {

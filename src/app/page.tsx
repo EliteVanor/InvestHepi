@@ -281,7 +281,7 @@ function App() {
         <div className="topbar-inner">
           <div className="brand">
             <span className="brand-mark" aria-hidden="true" />
-            <span>{isMobile && titleHidden ? t(`sec.${tab}` as MsgKey) : "Invest Helper"}</span>
+            <span>{isMobile && titleHidden ? t(`sec.${tab}` as MsgKey) : "InvestHepi"}</span>
           </div>
           <span className="spacer" />
           <nav className="segmented desktop-only" aria-label="Sections">
