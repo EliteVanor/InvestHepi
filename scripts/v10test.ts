@@ -106,6 +106,10 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(!("^N225" in W.SAME_HOURS_ETF) && !("^HSI" in W.SAME_HOURS_ETF), "non-US indexes are never estimated from US-hours ETFs");
   assert.match(M.levelText({ symbol: "^GSPC", price: 7599.5, prevClose: 7561.67, changePct: 0.5, history: [["2026-11-13", 7561.67], ["2026-11-16", 7599.5]], source: "vndirect-world", estimatedVia: "SPY" }), /^≈7599\.50 \[estimate .*SPY.*say "about"\]/);
 
+  /* ---------------- yields move in basis points */
+  const mt = M.macroAsText([{ symbol: "^TNX", price: 5.15, prevClose: 5.1, changePct: 0.98, history: [["2026-11-06", 4.84], ["2026-11-09", 4.88], ["2026-11-10", 4.98], ["2026-11-11", 5.0], ["2026-11-12", 5.1], ["2026-11-13", 5.15]], source: "vndirect-world", dailyOnly: true }], ["^TNX"]);
+  assert.match(mt, /\(1d \+5 bp, 5d \+31 bp\)/, "not a percent of the yield");
+
   /* ---------------- formatting */
   const P = await import("../src/components/primitives");
   const S = await import("../src/lib/symbols");

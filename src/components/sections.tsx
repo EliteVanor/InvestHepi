@@ -170,7 +170,8 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
               <QuoteTag q={q} />
             </div>
             <div className={`chg num ${q.changePct >= 0 ? "up" : "down"}`} style={{ fontSize: 12, fontWeight: 600 }}>
-              {fmtPct(q.changePct)}
+              {/* Yields: change in basis points (5.10% → 5.15% is +5 bp). */}
+              {isPercentQuote(q.symbol) ? `${q.price >= q.prevClose ? "+" : ""}${Math.round((q.price - q.prevClose) * 100)} bp` : fmtPct(q.changePct)}
             </div>
           </button>
         ))}

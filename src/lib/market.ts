@@ -6,7 +6,7 @@
  *   Vietnamese symbols (*.VN): one VNDirect request for all of them, then DNSE/Vietcap per symbol.
  */
 import { getChart, type Bar } from "./chart";
-import { PROXIES, priceDigits, symLabel } from "./symbols";
+import { PROXIES, isPercentQuote, priceDigits, symLabel } from "./symbols";
 import type { Quote } from "./types";
 import { getJSON, setJSON } from "./store";
 import { isVnSymbol, pool, vnDaily, vndirectDaily } from "./vnmarket";
@@ -165,6 +165,12 @@ export function macroAsText(quotes: Quote[], wanted: string[] = []): string {
       const h = q.history;
       const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
+      // Yields move in basis points, not percent of themselves (5.10% → 5.15% is +5 bp, not "+1.0%").
+      if (isPercentQuote(q.symbol)) {
+        const bp = (d: number) => (Number.isFinite(d) ? `${d >= 0 ? "+" : ""}${Math.round(d * 100)} bp` : "n/a");
+        const back = h.length > 5 ? h[h.length - 6][1] : NaN;
+        return `${promptName(q.symbol)}: ${levelText(q)} (1d ${bp(q.price - q.prevClose)}, 5d ${bp(q.price - back)})`;
+      }
       if (!q.proxy) return `${promptName(q.symbol)}: ${levelText(q)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;
       // e.g. USO ~145 is not "oil at $145", UUP ~29.5 is not the dollar index (or USD/VND).
       const note = q.symbol === "^VIX" ? "the VIXY futures ETF: direction only, it moves less than the VIX itself" : `the ${q.proxy} ETF: % moves only`;
