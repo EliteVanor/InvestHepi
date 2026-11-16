@@ -106,6 +106,16 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(!("^N225" in W.SAME_HOURS_ETF) && !("^HSI" in W.SAME_HOURS_ETF), "non-US indexes are never estimated from US-hours ETFs");
   assert.match(M.levelText({ symbol: "^GSPC", price: 7599.5, prevClose: 7561.67, changePct: 0.5, history: [["2026-11-13", 7561.67], ["2026-11-16", 7599.5]], source: "vndirect-world", estimatedVia: "SPY" }), /^≈7599\.50 \[estimate .*SPY.*say "about"\]/);
 
+  /* ---------------- feed times: Hanoi time mislabeled as UTC */
+  const N = await import("../src/lib/news");
+  const at = new Date("2026-11-16T04:00:55Z");
+  const item = (iso: string) => ({ id: iso, title: "t", link: "", source: "Tuổi Trẻ", publishedAt: iso });
+  const fixed = N.fixFeedTimes([item("2026-11-16T09:40:00.000Z"), item("2026-11-16T03:00:00.000Z")], "https://tuoitre.vn/rss/kinh-doanh.rss", at);
+  assert.deepEqual(fixed.map((i) => i.publishedAt), ["2026-11-16T02:40:00.000Z", "2026-11-15T20:00:00.000Z"], "a Vietnamese feed in the future is Hanoi time: every item moves back 7 h");
+  const ok = [item("2026-11-16T03:00:00.000Z")];
+  assert.equal(N.fixFeedTimes(ok, "https://tuoitre.vn/rss", at), ok, "feeds with sane times are untouched");
+  assert.equal(N.fixFeedTimes([item("2026-11-16T09:00:00.000Z")], "https://example.com/rss", at)[0].publishedAt, at.toISOString(), "elsewhere: clamped to now");
+
   /* ---------------- yields move in basis points */
   const mt = M.macroAsText([{ symbol: "^TNX", price: 5.15, prevClose: 5.1, changePct: 0.98, history: [["2026-11-06", 4.84], ["2026-11-09", 4.88], ["2026-11-10", 4.98], ["2026-11-11", 5.0], ["2026-11-12", 5.1], ["2026-11-13", 5.15]], source: "vndirect-world", dailyOnly: true }], ["^TNX"]);
   assert.match(mt, /\(1d \+5 bp, 5d \+31 bp\)/, "not a percent of the yield");

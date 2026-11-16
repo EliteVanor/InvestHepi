@@ -479,6 +479,15 @@ const en = {
   "ask.noHistory": "No saved chats yet.",
   "ask.delete": "Delete chat",
   "ask.messages": "{n} messages",
+  "ui.collapse": "Collapse sidebar",
+  "ui.expand": "Expand sidebar",
+  "ui.hideChat": "Hide Ask AI",
+  "ui.showChat": "Show Ask AI",
+  "side.top": "Top headlines",
+  "side.allNews": "All {n} headlines",
+  "sc.news": "Jump to headlines",
+  "sc.sidebar": "Collapse or expand the sidebar",
+  "sc.chat": "Show or hide Ask AI",
 };
 
 export type MsgKey = keyof typeof en;
@@ -959,6 +968,15 @@ const vi: Dict = {
   "ask.noHistory": "Chưa có cuộc trò chuyện nào được lưu.",
   "ask.delete": "Xóa cuộc trò chuyện",
   "ask.messages": "{n} tin nhắn",
+  "ui.collapse": "Thu gọn thanh bên",
+  "ui.expand": "Mở rộng thanh bên",
+  "ui.hideChat": "Ẩn Hỏi AI",
+  "ui.showChat": "Hiện Hỏi AI",
+  "side.top": "Tin nổi bật",
+  "side.allNews": "Tất cả {n} tin",
+  "sc.news": "Đến danh sách tin",
+  "sc.sidebar": "Thu gọn hoặc mở rộng thanh bên",
+  "sc.chat": "Hiện hoặc ẩn Hỏi AI",
 };
 
 const zh: Dict = {
@@ -1436,6 +1454,15 @@ const zh: Dict = {
   "ask.noHistory": "还没有保存的对话。",
   "ask.delete": "删除对话",
   "ask.messages": "{n} 条消息",
+  "ui.collapse": "收起侧边栏",
+  "ui.expand": "展开侧边栏",
+  "ui.hideChat": "隐藏 AI 问答",
+  "ui.showChat": "显示 AI 问答",
+  "side.top": "热门新闻",
+  "side.allNews": "全部 {n} 条新闻",
+  "sc.news": "跳到新闻列表",
+  "sc.sidebar": "收起或展开侧边栏",
+  "sc.chat": "显示或隐藏 AI 问答",
 };
 
 const ja: Dict = {
@@ -1913,6 +1940,15 @@ const ja: Dict = {
   "ask.noHistory": "保存されたチャットはまだありません。",
   "ask.delete": "チャットを削除",
   "ask.messages": "{n} 件のメッセージ",
+  "ui.collapse": "サイドバーを折りたたむ",
+  "ui.expand": "サイドバーを展開",
+  "ui.hideChat": "AIに質問を隠す",
+  "ui.showChat": "AIに質問を表示",
+  "side.top": "主要ニュース",
+  "side.allNews": "全 {n} 件のニュース",
+  "sc.news": "ニュース一覧へ移動",
+  "sc.sidebar": "サイドバーの折りたたみ・展開",
+  "sc.chat": "AIに質問の表示・非表示",
 };
 
 const ko: Dict = {
@@ -2390,6 +2426,15 @@ const ko: Dict = {
   "ask.noHistory": "저장된 대화가 아직 없습니다.",
   "ask.delete": "대화 삭제",
   "ask.messages": "메시지 {n}개",
+  "ui.collapse": "사이드바 접기",
+  "ui.expand": "사이드바 펼치기",
+  "ui.hideChat": "AI 질문 숨기기",
+  "ui.showChat": "AI 질문 보기",
+  "side.top": "주요 뉴스",
+  "side.allNews": "전체 뉴스 {n}건",
+  "sc.news": "뉴스 목록으로 이동",
+  "sc.sidebar": "사이드바 접기/펼치기",
+  "sc.chat": "AI 질문 보기/숨기기",
 };
 
 const es: Dict = {
@@ -2867,6 +2912,15 @@ const es: Dict = {
   "ask.noHistory": "Aún no hay chats guardados.",
   "ask.delete": "Eliminar chat",
   "ask.messages": "{n} mensajes",
+  "ui.collapse": "Contraer barra lateral",
+  "ui.expand": "Expandir barra lateral",
+  "ui.hideChat": "Ocultar Pregunta a la IA",
+  "ui.showChat": "Mostrar Pregunta a la IA",
+  "side.top": "Titulares principales",
+  "side.allNews": "Los {n} titulares",
+  "sc.news": "Ir a los titulares",
+  "sc.sidebar": "Contraer o expandir la barra lateral",
+  "sc.chat": "Mostrar u ocultar Pregunta a la IA",
 };
 
 const fr: Dict = {
@@ -3344,6 +3398,15 @@ const fr: Dict = {
   "ask.noHistory": "Aucune conversation enregistrée pour l'instant.",
   "ask.delete": "Supprimer la conversation",
   "ask.messages": "{n} messages",
+  "ui.collapse": "Réduire la barre latérale",
+  "ui.expand": "Développer la barre latérale",
+  "ui.hideChat": "Masquer Demander à l'IA",
+  "ui.showChat": "Afficher Demander à l'IA",
+  "side.top": "À la une",
+  "side.allNews": "Les {n} titres",
+  "sc.news": "Aller aux titres",
+  "sc.sidebar": "Réduire ou développer la barre latérale",
+  "sc.chat": "Afficher ou masquer Demander à l'IA",
 };
 
 const de: Dict = {
@@ -3821,6 +3884,15 @@ const de: Dict = {
   "ask.noHistory": "Noch keine gespeicherten Chats.",
   "ask.delete": "Chat löschen",
   "ask.messages": "{n} Nachrichten",
+  "ui.collapse": "Seitenleiste einklappen",
+  "ui.expand": "Seitenleiste ausklappen",
+  "ui.hideChat": "KI-Fragen ausblenden",
+  "ui.showChat": "KI-Fragen einblenden",
+  "side.top": "Top-Schlagzeilen",
+  "side.allNews": "Alle {n} Schlagzeilen",
+  "sc.news": "Zu den Schlagzeilen springen",
+  "sc.sidebar": "Seitenleiste ein-/ausklappen",
+  "sc.chat": "KI-Fragen ein-/ausblenden",
 };
 
 const DICTS: Record<LangCode, Dict> = { en, vi, zh, ja, ko, es, fr, de };

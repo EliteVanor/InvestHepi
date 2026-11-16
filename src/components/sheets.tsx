@@ -306,7 +306,10 @@ function StatusTab() {
 function ShortcutsTab() {
   const { t } = usePrefs();
   const rows: [string[], MsgKey][] = [
-    [["1", "2", "3"], "sc.sections"],
+    [["1", "2", "3", "4"], "sc.sections"],
+    [["N"], "sc.news"],
+    [["["], "sc.sidebar"],
+    [["]"], "sc.chat"],
     [["R"], "sc.refresh"],
     [["/"], "sc.search"],
     [["⌘", "K"], "sc.palette"],
