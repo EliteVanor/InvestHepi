@@ -808,6 +808,8 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .since .card-title { align-items: flex-start; }
 .since-when { white-space: nowrap; }
 .stats-5 .stat b { font-size: 14px; white-space: nowrap; letter-spacing: -0.04em; }
+/* A "low – high" range may wrap at the dash; a single number never does. */
+.stats-5 .stat b.range { white-space: normal; }
 /* Below wide-desktop widths the Ask AI button shrinks to a circle so it never covers content. */
 @media (max-width: 1480px) {
   .ask-fab { width: 52px; height: 52px; padding: 0; justify-content: center; right: 16px; bottom: 20px; }

@@ -129,6 +129,24 @@ Checked against production. Fixed on the branch (not deployed yet):
 
 **Later (not done, ranked):** split `page.tsx` state (878 lines) into hooks (high UI risk, wants a visual check with the owner); split `chart.ts` (554 lines) by source; rename test suites by feature instead of round (the test map covers it for now).
 
+## v15 (branch `v15`, Nov 16 2026): page.tsx split, README rewritten
+
+**page.tsx (883 → 518 lines).** Its ~30 pieces of state and 20 effects now live in named hooks in `src/components/shell/hooks.ts` (viewport and wide layout, saved tab, collapsing title, briefing polling, rule-based copies, translate-on-read, new-headline dots, refresh-button state, shortcuts). The frame (top bar, sidebar, tab bar, footer, skeleton) moved to `shell/chrome.tsx`, the price strip's merge logic to `shell/strip.ts`. Removed duplication: the section-icon mapping (2×), the "99+" badge (5×), the refresh button (2×), the side cards (written once for phones, once for the desktop rail). Shortcuts read the latest handlers through a ref instead of a 12-item dependency list.
+
+**Verified:**
+- Pixel comparison against the old page: 15 views (phone: 4 sections; wide: 4 sections, track record, palette, folded sidebar, hidden dock, shortcuts), same seeded data, frozen clock, animations off. 14 identical, 1 differs by 4 pixels, the same as two runs of the old code.
+- Interactions in a real browser: theme toggle (D), dock hide/reopen (] and A), catch-up (C), "/" focuses the headline search, the phone's Ask tab, the phone title collapsing to the section name on scroll. No console errors.
+- `v15test` pins the extracted logic: which symbols the strip shows, live vs snapshot (an ETF's live price never replaces a real index level), chart symbols, who sees Refresh and what it says (left, limit, wait).
+- `npm test` (16 suites), typecheck, unused-code check, both builds.
+
+**README** rewritten around what the app does instead of release history. Corrected stale facts: the scheduler (was GitHub calling `/api/refresh`), per-job model routing (was "Claude → Groq → Gemini"), real world levels from VNDirect and the Treasury (said indexes fall back to ETFs and US 10Y had no source), Nifty 50 (said Sensex), one language setting (said a separate briefing language), 5 Vietnam runs (said 2). New screenshots taken from production as a signed-out visitor (real AI briefings); the four that need sign-in (alerts, Ask AI, morning email, watchlist) were removed rather than kept with the old "Invest Helper" name.
+
+**Bug found and fixed:** the stock page's 52-week (and day) range overflowed its tile into "Volume" on wide screens (a `white-space: nowrap` rule from v4). Ranges may now wrap at the dash; previewed on the production page with the rule injected.
+
+Signed-in views checked too (multi-user build, fake sessions): the admin and a regular user on wide and phone get My Interests, the holdings card, Ask AI and the Refresh button (the user's shows 5 presses left), no console errors.
+
+**Not verified:** a real Google sign-in after the refactor (production, after merge).
+
 ## Open items / known gaps
 
 - BLS release dates (CPI, jobs) return 403 to Vercel, so the calendar has no US macro releases; the AI was inventing dates (now told not to). Options: hardcode the BLS schedule yearly like FOMC (needs dates checked on bls.gov), or fetch it from GitHub Actions.
@@ -144,5 +162,4 @@ Checked against production. Fixed on the branch (not deployed yet):
 - When Yahoo refuses Vercel, US 10Y and USD/VND have no ETF stand-in and only show their last known value.
 - Track-record grading uses the US trading calendar; Vietnamese holidays (Tet) aren't modeled. The HOSE market clock doesn't model holidays either.
 - Interest sets saved in Vietnamese before v8 get their first English briefing on the next scheduled run.
-- README screenshots in `docs/screenshots` still show the old name "Invest Helper".
 - Alert emails to other users need a verified Resend domain or Gmail SMTP (Resend's test sender only reaches the account owner).
