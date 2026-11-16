@@ -1,4 +1,6 @@
-import { currentInterestSet, refreshInterestSet, refreshShared, translateLatest } from "@/lib/pipeline";
+import { translateLatest } from "@/lib/briefings";
+import { currentInterestSet } from "@/lib/interests";
+import { refreshInterestSet, refreshShared } from "@/lib/pipeline";
 import { hit, limits, markUserRefresh, userRefreshQuota } from "@/lib/ratelimit";
 import { isLang } from "@/lib/languages";
 import { SECTION_IDS, type SectionId } from "@/lib/types";

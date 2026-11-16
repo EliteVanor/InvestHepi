@@ -1,6 +1,6 @@
 import { gate } from "@/lib/users";
 import { isLang } from "@/lib/languages";
-import { loadSettings, saveSettings } from "@/lib/pipeline";
+import { loadSettings, saveSettings } from "@/lib/interests";
 
 export const dynamic = "force-dynamic";
 

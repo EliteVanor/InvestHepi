@@ -69,7 +69,3 @@ export function isScheduler(req: Request): boolean {
   return [process.env.CRON_SECRET, process.env.TICK_SECRET].some((s) => !!s?.trim() && got === `Bearer ${s.trim()}`);
 }
 
-export function isCron(req: Request): boolean {
-  const cron = process.env.CRON_SECRET;
-  return !!cron && req.headers.get("authorization") === `Bearer ${cron}`;
-}

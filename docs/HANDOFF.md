@@ -15,7 +15,7 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - **Sections:** My Interests (personal), World, US, Vietnam.
 - **Shared sections never show personal stocks.** World = world indexes + global giants + macro. US = S&P 500, Dow, Nasdaq 100, Russell 2000 + mega caps. Vietnam = VN-Index, VN30, HNX, UPCoM + banks + large caps. The AI's calls in shared sections are on market groups, not users' stocks.
 - **World has no market open/closed pill** (it spans many exchanges).
-- **Refreshing (decided Nov 16, mechanism changed in v13):** briefings refresh on the app's own timetable (`src/lib/timetable.ts`), run by a tick that Vercel Schedules, cron-job.org and GitHub poke on a plain interval; a run that's late or duplicated never spends AI twice, and a slot more than an hour late is reported. Users' interest sets refresh automatically 4 times a weekday (01:15, 08:10, 12:30, 21:20 UTC), the admin's 6 times. Signed-in users can also refresh their own My Interests by hand: 5 a day, 90 minutes apart, on a lighter model (Gemini Flash-Lite); every press writes a new briefing and tells them how many presses are left. The admin can refresh any section, 10 a day, on the best model. Shared sections can't be refreshed by users. A newly saved interest set gets its first briefing automatically, once.
+- **Refreshing (decided Nov 16, mechanism changed in v13):** briefings refresh on the app's own timetable (`src/lib/timetable.ts`), run by a tick that Vercel Schedules, cron-job.org and GitHub poke on a plain interval; a run that's late or duplicated never spends AI twice, and a slot more than an hour late is reported. Users' interest sets refresh automatically 4 times a weekday (01:15, 08:10, 12:30, 21:20 UTC), the admin's 6 times, **but only for users seen in the last day** (decided Nov 16, v14); someone back after longer gets one catch-up briefing in the background when they open the app (if theirs is over 12 h old). Signed-in users can also refresh their own My Interests by hand: 5 a day, 90 minutes apart, on a lighter model (Gemini Flash-Lite); every press writes a new briefing and tells them how many presses are left. The admin can refresh any section, 10 a day, on the best model. Shared sections can't be refreshed by users. A newly saved interest set gets its first briefing automatically, once.
 - **Schedule:** weekdays World 4, US 2 (12:30 UTC pre-open is the graded call), Vietnam 5 (01:15 UTC pre-HOSE is the graded call). Sunday: each shared section twice, the admin's set 3 times, users none. Saturday: nothing.
 - **Models:** shared on gpt-oss-120b (budget reserved), personal overflow on gpt-oss-20b, translation on qwen, Gemini Flash-Lite as backup; Ask AI on 20b. Shared sections use 20b only as the very last resort.
 - **When no AI model works:** keep the last AI briefing and explain it in a banner; readers can switch to a rule-based summary of the latest news (only they see it; cached).
@@ -106,6 +106,28 @@ Checked against production. Fixed on the branch (not deployed yet):
    - Save, then "Test run": expect HTTP 200 and `{"ok":true,"late":[]}`. 401 means the header or the Vercel variable doesn't match (or the redeploy hasn't happened).
 4. Vercel → the project → Schedules: `tick` should be listed and active; the old Cron Jobs entry is gone. Its history shows each run.
 5. Optional clean-up: delete the GitHub repo variable `INTEREST_ROUNDS` and any `INTEREST_BATCH` env var (both unused now). GitHub secrets `APP_URL` and `CRON_SECRET` stay.
+
+## v14 (branch `v14`, Nov 16 2026): 1-day cutoff, refactor for readers
+
+**Owner decision:** scheduled interest refreshes only for users seen in the last day (was 14). The failure case is a user back after 2+ days seeing an old briefing, so `/api/me` now refreshes it in the background when it's over 12 h old (one AI call, counted against `AUTOGEN_DAILY_LIMIT`) and the page waits for the new version. Price alerts still reach users seen in the last 30 days (no AI).
+
+**Refactor (behavior unchanged, pinned by `v14test` first):**
+- `pipeline.ts` (576 lines, four jobs) split into `interests.ts` (who follows what), `briefings.ts` (key layout, reading, saving) and `pipeline.ts` (build and refresh). Moved by declaration with a script; dependencies go one way (interests → briefings → pipeline).
+- `v3.tsx`/`v4.tsx` (named after releases) split into feature files: `live`, `cards`, `alerts-tab`, `palette`, `setup`, `toast`, `catchup`, `portfolio`, `track`; `Toggle` joined `primitives`.
+- `i18n.ts` (3,941 lines) became `i18n/<lang>.ts`; `en.ts` defines the keys.
+- One `dayIn(timeZone, at)` in `dates.ts` replaced 8 copies of the same formatter (cached per zone). `ictDay` stays as a fast fixed-offset shortcut, and a test proves it agrees.
+- One `background()` helper (run after the response) replaced two copies; model defaults live only in `models.ts` (`openai-compat.ts` had dead copies).
+- Removed dead code: unused exports (`IconClock`, `IconInfo`, `playbookFor`, `isCron`, `vnPriceName`, `VN_CALLS`, `SECTIONS`, `getQuote`, `sharedLanguages`), unused imports, the unused language parameter of `currentInterestSet`/`currentCallsKey`/`loadHistory`, the legacy `lastRefresh:<s>` read.
+- `.env.example` rewritten from the code (it still listed removed knobs and a wrong default, and missed 12 variables); `v14test` fails if code reads an undocumented variable (checked by removing one).
+- CLAUDE.md: code map and a map of what each test suite covers.
+
+**Bugs found on the way:** `vntest` failed every evening between 17:00 and 24:00 UTC: its mock put "today's session" in the 30 minutes before now, which crosses Hanoi midnight. Real sessions never do; the mock now ends sessions at 07:00 UTC. The setup checklist still told admins to add GitHub secrets for the scheduler (8 languages fixed). The Status panel showed slot ids (`wd-0115`); it shows times now.
+
+**Verified:** `npm test` (15 suites), typecheck, `tsc --noUnusedLocals` clean, build with and without `AUTH_*`; local production build in Chromium (wide and phone): home, command palette, Settings → Alerts / Holdings / Status, tab switches, no console errors (the only 404 is Vercel Analytics' script, which exists only on Vercel).
+
+**Not verified:** the catch-up on production (needs a signed-in user who was away); the new files on Vercel until merged.
+
+**Later (not done, ranked):** split `page.tsx` state (878 lines) into hooks (high UI risk, wants a visual check with the owner); split `chart.ts` (554 lines) by source; rename test suites by feature instead of round (the test map covers it for now).
 
 ## Open items / known gaps
 

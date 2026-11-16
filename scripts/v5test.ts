@@ -16,7 +16,6 @@ delete process.env.APP_PASSWORD;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.GEMINI_API_KEY;
 delete process.env.LLM_PROVIDER;
-delete process.env.SHARED_LANGUAGES;
 
 const feedsHit: string[] = [];
 const quoted: string[] = [];
@@ -102,7 +101,7 @@ const OWNER_EMAIL = "owner@example.com";
   assert.equal((await interests.PUT(req("/api/interests", A, { method: "PUT", body: JSON.stringify(custom) }))).status, 200, "Vietnamese tickers accepted");
   // Users can't refresh, so a brand-new interest set gets its first briefing in the background.
   const { getJSON: gj } = await import("../src/lib/store");
-  const Pp = await import("../src/lib/pipeline");
+  const Pp = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   const { withUser: wu } = await import("../src/lib/context");
   const aliceHash = await wu(U.uidFor(A), async () => (await Pp.currentInterestSet()).hash);
   for (let i = 0; i < 100 && !(await gj(`ib:${aliceHash}`)); i++) await new Promise((r) => setTimeout(r, 50));
@@ -120,8 +119,7 @@ const OWNER_EMAIL = "owner@example.com";
   await settings.PUT(req("/api/settings", C, { method: "PUT", body: JSON.stringify({ briefingLanguage: "vi" }) }));
 
   // ---- scheduler: shared sections per language, interests grouped by identical sets
-  const P = await import("../src/lib/pipeline");
-  assert.deepEqual((await P.sharedLanguages()).sort(), ["en", "vi"], "languages actually in use");
+  const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   const groups = await P.interestGroups();
   const byUids = [...groups.values()].map((g) => g.uids.sort().join(","));
   assert.ok(byUids.includes([U.uidFor(B), U.uidFor(C), "owner"].sort().join(",")), "Bob, Carol (Vietnamese) and the owner share one English briefing: language no longer splits sets");

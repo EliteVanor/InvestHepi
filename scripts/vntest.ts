@@ -48,8 +48,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const index = url.includes("/ohlcs/index");
     const res = url.split("resolution=")[1];
     const base = index ? 1700 : 50; // DNSE stocks: thousand VND
-    // Intraday: two sessions of 1-minute bars (yesterday and today, 02:00-07:45 UTC); daily: 40 days.
-    const t = res === "1D" ? Array.from({ length: 40 }, (_, i) => dayTs(i)) : [1, 0].flatMap((d) => Array.from({ length: 30 }, (_, i) => NOW - d * 86400 - (30 - i) * 60));
+    // Intraday: two sessions of 1-minute bars (yesterday and today), ending 07:00 UTC (14:00 Hanoi), so
+    // a session never straddles Hanoi midnight whatever time the test runs; daily: 40 days.
+    const close07 = Math.floor(NOW / 86400) * 86400 + 7 * 3600;
+    const close = close07 > NOW ? close07 - 86400 : close07; // the latest 07:00 UTC, never in the future
+    const t = res === "1D" ? Array.from({ length: 40 }, (_, i) => dayTs(i)) : [1, 0].flatMap((d) => Array.from({ length: 30 }, (_, i) => close - d * 86400 - (30 - i) * 60));
     return new Response(JSON.stringify({ t, o: t.map(() => base), h: t.map(() => base + 1), l: t.map(() => base - 1), c: t.map((_, i) => base + i * 0.1), v: t.map(() => 1000), nextTime: 0 }), { status: 200 });
   }
   if (url.includes("vietcap.com.vn")) {
@@ -171,7 +174,7 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   assert.ok(yahooCalls <= 3, `stops calling Yahoo after the 429 (made ${yahooCalls})`);
   assert.ok(during.find((q) => q.symbol === "T1")?.stale, "last good price filled in, flagged stale");
   assert.ok(!during.some((q) => q.symbol === "NEVERSEEN"), "nothing invented for symbols never seen");
-  assert.equal(await M.getQuote("T1"), null, "grading never uses stale prices");
+  assert.deepEqual(await M.getQuotes(["T1"], { allowStale: false }), [], "grading (allowStale: false) never uses stale prices");
   // Yahoo-only symbols, when VNDirect's world closes are also unreachable: a tracking ETF priced by
   // Nasdaq, labeled as such (never mixed with the index level). Real levels: budgettest/v10test.
   down.vndirect = true;
@@ -190,7 +193,7 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   Y.resetYahoo();
 
   // ---- shared sections: market coverage, no personal stocks
-  const P = await import("../src/lib/pipeline");
+  const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   const { SECTION_STRIPS } = await import("../src/lib/config");
   const d = await P.refreshShared("vn", "vi");
   assert.equal(d.analysis.outlook.length, 6, "one call per Vietnamese group");

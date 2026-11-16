@@ -1,6 +1,8 @@
 import { role } from "@/lib/auth";
 import { BENCHMARKS } from "@/lib/config";
-import { aiFailedSince, loadDigest, loadInterests, rulesVariant } from "@/lib/pipeline";
+import { aiFailedSince, loadDigest } from "@/lib/briefings";
+import { loadInterests } from "@/lib/interests";
+import { rulesVariant } from "@/lib/pipeline";
 import { hit, limits } from "@/lib/ratelimit";
 import { storeKind } from "@/lib/store";
 import { SECTION_IDS, type SectionId } from "@/lib/types";

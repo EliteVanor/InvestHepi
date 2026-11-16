@@ -59,6 +59,7 @@ const reset = () => {
 (async () => {
   await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
   const M = await import("../src/lib/llm/models");
+  const { dayIn } = await import("../src/lib/dates");
   const { complete } = await import("../src/lib/llm");
 
   /* ---------------- routes */
@@ -97,20 +98,20 @@ const reset = () => {
   /* ---------------- the 120b reserve: users' automatic briefings leave room for shared + admin */
   const g120 = M.modelDef("groq120")!;
   const weekday = new Date("2026-11-17T09:00:00Z");
-  const fresh = { day: M.dayIn("UTC", weekday), tokens: 0, requests: 0, byRoute: {} };
+  const fresh = { day: dayIn("UTC", weekday), tokens: 0, requests: 0, byRoute: {} };
   assert.equal(M.reserveFor120(fresh, weekday), (11 + 6) * 7000, "nothing done yet: 11 shared + 6 admin at 7K");
   assert.equal(M.reserveFor120({ ...fresh, tokens: 60000, requests: 10, byRoute: { shared: 8, adminAuto: 2 } }, weekday), (3 + 4) * 6000, "uses the measured average");
   assert.deepEqual(M.scheduledPerDay(new Date("2026-11-21T09:00:00Z")), { shared: 0, admin: 0 }, "Saturday: nothing scheduled");
   assert.deepEqual(M.scheduledPerDay(new Date("2026-11-22T09:00:00Z")), { shared: 6, admin: 3 }, "Sunday");
   const { setJSON } = await import("../src/lib/store");
-  await setJSON("llm:usage:groq120", { day: M.dayIn("UTC"), tokens: 120_000, requests: 17, byRoute: { shared: 2 } });
+  await setJSON("llm:usage:groq120", { day: dayIn("UTC"), tokens: 120_000, requests: 17, byRoute: { shared: 2 } });
   assert.equal((await M.available(g120, "userAuto")).ok, false, "users' sets move off 120b once only the reserve is left");
   assert.equal((await M.available(g120, "shared")).ok, true, "shared briefings can still use it");
   assert.equal((await M.available(g120, "adminManual")).ok, true, "and the admin");
-  await setJSON("llm:usage:groq120", { day: M.dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} });
+  await setJSON("llm:usage:groq120", { day: dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} });
 
   /* ---------------- keep the last AI briefing when no AI model works; rule-based copy on request */
-  const P = await import("../src/lib/pipeline");
+  const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   reset();
   const first = await P.refreshShared("us", "en");
   assert.equal(first.provider, "groq:openai/gpt-oss-120b");
@@ -170,7 +171,7 @@ const reset = () => {
   assert.ok(toVi.some((s) => s.text === "Stocks rise 25"), "a cited headline is included even outside the top 20");
   assert.equal(T.headlineSlots(news, an, "en").map((s) => s.text).join(), "Chứng khoán tăng điểm", "English readers only need the Vietnamese one");
   reset();
-  await setJSON("llm:usage:qwen", { day: M.dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} }); // end the cooldown from above
+  await setJSON("llm:usage:qwen", { day: dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} }); // end the cooldown from above
   await P.refreshShared("world", "en", new Date(Date.now() + 180_000));
   const d = await P.loadDigest("world", undefined, "en");
   const vi = await T.translateDigest(d!, "vi");

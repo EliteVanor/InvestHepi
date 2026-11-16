@@ -16,7 +16,9 @@
 import { checkPriceAlerts, loadAlertSettings } from "./alerts";
 import { OWNER, withUser } from "./context";
 import { appUrl } from "./email";
-import { interestGroups, loadInterests, refreshInterestSet, refreshShared, translateLatest, withHoldings } from "./pipeline";
+import { translateLatest } from "./briefings";
+import { interestGroups, loadInterests, withHoldings } from "./interests";
+import { refreshInterestSet, refreshShared } from "./pipeline";
 import { loadHoldings } from "./portfolio";
 import { getJSON, releaseLock, setJSON, takeLock } from "./store";
 import { LATE_AFTER_MIN, occurrences, openOccurrences, runKey, type Occurrence, type SlotItem } from "./timetable";
@@ -166,6 +168,7 @@ export function alertsWindow(now: Date): boolean {
 /** Price and big-move alerts for every user who has alerts on (no AI). */
 export async function runAlerts(now = new Date()) {
   const results: Record<string, unknown> = {};
+  // Alerts cost no AI, so they reach everyone seen in the last 30 days, not only the last day.
   for (const uid of await activeUsers(30, now)) {
     await withUser(uid, async () => {
       if (!(await loadAlertSettings()).enabled) return;

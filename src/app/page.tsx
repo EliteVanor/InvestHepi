@@ -1,12 +1,18 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, IconStar, IconTarget, IconAlert, IconNews, IconSidebar, IconPanelRight } from "@/components/Icons";
+import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, IconStar, IconTarget, IconAlert, IconNews, IconSidebar } from "@/components/Icons";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
-import { ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, canOverlay, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
-import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
+import { ChartCard, SectorHeatmap } from "@/components/cards";
+import { canOverlay, mergeLive, useLiveQuotes } from "@/components/live";
+import { CommandPalette, type PaletteActions } from "@/components/palette";
+import { SetupChecklist } from "@/components/setup";
+import { MoodGaugeCard, ScenariosCard } from "@/components/cards";
+import { CatchUp, SinceLastVisit } from "@/components/catchup";
+import { PortfolioCard, Watchlist } from "@/components/portfolio";
+import { ToastProvider, useToast } from "@/components/toast";
 import { relTime, type MsgKey } from "@/lib/i18n";
 import { isLang, langInfo } from "@/lib/languages";
 import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
@@ -183,10 +189,10 @@ function App() {
     },
     [api, lang],
   );
-  // After interests change, the server makes the new set's first briefing in the background; poll
-  // until it shows up (or ~3 minutes pass). Another user with the same interests means it's instant.
+  // The server makes an interest briefing in the background (a new set's first one, or a catch-up
+  // for an old one): poll until a version other than `since` shows up (or ~3 minutes pass).
   const pollRef = useRef<number | null>(null);
-  const waitForBriefing = useCallback(() => {
+  const waitForBriefing = useCallback((since?: string) => {
     if (pollRef.current) window.clearInterval(pollRef.current);
     let n = 0;
     const tick = () => {
@@ -194,7 +200,7 @@ function App() {
       api<{ digest: Digest | null }>(`/api/digest?section=interests&lang=${lang}`)
         .then((j) => {
           setDigests((d) => ({ ...d, interests: j.digest }));
-          if ((j.digest || n > 22) && pollRef.current) {
+          if (((j.digest && j.digest.generatedAt !== since) || n > 22) && pollRef.current) {
             window.clearInterval(pollRef.current);
             pollRef.current = null;
           }
@@ -223,6 +229,7 @@ function App() {
     Promise.all([api<Account>("/api/me").catch(() => null), api<{ role?: "owner" | "viewer" | null }>("/api/status").catch(() => null)]).then(([me, st]) => {
       if (me) setAccount(me);
       setAccountKnown(true);
+      if (me?.catchUp) waitForBriefing(me.catchUp);
       // One language per account: a device with no explicit choice adopts the saved one; otherwise the
       // device's choice is saved (it drives alert emails and which translations the scheduler keeps).
       if (me?.user || (me?.mode === "single" && st?.role !== "viewer")) {

@@ -1,7 +1,7 @@
 import { gate } from "@/lib/users";
 import { getCalendar } from "@/lib/calendar";
 import { SECTION_GROUPS, type SharedSection } from "@/lib/config";
-import { loadInterests } from "@/lib/pipeline";
+import { loadInterests } from "@/lib/interests";
 
 export const dynamic = "force-dynamic";
 

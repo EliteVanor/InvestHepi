@@ -129,7 +129,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(P.fmtPrice(25707, S.priceDigits("VND=X", 25707)), "25,707.00");
 
   /* ---------------- movers use the snapshot's numbers */
-  const Pl = await import("../src/lib/pipeline");
+  const Pl = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   const quotes = [{ symbol: "KDH.VN", price: 15550, prevClose: 15300, changePct: 1.63, history: [], source: "vndirect" as const }];
   const aligned = Pl.alignMovers([{ ticker: "kdh.vn", changePct: 15.2, why: "5-day gain" }, { ticker: "MADEUP", changePct: 9, why: "x" }], quotes);
   assert.deepEqual(aligned.map((m) => [m.ticker, m.changePct]), [["KDH.VN", 1.63]], "last-session change from the data; tickers not in the snapshot dropped");
@@ -162,7 +162,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(Pl.headlineMentions("Cổ phiếu VIC tăng trần", "VIC.VN") && !Pl.headlineMentions("VICTORY Securities tăng", "VIC.VN"), "codes match as whole words only");
 
   /* ---------------- live overlay: a real level may replace an ETF stand-in, never the reverse */
-  const V3 = await import("../src/components/v3");
+  const V3 = await import("../src/components/live");
   assert.equal(V3.canOverlay("SPY", undefined), true, "real S&P level replaces SPY's price");
   assert.equal(V3.canOverlay(undefined, "SPY"), false, "SPY's price never replaces the real level");
   assert.equal(V3.canOverlay("EWJ", "EWJ"), true);

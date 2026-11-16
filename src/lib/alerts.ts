@@ -15,6 +15,7 @@ import { isLang, langInfo, type LangCode } from "./languages";
 import { ukey } from "./context";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Digest, Interest, Outlook } from "./types";
+import { dayIn, NY } from "./dates";
 
 export type PriceOp = "above" | "below" | "pct_up" | "pct_down";
 
@@ -109,9 +110,6 @@ interface Ledger {
   count: number;
 }
 
-export function etDate(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-}
 function etClock(now = new Date()) {
   const p = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "numeric", hour12: false })
@@ -122,7 +120,7 @@ function etClock(now = new Date()) {
 }
 
 async function loadLedger(now: Date): Promise<Ledger> {
-  const today = etDate(now);
+  const today = dayIn(NY, now);
   const l = await getJSON<Ledger>(ukey("alerts:ledger"));
   return l && l.date === today ? l : { date: today, keys: [], count: 0 };
 }
@@ -210,7 +208,7 @@ export async function checkPriceAlerts(interests: Interest[], now = new Date()) 
   const followed = [...new Set(interests.flatMap((i) => i.tickers))];
   const symbols = [...new Set([...followed, ...settings.priceAlerts.filter((a) => a.active).map((a) => a.symbol)])];
   const quotes = await getLiveQuotes(symbols);
-  const { events, fired } = evaluatePriceRules(settings, quotes, followed, etDate(now), t);
+  const { events, fired } = evaluatePriceRules(settings, quotes, followed, dayIn(NY, now), t);
 
   const result = await dispatch(events, settings, lang, now);
   // Disarm once-only alerts that actually went out; stamp repeating ones.
@@ -300,7 +298,7 @@ export async function afterRefresh(ctx: RefreshContext, now = new Date()) {
   if (!settings.enabled) return { skipped: "alerts disabled" };
   const lang = await mailLang();
   const t = makeT(lang);
-  const date = etDate(now);
+  const date = dayIn(NY, now);
   const { weekday, mins } = etClock(now);
   const followed = [...new Set(ctx.interests.flatMap((i) => i.tickers))];
   const out: Record<string, unknown> = {};

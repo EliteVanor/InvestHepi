@@ -175,7 +175,7 @@ async function main() {
   globalThis.fetch = realFetch;
 
   // ---- holdings count as followed tickers for alerts
-  const { withHoldings } = await import("../src/lib/pipeline");
+  const { withHoldings } = await import("../src/lib/interests");
   const base = [{ id: "a", name: "A", query: "a", tickers: ["SOXX", "NVDA"] }];
   assert.equal(withHoldings(base, ["NVDA"]), base, "already-followed holdings add nothing");
   assert.deepEqual(withHoldings(base, ["NVDA", "TSLA"]).at(-1)!.tickers, ["TSLA"], "held-only tickers are added for alerts");
@@ -220,7 +220,7 @@ async function main() {
 
   // ---- CSV export and per-ticker calls
   const { setJSON } = await import("../src/lib/store");
-  const { currentCallsKey } = await import("../src/lib/pipeline");
+  const { currentCallsKey } = await import("../src/lib/interests");
   await setJSON(await currentCallsKey(), calls);
   const tr = await import("../src/app/api/track/route");
   const csv = await (await tr.GET(new Request("http://x/api/track?format=csv"))).text();

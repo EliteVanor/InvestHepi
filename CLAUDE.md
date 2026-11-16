@@ -28,11 +28,47 @@ Price-layer modules keep in-memory state (Yahoo cooldown, chart/live caches); te
 
 For live checks against real APIs from a cloud sandbox, Node's built-in fetch ignores `HTTPS_PROXY` unless run with `NODE_USE_ENV_PROXY=1`. Don't hammer Yahoo while testing: it rate-limits the IP for minutes.
 
-`scripts/i18ntest.ts` enforces that every key in the `en` dictionary in `src/lib/i18n.ts` exists in all 8 languages (en, vi, zh, ja, ko, es, fr, de). Any new UI string needs all 8.
+`scripts/i18ntest.ts` enforces that every key in `src/lib/i18n/en.ts` exists in all 8 language files under `src/lib/i18n/` (en, vi, zh, ja, ko, es, fr, de). Any new UI string needs all 8.
+
+`.env.example` lists every environment variable the code reads, with its default; `v14test` fails if code reads one that isn't listed.
+
+**Which suite covers what** (each prints `<NAME> OK`; a round's regression tests go in that round's `v<N>test.ts`):
+
+| Suite | Covers |
+|---|---|
+| `i18ntest` | every UI key in all 8 languages, no leftover `{placeholders}` |
+| `selftest` | offline end to end: every section through the pipeline with RSS and price fixtures, history |
+| `llmtest` | the LLM path: prompt fitting, schema validation, provider fallback, call recording |
+| `v3test` | alert rules, de-dupe, emails (mocked Resend), morning-email timing |
+| `v4test` | technicals, mood gauge, scenarios, equity curve, holdings privacy |
+| `v4btest` | API routes end to end (digest, interests, portfolio, alerts, ask, refresh) |
+| `v5test` | multi-user: isolation, shared briefings, guests, owner continuity, languages, interest-set grouping via the scheduler |
+| `vntest` | Vietnamese price sources and fallbacks, Yahoo batching, stale prices, shared-section coverage |
+| `searchtest` | stock search and following |
+| `securitytest` | password mode: what's locked, what's readable |
+| `v9test` | chunked translations, no ETF price passed off as an index level, analogs |
+| `budgettest` | model per job, usage tracking, the 120b reserve, cooldowns, keeping the last AI briefing |
+| `v10test` | prices match everywhere (strip = chart), real world levels, live overlay rule |
+| `v13test` | the scheduler: timetable, order, 65 s gap, skip and retry rules, lock, late/missed, alerts window |
+| `v14test` | golden values (interest hash, `coverage`, API routes, storage keys, env docs), dates, the 1-day cutoff and catch-up |
+
+## Code map
+
+| Where | What |
+|---|---|
+| `src/lib/interests.ts` | who follows what: interests and settings per user, `interestHash`, the sets the scheduler refreshes |
+| `src/lib/briefings.ts` | stored briefings: key layout, reading (translated, rule-based copy, history), saving |
+| `src/lib/pipeline.ts` | building a briefing (`coverage`, market data, `buildDigest`) and refreshing one |
+| `src/lib/timetable.ts`, `scheduler.ts` | when refreshes happen, and the tick that runs them |
+| `src/lib/llm/` | prompts, model routing and budgets, schema, rule-based fallback |
+| `src/lib/market.ts`, `chart.ts`, `yahoo.ts`, `vnmarket.ts`, `worldmarket.ts` | prices (see Prices below) |
+| `src/lib/dates.ts` | `dayIn(timeZone, at)`: calendar dates in a zone; use it instead of a new `Intl` formatter |
+| `src/lib/i18n/` | UI strings, one file per language (`en.ts` defines the keys) |
+| `src/components/` | `sections` (briefing parts), `sheets` (settings, track, ticker, history), `live` (live prices), `cards` (chart, heatmap, scenarios, mood), `catchup`, `portfolio`, `track`, `alerts-tab`, `palette`, `setup`, `toast`, `ask`, `search`, `primitives` |
 
 ## Architecture
 
-**Pipeline (`src/lib/pipeline.ts`)** is the core. `buildDigest` fetches news (`news.ts`, feeds in `config.ts` `SECTION_FEEDS`), market data (quotes, macro, sectors, technicals, cached 10 min), and the calendar, then calls `analyze()` and returns a `Digest`. What gets priced is decided by `coverage(section, interests)`:
+**Pipeline (`src/lib/pipeline.ts`)** is the core; who follows what lives in `interests.ts`, stored briefings in `briefings.ts`. `buildDigest` fetches news (`news.ts`, feeds in `config.ts` `SECTION_FEEDS`), market data (quotes, macro, sectors, technicals, cached 10 min), and the calendar, then calls `analyze()` and returns a `Digest`. What gets priced is decided by `coverage(section, interests)`:
 - My Interests: `BENCHMARKS` + the user's tickers, US sectors, mood from SPY.
 - World/US/Vietnam: never personal stocks. `config.ts` holds `SECTION_STRIPS` (labeled strip groups, copied onto `Digest.strip`), `SECTION_GROUPS` (`WORLD_GROUPS`/`US_GROUPS`/`VN_GROUPS`: the markets the AI makes calls on, passed to the prompt as "interests"), `SECTION_MACRO`, and `MOOD_BENCH` (SPY / ACWI / ^VNINDEX.VN; the mood breadth set is world indexes or VN large caps instead of US sectors).
 
@@ -43,7 +79,7 @@ Callers:
 
 **LLM (`src/lib/llm/`)**: each job has a "route" in `models.ts` with its own model order (Claude first if `ANTHROPIC_API_KEY`): `shared` 120b → Gemini Flash-Lite 3.5 → 3.1 → gpt-oss-20b; `adminAuto`/`adminManual` 120b → 20b → Flash-Lite; `userAuto` 120b (only beyond the reserve) → 20b → Flash-Lite; `userManual` Flash-Lite → 20b; `translate` qwen → Flash-Lite (never the briefing models); `ask` 20b → 120b. Groq limits are per model (200K tokens/day each), Flash-Lite 500 requests/day each. `models.ts` records real token use per model per day (`llm:usage:<model>`), cools a model down after a 429 (longer when the daily quota is gone), and keeps enough 120b tokens for the shared and admin briefings still due (`reserveFor120`; `scheduledPerDay` is counted from `timetable.ts`). If every model fails, the caller gets the rule-based analysis (`rules.ts`). Free providers get a "compact" prompt; `fitPrompt` in `index.ts` trims headlines to stay under Groq's ~8k tokens/minute. Output is validated against `schema.ts`. `prompt.ts` holds the analyst rules, per-section focus, and Vietnam-specific rules/clock (`VN_RULES`, `vnMarketPhase`). The historical playbook the model must prefer over memory is `analogs.ts`.
 
-**Keeping the last AI briefing**: a rule-based result never replaces an AI briefing (`storeBriefing` in `pipeline.ts`). It's saved at `<prefix>:rules` and the failed run at `<prefix>:aifail`; `/api/digest` returns `aiFailedAt`, the page shows a banner and readers can switch to the rule-based copy (`?variant=rules`, cached 15 min, rebuilt on demand within `RULES_DAILY_LIMIT`; the choice is saved per device).
+**Keeping the last AI briefing**: a rule-based result never replaces an AI briefing (`storeBriefing` in `briefings.ts`). It's saved at `<prefix>:rules` and the failed run at `<prefix>:aifail`; `/api/digest` returns `aiFailedAt`, the page shows a banner and readers can switch to the rule-based copy (`?variant=rules`, cached 15 min, rebuilt on demand within `RULES_DAILY_LIMIT`; the choice is saved per device).
 
 **Track record (`track.ts`)**: each digest's outlook calls are recorded and later graded against prices. Calls are keyed by date+ticker+horizon so re-generating in several languages doesn't double-count. Call stores: `calls:<interest hash>` per interest set, `calls:world|us|vn` for shared sections. Grading uses `getQuotes(..., { allowStale: false })`: never the stale fallback.
 
@@ -52,7 +88,7 @@ Callers:
 - `vnmarket.ts`: Vietnamese symbols are `CODE.VN` for any listing and `^VNINDEX.VN`/`^VN30.VN`/`^HNX.VN`/`^HNX30.VN`/`^UPCOM.VN` for indexes (`VN_INDEXES` maps each source's code). Order: DNSE (daily + 1/5-min/1H, stocks in thousand VND) → Vietcap (one symbol per POST, full VND) → VNDirect (daily, many codes per request, thousand VND; zero-volume pre-open rows skipped). All normalized to full VND. Yahoo has no usable VN index series.
 - `market.ts` `getQuotes`: one spark batch for non-VN symbols, one VNDirect batch for VN ones, bounded per-symbol fallbacks, then the `px:last` last-good blob (quotes flagged `stale`). `chart.ts` `getChart`: VN → DNSE/Vietcap/VNDirect/Yahoo; others → Yahoo/Nasdaq; saved daily history (`chart:<sym>`) as a stale fallback. `getLiveQuotes` batches the same way and is cached 25 s per instance. `technicals.ts` uses spark 1y (close-only bars) and VNDirect.
 - `worldmarket.ts`: real world levels when Yahoo refuses the server. VNDirect's public data API (same host as VN prices, Bloomberg-sourced) has daily closes for world indexes (`stock_prices`: S&P 500, Dow, Nasdaq, Nikkei, Hang Seng, Shanghai, DAX, FTSE, CAC, KOSPI, Nifty...), `commodities` (WTI, Brent, COMEX gold...) and `currencies` (USD/VND, EUR/USD, USD/JPY, USD/CNY...); the US Treasury's daily yield-curve CSV gives `^TNX`. Daily only, posted the next day (~03:00-07:00 UTC), so every value carries its date (`dailyOnly`). For US-hours markets with a same-hours ETF (`SAME_HOURS_ETF`: ^GSPC/SPY, ^DJI/DIA, CL=F/USO, GC=F/GLD) a newer ETF session carries the official close forward (`estimatedVia`, shown with ≈); in the same session the ETF only supplies the 1-day chart's shape (`shapeVia`). Never estimate non-US indexes from US-hours ETFs.
-- Yahoo-only symbols with no real source (Euro Stoxx 50, DXY, VIX, Bitcoin) fall back to tracking ETFs priced by Nasdaq (`PROXIES` in `symbols.ts`); the quote/chart keeps the original symbol and sets `proxy`, and the prompt gets "level unknown, % moves only". Live overlay rule (`canOverlay` in `v3.tsx`): same basis, or a real level replacing an ETF stand-in; never an ETF price over a real level.
+- Yahoo-only symbols with no real source (Euro Stoxx 50, DXY, VIX, Bitcoin) fall back to tracking ETFs priced by Nasdaq (`PROXIES` in `symbols.ts`); the quote/chart keeps the original symbol and sets `proxy`, and the prompt gets "level unknown, % moves only". Live overlay rule (`canOverlay` in `live.tsx`): same basis, or a real level replacing an ETF stand-in; never an ETF price over a real level.
 - Live quotes (`getLiveQuotes`) for VN symbols come from the same 1-day chart the chart sheet shows (DNSE's daily series has no bar for today during the session), so the strip and the chart can't disagree. Each live quote has `session` (exchange-local date) and `intraday`; the strip sparkline is that session's path against the previous close, colored like the % chip (daily history is gray).
 - TCBS (Cloudflare check), Stooq (JS bot check), CNBC (Akamai) refuse servers; don't reintroduce them. Don't use API keys scraped from websites.
 
@@ -78,13 +114,15 @@ Tests and E2E fake the session with `setSessionResolver()` or, outside Vercel, `
 
 The timetable is one table in `src/lib/timetable.ts` (UTC). Weekdays: World 4, US 2, Vietnam 5; the admin's interest set 6 times (`interests:admin` slots plus the `interests:all` ones), everyone else's 4. Sunday: each shared section twice, the admin's set 3 times, users none; Saturday nothing. To change a time, edit that table only: nothing else repeats the times.
 
+Only users seen in the last day (`SCHEDULED_ACTIVE_DAYS` in `users.ts`, the owner always) get scheduled interest refreshes; someone back after longer gets a catch-up: `/api/me` refreshes their briefing in the background when it's over 12 h old (`CATCH_UP_AFTER_MS`, counts against `AUTOGEN_DAILY_LIMIT`) and returns `catchUp` so the page waits for it. Price alerts reach users seen in the last 30 days.
+
 `src/lib/scheduler.ts` runs it. Anything can call `GET /api/cron/tick` (`Bearer $CRON_SECRET` or `$TICK_SECRET`) at any time; the route answers at once and works in `after()`. Each tick takes a Redis lock (`takeLock`, overlapping pokes do nothing), runs price alerts if due (every 20 min, 13:00-22:00 UTC weekdays, no AI), then runs ONE unit from the oldest open slot, at least 65 s after the previous unit (Groq's per-minute limit), and calls the tick again via `appUrl()` if it ran a unit. Every unit records an attempt in `sched:<date>:<slot>`, so the chain always ends. Rules: a section or set written since 30 min before the slot is skipped (manual refreshes count); an AI failure (rule-based result) is retried once after 20 min; interest sets go admin first, then stalest; a slot stays open until the next slot starts (max 6 h). The tick answers 503 for an hour after a slot goes late (not finished 60 min after its time), so the caller reports it. `/api/status?schedule=1` (public, no secrets) lists the last 24 h of slots and the last tick; the admin's Status panel shows it.
 
 Pokers (only an interval; none repeats the times): Vercel Schedules in `vercel.json` (every 15 min Sunday-Friday; Hobby: 15-min jitter, 5,000 runs a billing period, going over blocks every schedule), cron-job.org every 30 min (set up by the owner; it emails on a 503), and `.github/workflows/refresh.yml` every 3 h (GitHub's schedule is unreliable on this private repo). Shared sections are pre-translated into Vietnamese only; other languages are translated on first read. Manual refresh: the admin can refresh any section (`REFRESH_DAILY_LIMIT`, default 10, best model); signed-in users can refresh only their own My Interests (`USER_REFRESH_DAILY_LIMIT` 5 a day, `USER_REFRESH_GAP_MIN` 90 min apart, `userManual` route); every press writes a new briefing and the reply carries the quota, which `/api/me` also returns for the button badge. A newly saved interest set gets its first briefing in the background (`ensureInterestBriefing`, via `after()` in `/api/interests`, capped by `AUTOGEN_DAILY_LIMIT`), and the page polls until it appears. Daily caps live in `ratelimit.ts`. Yahoo refuses both Vercel and GitHub's runners (429), so a GitHub-side price relay doesn't work; refresh.yml keeps a `yahoo_test` dispatch input to re-check. Keep new features inside these free-tier limits.
 
 ### Frontend
 
-Single page: `src/app/page.tsx` holds the state (tabs, digests, sheets, account) and composes components from `src/components/`. Files named `v3.tsx`/`v4.tsx` group features by the release that added them, not by type. Client-side preferences (theme, language, password, read state, saved headlines) live in localStorage via `prefs.tsx`, always wrapped in try/catch. Styling is one global stylesheet (`src/app/globals.css`) with CSS variables for light/dark; the mobile layout uses a bottom tab bar (`.tabbar`) and hides `.desktop-only` elements.
+Single page: `src/app/page.tsx` holds the state (tabs, digests, sheets, account) and composes components from `src/components/`. Components are named by feature (see the code map). Client-side preferences (theme, language, password, read state, saved headlines) live in localStorage via `prefs.tsx`, always wrapped in try/catch. Styling is one global stylesheet (`src/app/globals.css`) with CSS variables for light/dark; the mobile layout uses a bottom tab bar (`.tabbar`) and hides `.desktop-only` elements.
 
 - The price strip (`MarketStrip` in `sections.tsx`) takes labeled groups; for shared sections the page builds them from `Digest.strip` (or `SECTION_STRIPS` for older digests) overlaid with live quotes. Mouse users get arrow buttons and drag-to-scroll.
 - Background: a fixed `.ambient` layer (drifting radial color fields, dot matrix, grain) whose palette follows `data-section`; colors are `@property`-registered so tab switches morph. Cards/strip use translucent `--material` with backdrop blur; `prefers-reduced-motion` and `prefers-reduced-transparency` are honored.

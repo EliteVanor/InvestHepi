@@ -3,7 +3,7 @@ import { emailProvider } from "@/lib/email";
 import { providerChain } from "@/lib/llm";
 import { usageReport } from "@/lib/llm/models";
 import { multiUser } from "@/lib/mode";
-import { currentInterestSet } from "@/lib/pipeline";
+import { currentInterestSet } from "@/lib/interests";
 import { scheduleReport } from "@/lib/scheduler";
 import { getJSON, storeKind } from "@/lib/store";
 import { SHARED_SECTIONS } from "@/lib/types";
@@ -14,9 +14,9 @@ export const dynamic = "force-dynamic";
 /** Setup checklist for the Settings → Status panel. Never returns secret values. */
 export async function GET(req: Request) {
   return gate(req, {}, async (user) => {
-    const { lang, hash } = await currentInterestSet(new URL(req.url).searchParams.get("lang") ?? undefined);
+    const { lang, hash } = await currentInterestSet();
     const last: Record<string, unknown> = { interests: await getJSON(`ib:${hash}:last`) };
-    for (const s of SHARED_SECTIONS) last[s] = (await getJSON(`digest:${s}:${lang}:last`)) ?? (await getJSON(`lastRefresh:${s}`));
+    for (const s of SHARED_SECTIONS) last[s] = await getJSON(`digest:${s}:${lang}:last`);
     const multi = multiUser();
     // Opt-in (a few store reads): slot states and the last tick, no secrets. Public on purpose so
     // anyone can check the schedule is running without signing in.

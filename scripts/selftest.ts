@@ -81,7 +81,9 @@ async function main() {
   assert.ok(!items[0].title.endsWith("Reuters"), "publisher suffix stripped");
   assert.equal(dedupe(items).length, 5, "near-duplicate Nvidia headline merged");
 
-  const { refreshAll, loadDigest } = await import("../src/lib/pipeline");
+  const { refreshAll } = await import("../src/lib/pipeline");
+
+  const { loadDigest } = await import("../src/lib/briefings");
   const r = await refreshAll();
   console.log(JSON.stringify(r));
   assert.ok(r.results.every((x) => x.ok));
@@ -102,7 +104,7 @@ async function main() {
   assert.ok(nv.alsoIn?.length, "merged story remembers other outlets");
   // Macro quotes fetched, history archived.
   assert.ok((d.macro ?? []).some((q) => q.symbol === "^VIX"), "macro quotes in digest");
-  const { loadHistory } = await import("../src/lib/pipeline");
+  const { loadHistory } = await import("../src/lib/briefings");
   assert.equal((await loadHistory("interests")).length, 1, "digest archived to history");
 
   // Calendar: BLS parsing (folded lines, irrelevant releases skipped, window), Nasdaq filtered to our tickers.

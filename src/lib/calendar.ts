@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Interest } from "./types";
+import { dayIn, NY } from "./dates";
 
 // Decision day (second day of each meeting). Statement 2:00 PM ET, press conference 2:30 PM ET.
 // Source: federalreserve.gov FOMC calendar for 2026.
@@ -30,9 +31,6 @@ async function get(url: string, headers: Record<string, string> = {}, ms = 8000)
   }
 }
 
-export function etToday(now = new Date()): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
-}
 function addDays(iso: string, n: number): string {
   const d = new Date(iso + "T12:00:00Z");
   d.setUTCDate(d.getUTCDate() + n);
@@ -169,7 +167,7 @@ export interface CalendarData {
 }
 
 export async function buildCalendar(interests: Interest[], now = new Date()): Promise<CalendarData> {
-  const from = etToday(now);
+  const from = dayIn(NY, now);
   const to = addDays(from, WINDOW_DAYS);
   const notes: string[] = [];
   const events: CalendarEvent[] = [];
@@ -210,7 +208,7 @@ export async function getCalendar(interests: Interest[], { force = false } = {})
   const fresh = cached && cached.key === key && Date.now() - new Date(cached.generatedAt).getTime() < CACHE_HOURS * 3600_000;
   if (fresh && !force) {
     // Drop events that are now in the past.
-    const today = etToday();
+    const today = dayIn(NY);
     return { ...cached, events: cached.events.filter((e) => e.date >= today) };
   }
   const data = await buildCalendar(interests);

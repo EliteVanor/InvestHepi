@@ -27,12 +27,13 @@ export function outputTokens(p: CompatProvider): number {
 /** Conservative token estimate (~3 chars per token for English + JSON; real counts are usually lower). */
 export const estimateTokens = (text: string) => Math.ceil(text.length / 3);
 
-export function groqProvider(model = process.env.GROQ_MODEL || "openai/gpt-oss-120b"): CompatProvider | null {
+/** The model comes from models.ts, which holds every default. */
+export function groqProvider(model: string): CompatProvider | null {
   const key = process.env.GROQ_API_KEY;
   return key ? { id: "groq", baseUrl: "https://api.groq.com/openai/v1", model, key } : null;
 }
 
-export function geminiProvider(model = process.env.GEMINI_MODEL || "gemini-3.5-flash-lite"): CompatProvider | null {
+export function geminiProvider(model: string): CompatProvider | null {
   const key = process.env.GEMINI_API_KEY;
   return key ? { id: "gemini", baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai", model, key } : null;
 }

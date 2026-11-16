@@ -200,3 +200,14 @@ export function fmtPrice(n: number, digits?: number) {
   if (Math.abs(n) >= 1000) return n.toLocaleString("en-US", Number.isInteger(n) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return n.toFixed(2);
 }
+
+export function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <label className="switch">
+      <input type="checkbox" role="switch" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} aria-label={label} />
+      <span />
+    </label>
+  );
+}
+
+/* ------------------------------------------------------------ alerts tab */

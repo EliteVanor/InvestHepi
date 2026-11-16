@@ -1,5 +1,5 @@
 import { isLang } from "@/lib/languages";
-import { translateLatest } from "@/lib/pipeline";
+import { translateLatest } from "@/lib/briefings";
 import { hit } from "@/lib/ratelimit";
 import { SECTION_IDS, type SectionId } from "@/lib/types";
 import { gate } from "@/lib/users";
