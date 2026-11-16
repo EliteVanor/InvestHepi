@@ -110,14 +110,15 @@ export function Sidebar(p: { tab: SectionId; rail: boolean; toggleRail: () => vo
   const toggleLabel = rail ? t("ui.expand") : t("ui.collapse");
   return (
     <aside className={`sidebar${rail ? " rail" : ""}`} aria-label={t("ui.sections")}>
+      {/* The fold button sits top-left in both states, so it never moves under the pointer. */}
       <div className="side-top">
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <span className="side-label">InvestHepi</span>
-        </div>
         <button className="icon-btn side-toggle" onClick={p.toggleRail} aria-label={toggleLabel} title={`${toggleLabel} ([)`} aria-expanded={!rail}>
           <IconSidebar />
         </button>
+        <div className="brand" aria-hidden={rail}>
+          <span className="brand-mark" aria-hidden="true" />
+          <span className="side-label">InvestHepi</span>
+        </div>
       </div>
       <nav className="side-nav">
         {SECTION_IDS.map((s, i) => (

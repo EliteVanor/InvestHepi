@@ -236,13 +236,12 @@ export function strategyReturn(c: Call): number {
   return c.direction === "up" ? r : c.direction === "down" ? -r : 0;
 }
 
-const LONG = new Set(["BUY", "ADD"]);
-const OUT = new Set(["SELL", "TRIM", "AVOID"]);
-/** Return of the action itself (Hold/Wait: the move that was sat out, signed as it happened). */
+/** Being in the market: Buy, Add, Hold earn the move. Staying out: Sell, Trim, Avoid, Wait earn the drop avoided. */
+const IN = new Set(["BUY", "ADD", "HOLD"]);
+/** What the action earned, so positive always means it paid off (Wait before a 2% drop: +2). */
 export function actionReturn(c: Call): number {
   const r = c.returnPct ?? 0;
-  const a = String(c.action).toUpperCase();
-  return LONG.has(a) ? r : OUT.has(a) ? -r : r;
+  return IN.has(String(c.action).toUpperCase()) ? r : -r;
 }
 
 /** Wilson score interval at 90% (z = 1.645). */

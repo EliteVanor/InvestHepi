@@ -1,5 +1,7 @@
 "use client";
 
+import { createPortal } from "react-dom";
+
 /** Sign-in / account UI for multi-user mode (Auth.js + Google). */
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { signInWithGoogle, signOutAction } from "@/app/actions";
@@ -46,12 +48,29 @@ export function AccountButton() {
   const acc = useAccount();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // In the sidebar the menu floats above the page, opening upward from the avatar (the sidebar
+  // scrolls and would clip it); in the top bar it drops down as usual.
+  const [float, setFloat] = useState<{ left: number; bottom: number } | null>(null);
   useEffect(() => {
     if (!open) return;
-    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false);
+    const close = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node) && setOpen(false);
+    const esc = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
     document.addEventListener("mousedown", close);
-    return () => document.removeEventListener("mousedown", close);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", esc);
+    };
   }, [open]);
+  const toggle = () => {
+    const el = ref.current;
+    if (!open && el?.closest(".sidebar")) {
+      const r = el.getBoundingClientRect();
+      setFloat({ left: Math.max(8, r.left), bottom: window.innerHeight - r.top + 8 });
+    } else if (!open) setFloat(null);
+    setOpen((o) => !o);
+  };
   if (acc.mode !== "multi") return null;
   if (!acc.user)
     return (
@@ -62,20 +81,24 @@ export function AccountButton() {
   const initial = (acc.user.name || acc.user.email || "?").trim()[0]?.toUpperCase();
   return (
     <div className="acct" ref={ref}>
-      <button className="avatar" onClick={() => setOpen((o) => !o)} aria-label={acc.user.email} aria-expanded={open}>
+      <button className="avatar" onClick={toggle} aria-label={acc.user.email} aria-expanded={open}>
         {acc.user.image ? <img src={acc.user.image} alt="" referrerPolicy="no-referrer" /> : <span>{initial}</span>}
       </button>
-      {open && (
-        <div className="acct-menu" role="menu">
-          <div className="acct-who">
-            <b>{acc.user.name}</b>
-            <small>{acc.user.email}</small>
-          </div>
-          <form action={signOutAction}>
-            <button type="submit" role="menuitem" className="acct-item">{t("auth.signout")}</button>
-          </form>
-        </div>
-      )}
+      {open &&
+        (() => {
+          const menu = (
+            <div className={`acct-menu${float ? " floating" : ""}`} role="menu" ref={menuRef} style={float ? { left: float.left, bottom: float.bottom } : undefined}>
+              <div className="acct-who">
+                <b>{acc.user.name}</b>
+                <small>{acc.user.email}</small>
+              </div>
+              <form action={signOutAction}>
+                <button type="submit" role="menuitem" className="acct-item">{t("auth.signout")}</button>
+              </form>
+            </div>
+          );
+          return float ? createPortal(menu, document.body) : menu;
+        })()}
     </div>
   );
 }

@@ -74,7 +74,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(s.brier! > 0 && s.brier! < 0.5);
   const sell = s.byAction.find((a) => a.action === "SELL")!;
   assert.equal(sell.avgReturn, 2, "Sell before a 2% drop: +2 avoided");
-  assert.equal(s.byAction.find((a) => a.action === "WAIT")!.avgReturn, 3, "Wait: the move sat out (+3 missed)");
+  assert.equal(s.byAction.find((a) => a.action === "WAIT")!.avgReturn, -3, "Wait before a 3% rise: -3 (missed); positive always means the action paid off");
   assert.deepEqual(s.pending.map((p) => [p.ticker, p.gradesAfter]), [["VNM.VN", "2026-11-30T08:00:00.000Z"]], "pending calls say when they grade");
   assert.ok(s.recent.every((c) => c.correct !== undefined), "recent = graded calls; pending are listed apart");
 
