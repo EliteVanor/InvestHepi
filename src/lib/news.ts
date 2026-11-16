@@ -185,10 +185,11 @@ export async function fetchInterestNews(
       const feeds: Feed[] = [
         {
           name: `Google News: ${it.name}`,
-          // Queries with Vietnamese characters search Google News Vietnam.
-          url: `https://news.google.com/rss/search?q=${encodeURIComponent(it.query + " when:1d")}&${/[^\x00-\x7F]/.test(it.query) ? "hl=vi&gl=VN&ceid=VN:vi" : "hl=en-US&gl=US&ceid=US:en"}`,
+          // Vietnamese stocks, or queries with Vietnamese characters, search Google News Vietnam.
+          url: `https://news.google.com/rss/search?q=${encodeURIComponent(it.query + " when:1d")}&${/[^\x00-\x7F]/.test(it.query) || it.tickers.every((t) => t.endsWith(".VN")) ? "hl=vi&gl=VN&ceid=VN:vi" : "hl=en-US&gl=US&ceid=US:en"}`,
         },
-        ...it.tickers.slice(0, 4).map((t) => ({
+        // Yahoo's per-ticker feeds have nothing for Vietnamese listings or index symbols.
+        ...it.tickers.filter((t) => !t.endsWith(".VN") && !t.startsWith("^")).slice(0, 4).map((t) => ({
           name: `Yahoo: ${t}`,
           url: `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(t)}&region=US&lang=en-US`,
         })),

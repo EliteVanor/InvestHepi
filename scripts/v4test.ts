@@ -160,17 +160,18 @@ async function main() {
   assert.equal(sc.length, 1, "only one scenario set kept; malformed ones dropped");
   assert.deepEqual(sc[0].cases.map((c) => c.probability), [20, 60, 20], "probabilities rescaled to sum to 100 ('30%' string handled)");
 
-  // ---- market data is fetched once and shared by the other sections
+  // ---- market data is cached: rebuilding the same section within 10 minutes makes no new price requests
   let chartCalls = 0;
   const realFetch = globalThis.fetch;
   globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
     if (String(input).includes("query1.finance.yahoo.com")) chartCalls++;
     return realFetch(input, init);
   }) as typeof fetch;
-  const w = await refreshSection("world");
-  assert.equal(chartCalls, 0, "second section reuses the cached market data (no new price requests)");
+  const w = await refreshSection("interests");
+  // The only price request allowed is grading's single batched fresh-price check (never cached).
+  assert.ok(chartCalls <= 1, `same section again reuses the cached market data (made ${chartCalls} price requests)`);
   assert.ok(w.quotes.length > 0 && w.technicals?.SPY, "cached data lands on the digest");
-  assert.deepEqual(w.gauge, d.gauge, "same mood gauge for every section in one run");
+  assert.deepEqual(w.gauge, d.gauge, "same mood gauge within one cache window");
   globalThis.fetch = realFetch;
 
   // ---- holdings count as followed tickers for alerts

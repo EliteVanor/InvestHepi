@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { relTime } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
 import { fmtDuration, marketClock, vnMarketClock } from "@/lib/marketTime";
 import type { CalendarEvent, Digest, Interest, KeyEvent, NewsItem, Outlook, Quote } from "@/lib/types";
+import type { MsgKey } from "@/lib/i18n";
 import {
   IconAlert, IconArrow, IconBookmark, IconCalendar, IconCopy, IconEye, IconHistory, IconSearch, IconShare, IconSparkles, IconSpeaker, IconStop, IconTarget,
 } from "./Icons";
 import { usePrefs } from "./prefs";
-import { Ring, Sparkline, arrow, fmtPct, fmtPrice, symLabel } from "./primitives";
+import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
+import { isPercentQuote, symLabel } from "@/lib/symbols";
 
-const MACRO_LABEL: Record<string, string> = { "^VIX": "VIX", "^TNX": "US 10Y", "CL=F": "Oil", "GC=F": "Gold", "DX-Y.NYB": "Dollar", "BTC-USD": "Bitcoin" };
 
 /* ---------------------------------------------------------------- Market */
 
@@ -36,37 +37,133 @@ export function StatusPill({ market = "us" }: { market?: "us" | "vn" }) {
   );
 }
 
-export function MarketStrip({ quotes, macro, onOpen }: { quotes: Quote[]; macro: Quote[]; onOpen: (symbol: string) => void }) {
+export interface StripRow {
+  /** Group label key (strip.indexes, strip.banks, ...); none for My Interests. */
+  key?: string;
+  quotes: Quote[];
+}
+
+/**
+ * Horizontally scrolling price strip, Apple Stocks style. Touch and trackpads scroll natively;
+ * mice get arrow buttons and click-and-drag; keyboard users get arrow keys. Edge fades only show
+ * where there is more to see.
+ */
+export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; macro: Quote[]; onOpen: (symbol: string) => void }) {
   const { t } = usePrefs();
-  if (!quotes.length && !macro.length) return null;
+  const ref = useRef<HTMLDivElement>(null);
+  const [edges, setEdges] = useState({ left: false, right: false });
+  const drag = useRef<{ x: number; left: number; moved: boolean; id: number } | null>(null);
+  const suppressClick = useRef(false);
+
+  const measure = useCallback(() => {
+    const el = ref.current;
+    if (!el) return;
+    const left = el.scrollLeft > 4;
+    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 4;
+    setEdges((e) => (e.left === left && e.right === right ? e : { left, right }));
+  }, []);
+  useEffect(() => {
+    measure();
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measure, groups, macro]);
+
+  const page = (dir: 1 | -1) => {
+    const el = ref.current;
+    if (!el) return;
+    el.scrollBy({ left: dir * Math.max(el.clientWidth * 0.8, 240), behavior: "smooth" });
+  };
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType !== "mouse" || e.button !== 0 || !ref.current) return;
+    drag.current = { x: e.clientX, left: ref.current.scrollLeft, moved: false, id: e.pointerId };
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    const el = ref.current;
+    if (!d || !el) return;
+    const dx = e.clientX - d.x;
+    if (!d.moved && Math.abs(dx) > 5) {
+      d.moved = true;
+      el.setPointerCapture(d.id);
+      el.classList.add("dragging");
+    }
+    if (d.moved) el.scrollLeft = d.left - dx;
+  };
+  const endDrag = () => {
+    const d = drag.current;
+    drag.current = null;
+    const el = ref.current;
+    if (!d || !el) return;
+    if (d.moved) {
+      suppressClick.current = true;
+      el.classList.remove("dragging");
+      try {
+        el.releasePointerCapture(d.id);
+      } catch {}
+      setTimeout(() => (suppressClick.current = false), 0);
+    }
+  };
+  const open = (sym: string) => {
+    if (!suppressClick.current) onOpen(sym);
+  };
+
+  const total = groups.reduce((a, g) => a + g.quotes.length, 0) + macro.length;
+  if (!total) return null;
   return (
-    <div className="strip-wrap">
-      <div className="strip" role="list" aria-label={t("mkt.markets")}>
-        {quotes.map((q) => (
-          <button key={q.symbol} className="qcard" role="listitem" onClick={() => onOpen(q.symbol)}>
-            <div className="sym">
-              <span>{symLabel(q.symbol)}</span>
-              <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
-            </div>
-            <div className="px num">{fmtPrice(q.price)}</div>
-            <Sparkline values={q.history.map((h) => h[1])} />
-          </button>
+    <div className={`strip-wrap${edges.left ? " can-left" : ""}${edges.right ? " can-right" : ""}`}>
+      <button className="strip-nav prev" aria-label={t("strip.prev")} tabIndex={-1} onClick={() => page(-1)} hidden={!edges.left}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6 8.5 12l6 6" /></svg>
+      </button>
+      <div
+        className="strip"
+        role="list"
+        aria-label={t("mkt.markets")}
+        ref={ref}
+        tabIndex={0}
+        onScroll={measure}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight") (e.preventDefault(), page(1));
+          if (e.key === "ArrowLeft") (e.preventDefault(), page(-1));
+        }}
+      >
+        {groups.map((g, gi) => (
+          <Fragment key={g.key ?? gi}>
+            {g.key && g.quotes.length > 0 && <span className="strip-label">{t(`strip.${g.key}` as MsgKey)}</span>}
+            {g.quotes.map((q) => (
+              <button key={q.symbol} className={`qcard${q.stale ? " stale" : ""}`} role="listitem" onClick={() => open(q.symbol)} title={q.stale ? t("strip.stale") : undefined}>
+                <div className="sym">
+                  <span>{symLabel(q.symbol)}</span>
+                  <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
+                </div>
+                <div className="px num">{fmtPrice(q.price)}</div>
+                <Sparkline values={q.history.map((h) => h[1])} />
+              </button>
+            ))}
+          </Fragment>
         ))}
         {macro.length > 0 && <span className="strip-label">{t("mkt.macro")}</span>}
         {macro.map((q) => (
-          <button key={q.symbol} className="qcard macro" role="listitem" onClick={() => onOpen(q.symbol)}>
+          <button key={q.symbol} className={`qcard macro${q.stale ? " stale" : ""}`} role="listitem" onClick={() => open(q.symbol)} title={q.stale ? t("strip.stale") : undefined}>
             <div className="sym">
-              <span>{MACRO_LABEL[q.symbol] ?? symLabel(q.symbol)}</span>
+              <span>{symLabel(q.symbol)}</span>
             </div>
-            <div className="px num">
-              {q.symbol === "^TNX" ? `${q.price.toFixed(2)}%` : fmtPrice(q.price)}
-            </div>
+            <div className="px num">{isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : fmtPrice(q.price)}</div>
             <div className={`chg num ${q.changePct >= 0 ? "up" : "down"}`} style={{ fontSize: 12, fontWeight: 600 }}>
               {fmtPct(q.changePct)}
             </div>
           </button>
         ))}
       </div>
+      <button className="strip-nav next" aria-label={t("strip.next")} tabIndex={-1} onClick={() => page(1)} hidden={!edges.right}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9.5 6 6 6-6 6" /></svg>
+      </button>
     </div>
   );
 }

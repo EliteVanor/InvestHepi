@@ -839,19 +839,19 @@ function EquityChart({ equity }: { equity: TrackStats["equity"] }) {
   );
 }
 
-export function TrackExtras({ stats }: { stats: TrackStats }) {
+export function TrackExtras({ stats, section = "interests" }: { stats: TrackStats; section?: string }) {
   const { t } = usePrefs();
   const toast = useToast();
   const exportCsv = async () => {
     try {
       // Fetch with the password header, then hand the browser a file.
       const pw = lsGet<string>("ih-password", "");
-      const res = await fetch("/api/track?format=csv", { headers: { "x-app-password": encodeURIComponent(pw) } });
+      const res = await fetch(`/api/track?format=csv${section === "interests" ? "" : `&section=${section}`}`, { headers: { "x-app-password": encodeURIComponent(pw) } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const url = URL.createObjectURL(await res.blob());
       const a = document.createElement("a");
       a.href = url;
-      a.download = "investhepi-calls.csv";
+      a.download = `investhepi-calls${section === "interests" ? "" : `-${section}`}.csv`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch (e) {

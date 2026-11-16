@@ -158,9 +158,9 @@ export function buildUserPrompt(p: PromptInput, opts: PromptOptions): string {
     })
     .join("\n");
   const moversRule =
-    p.section === "interests" || p.section === "vn"
+    p.section === "interests"
       ? `In "movers", explain the 1-4 tickers from the user's list with the biggest last-session moves (use the snapshot's numbers).`
-      : `Return "movers" as an empty array.`;
+      : `In "movers", explain the 1-4 symbols from the market snapshot with the biggest last-session moves, if a headline explains them (use the snapshot's numbers).`;
 
   const clock =
     p.section === "vn"
@@ -169,7 +169,7 @@ export function buildUserPrompt(p: PromptInput, opts: PromptOptions): string {
   return `${clock}
 Section: ${p.section.toUpperCase()}, covering ${SECTION_FOCUS[p.section]}.
 
-USER'S INTERESTS (give one outlook entry per interest using its benchmark ticker; add entries for individual tickers only if a headline is directly about them):
+${p.section === "interests" ? "USER'S INTERESTS" : "MARKETS TO CALL"} (give one outlook entry per ${p.section === "interests" ? "interest" : "market"} using its benchmark ticker; add entries for individual tickers only if a headline is directly about them):
 ${interests}
 
 MARKET SNAPSHOT:
@@ -178,9 +178,7 @@ ${quotesAsText(p.quotes)}
 MACRO:
 ${macroAsText(p.macro)}
 
-SECTORS (last session, best to worst):
-${sectorsAsText(p.sectors ?? [])}
-
+${p.sectors?.length ? `SECTORS (last session, best to worst):\n${sectorsAsText(p.sectors)}\n` : ""}
 TECHNICALS:
 ${technicalsAsText(techFor(p, opts))}
 
@@ -195,5 +193,5 @@ ${p.trackRecord}
 HEADLINES (cite by number in source_ids):
 ${headlines || "(no headlines fetched)"}
 
-Analyze these headlines${p.section === "interests" ? "" : p.section === "vn" ? " for their impact on the Vietnamese market groups above" : " for their impact on the user's interests"}. In "impacts", use the exact interest names above. ${moversRule}`;
+Analyze these headlines${p.section === "interests" ? "" : p.section === "vn" ? " for their impact on the Vietnamese market groups above" : " for their impact on the markets above"}. In "impacts", use the exact ${p.section === "interests" ? "interest" : "market"} names above. ${moversRule}`;
 }

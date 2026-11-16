@@ -11,7 +11,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, IPriceLine, SeriesMarker, Time, UTCTimestamp } from "lightweight-charts";
 import type { ChartData, ChartRange } from "@/lib/chart";
 import { langInfo } from "@/lib/languages";
-import { marketClock } from "@/lib/marketTime";
+import { marketClock, vnMarketClock } from "@/lib/marketTime";
+import { exchangeTz } from "@/lib/symbols";
 import type { Call } from "@/lib/types";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { fmtPct, fmtPrice } from "./primitives";
@@ -24,7 +25,15 @@ interface ChartOpts {
   calls: boolean;
 }
 const DEFAULT_OPTS: ChartOpts = { candles: false, ma: false, calls: true };
-const etDay = (sec: number) => new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sec * 1000));
+const dayIn = (sec: number, timeZone: string) => new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(sec * 1000));
+
+/** Session clock for the symbol's exchange: HOSE for Vietnam, NYSE/Nasdaq for US, weekdays elsewhere. */
+function clockFor(symbol: string) {
+  if (symbol.endsWith(".VN")) return vnMarketClock();
+  if (exchangeTz(symbol) === "America/New_York") return marketClock();
+  const wd = new Date().getUTCDay();
+  return { phase: wd === 0 || wd === 6 ? "closed" : "open", secs: 0 } as ReturnType<typeof marketClock>;
+}
 
 function smaSeries(bars: { t: number; c: number }[], n: number) {
   const out: { time: UTCTimestamp; value: number }[] = [];
@@ -117,14 +126,15 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   onDataRef.current = onData;
 
   const locale = langInfo(lang).locale;
+  const tz = exchangeTz(symbol);
   const fmtTime = useCallback(
     (sec: number, withDate: boolean) =>
       new Intl.DateTimeFormat(locale, {
-        timeZone: "America/New_York",
+        timeZone: tz,
         ...(withDate ? { month: "short", day: "numeric" } : {}),
         ...(range === "6mo" || range === "1y" ? { year: "2-digit" } : { hour: "numeric", minute: "2-digit" }),
       }).format(new Date(sec * 1000)),
-    [locale, range],
+    [locale, range, tz],
   );
 
   // Create the chart once.
@@ -198,7 +208,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       // AI call markers: one per session, on the first bar of that day.
       const firstBar = new Map<string, number>();
       for (const b of d.bars) {
-        const day = etDay(b.t);
+        const day = dayIn(b.t, tz);
         if (!firstBar.has(day)) firstBar.set(day, b.t);
       }
       const marks: SeriesMarker<Time>[] = opts.calls
@@ -223,18 +233,18 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
         localization: { locale, timeFormatter: (time: number) => fmtTime(time, d.range !== "1d"), priceFormatter: (p: number) => fmtPrice(p) },
         timeScale: {
           timeVisible: d.range !== "6mo" && d.range !== "1y",
-          // Axis labels in New York time, matching the crosshair readout.
+          // Axis labels in the exchange's time zone, matching the crosshair readout.
           tickMarkFormatter: (time: number, type: number) => {
             const date = new Date(time * 1000);
             const opts: Intl.DateTimeFormatOptions =
               type === 0 ? { year: "numeric" } : type === 1 ? { month: "short" } : type === 2 ? { month: "short", day: "numeric" } : { hour: "numeric", minute: "2-digit" };
-            return new Intl.DateTimeFormat(locale, { timeZone: "America/New_York", ...opts }).format(date);
+            return new Intl.DateTimeFormat(locale, { timeZone: tz, ...opts }).format(date);
           },
         },
       });
       chart.timeScale().fitContent();
     },
-    [fmtTime, locale, opts, calls],
+    [fmtTime, locale, opts, calls, tz],
   );
 
   const load = useCallback(async () => {
@@ -264,13 +274,13 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       return;
     }
     const tick = () => {
-      const { phase } = marketClock();
+      const { phase } = clockFor(symbol);
       const active = phase !== "closed" && document.visibilityState === "visible";
       setLive(phase === "open");
       if (active) load();
     };
     const id = setInterval(tick, POLL_MS);
-    setLive(marketClock().phase === "open");
+    setLive(clockFor(symbol).phase === "open");
     const onVis = () => document.visibilityState === "visible" && tick();
     document.addEventListener("visibilitychange", onVis);
     return () => {
@@ -302,7 +312,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   const chg = data && shown != null ? shown - ref : 0;
   const chgPct = data && ref ? (chg / ref) * 100 : 0;
   const rangeLabel: Record<ChartRange, string> = { "1d": "1D", "5d": "5D", "1mo": "1M", "6mo": "6M", "1y": "1Y" };
-  const stale = data ? Date.now() / 1000 - data.asOf > 20 * 60 && marketClock().phase === "open" : false;
+  const stale = data ? Date.now() / 1000 - data.asOf > 20 * 60 && clockFor(symbol).phase === "open" : false;
 
   return (
     <div className="chart">
@@ -323,7 +333,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
           {data && (
             <span className="chart-live">
               <span className={`dot ${live && !stale ? "live" : ""}`} />
-              {live && !stale ? t("chart.live") : stale ? t("chart.delayed") : t("chart.asOf", { t: new Intl.DateTimeFormat(locale, { timeZone: "America/New_York", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(data.asOf * 1000)) })}
+              {live && !stale ? t("chart.live") : stale ? t("chart.delayed") : t("chart.asOf", { t: new Intl.DateTimeFormat(locale, { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(data.asOf * 1000)) })}
             </span>
           )}
         </div>

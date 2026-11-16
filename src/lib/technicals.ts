@@ -4,6 +4,8 @@
  * These are context for the reader and the AI, not trading signals on their own.
  */
 import { getChart, type Bar } from "./chart";
+import { isVnSymbol, pool, vndirectDaily } from "./vnmarket";
+import { yahooSpark } from "./yahoo";
 
 export interface Technicals {
   symbol: string;
@@ -103,18 +105,43 @@ export function computeTechnicals(symbol: string, bars: Bar[], livePrice?: numbe
   };
 }
 
+/**
+ * 1-year technicals for up to 16 symbols with few requests: one Yahoo spark request per 20 symbols
+ * (closes only, so the "typical daily move" is close-to-close) and one VNDirect request for all
+ * Vietnamese symbols (full OHLC). Per-symbol charts only for what's missing (at most 4).
+ */
 export async function getTechnicals(symbols: string[]): Promise<Record<string, Technicals>> {
   const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))].slice(0, 16);
   const out: Record<string, Technicals> = {};
-  await Promise.all(
-    uniq.map(async (s) => {
-      try {
-        const d = await getChart(s, "1y");
-        const t = computeTechnicals(s, d.bars, d.price);
+  const vn = uniq.filter(isVnSymbol);
+  const other = uniq.filter((s) => !isVnSymbol(s));
+  await Promise.all([
+    (async () => {
+      if (!other.length) return;
+      const sp = await yahooSpark(other, "1y", "1d");
+      for (const [s, v] of sp) {
+        const bars: Bar[] = v.points.map(([t, c]) => ({ t, o: c, h: c, l: c, c, v: 0 }));
+        const t = computeTechnicals(s, bars);
         if (t) out[s] = t;
-      } catch {}
-    }),
-  );
+      }
+    })(),
+    (async () => {
+      if (!vn.length) return;
+      const m = await vndirectDaily(vn, 260).catch(() => new Map<string, Bar[]>());
+      for (const [s, bars] of m) {
+        const t = computeTechnicals(s, bars);
+        if (t) out[s] = t;
+      }
+    })(),
+  ]);
+  const missing = uniq.filter((s) => !out[s]).slice(0, 4);
+  await pool(missing, 2, async (s) => {
+    try {
+      const d = await getChart(s, "1y");
+      const t = computeTechnicals(s, d.bars, d.price);
+      if (t) out[s] = t;
+    } catch {}
+  });
   return out;
 }
 

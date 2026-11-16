@@ -27,6 +27,18 @@ const reply = (lang: string) => JSON.stringify({ headline: `headline-${lang}`, m
 
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
+  if (url.includes("finance.yahoo.com/v8/finance/spark")) {
+    const syms = decodeURIComponent(url.split("symbols=")[1].split("&")[0]).split(",");
+    quoted.push(...syms);
+    const ts = Array.from({ length: 30 }, (_, i) => now - (30 - i) * 86400);
+    return new Response(JSON.stringify(Object.fromEntries(syms.map((s) => [s, { timestamp: ts, close: ts.map((_, i) => 100 + i), chartPreviousClose: 99 }]))), { status: 200 });
+  }
+  if (url.includes("vndirect.com.vn")) {
+    feedsHit.push(url);
+    const codes = decodeURIComponent(url.split("q=code:")[1].split("~")[0]).split(",");
+    const rows = codes.flatMap((code) => Array.from({ length: 10 }, (_, i) => ({ code, date: new Date((now - i * 86400) * 1000).toISOString().slice(0, 10), close: 50 + i, nmVolume: 9, accumulatedVol: 9 })));
+    return new Response(JSON.stringify({ data: rows }), { status: 200 });
+  }
   if (url.includes("finance.yahoo.com/v8")) {
     const sym = decodeURIComponent(url.split("/chart/")[1].split("?")[0]);
     quoted.push(sym);
@@ -117,7 +129,7 @@ const OWNER_EMAIL = "owner@example.com";
   await cron("vn");
   assert.ok(feedsHit.some((u) => u.includes("vnexpress.net")) && feedsHit.some((u) => u.includes("cafef.vn")), "Vietnamese news feeds used");
   assert.ok(feedsHit.some((u) => u.includes("hl=vi&gl=VN")), "Google News searched in Vietnamese");
-  assert.ok(quoted.includes("FPT.VN") && quoted.includes("VNM"), "Vietnam market symbols quoted");
+  assert.ok(feedsHit.some((u) => u.includes("vndirect") && u.includes("FPT") && u.includes("VCB")), "Vietnam market symbols priced in one VNDirect batch");
 
   // ---- reading: everyone sees their own interest briefing; shared sections in their language
   const digest = await import("../src/app/api/digest/route");

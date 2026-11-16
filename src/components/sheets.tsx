@@ -378,19 +378,30 @@ function ShortcutsTab() {
 
 /* ---------------------------------------------------------- Track record */
 
-export function TrackSheet({ onClose }: { onClose: () => void }) {
+export function TrackSheet({ onClose, section = "interests" }: { onClose: () => void; section?: SectionId }) {
   const { t, api, lang } = usePrefs();
+  const [sec, setSec] = useState<SectionId>(section);
   const [s, setS] = useState<TrackStats | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => {
-    api<TrackStats>("/api/track").then(setS).catch((e) => setErr((e as Error).message));
-  }, [api]);
+    setS(null);
+    setErr("");
+    api<TrackStats>(`/api/track${sec === "interests" ? "" : `?section=${sec}`}`).then(setS).catch((e) => setErr((e as Error).message));
+  }, [api, sec]);
   const fmtDate = (iso: string) => new Intl.DateTimeFormat(lang, { month: "short", day: "numeric", timeZone: "UTC" }).format(new Date(iso + "T12:00:00Z"));
   const mids = [55, 65, 75, 85];
 
   return (
     <Sheet title={t("track.title")} onClose={onClose} wide>
       <p className="hint" style={{ marginTop: 0 }}>{t("track.intro")}</p>
+      {/* Each section keeps its own record: your interests, plus the shared World, US and Vietnam calls. */}
+      <div className="segmented track-seg" role="tablist" aria-label={t("track.title")}>
+        {SECTION_IDS.map((x) => (
+          <button key={x} role="tab" aria-selected={sec === x} className={sec === x ? "on" : ""} onClick={() => setSec(x)}>
+            {t(`sec.${x}` as MsgKey)}
+          </button>
+        ))}
+      </div>
       {err && <p className="hint bad">{err}</p>}
       {!s ? (
         <div className="skeleton" style={{ height: 220, marginTop: 16 }} />
@@ -424,7 +435,7 @@ export function TrackSheet({ onClose }: { onClose: () => void }) {
             </div>
             <p className="hint">{t("track.calibrationHint")}</p>
           </div>
-          <TrackExtras stats={s} />
+          <TrackExtras stats={s} section={sec} />
           <div className="sheet-section">
             <h3>{t("track.recent")}</h3>
             <div style={{ overflowX: "auto" }}>
@@ -473,7 +484,7 @@ export function TrackSheet({ onClose }: { onClose: () => void }) {
 
 /* ---------------------------------------------------------------- Ticker */
 
-export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symbol: string; quote?: Quote; digests: Digest[]; onClose: () => void; onAlert?: (symbol: string) => void }) {
+export function TickerSheet({ symbol, quote, digests, onClose, onAlert, action }: { symbol: string; quote?: Quote; digests: Digest[]; onClose: () => void; onAlert?: (symbol: string) => void; action?: React.ReactNode }) {
   const { t, lang, api } = usePrefs();
   const [cd, setCd] = useState<ChartData | null>(null);
   const [alertMsg, setAlertMsg] = useState("");
@@ -510,13 +521,13 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert }: { symb
   };
 
   return (
-    <Sheet title={<span>{symLabel(symbol)}{cd?.name ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide>
+    <Sheet title={<span>{symLabel(symbol)}{cd?.name ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide actions={action}>
       <LiveChart symbol={symbol} height={300} onData={(d) => d.range === "1d" && setCd(d)} />
       <div className="stats stats-5" style={{ marginTop: 14 }}>
         <div className="stat"><small>{t("tk.5d")}</small><b className={`num ${(chg5 ?? 0) >= 0 ? "up" : "down"}`}>{chg5 == null ? "–" : fmtPct(chg5, 1)}</b></div>
         <div className="stat"><small>{t("tk.1m")}</small><b className={`num ${(chg1m ?? 0) >= 0 ? "up" : "down"}`}>{chg1m == null ? "–" : fmtPct(chg1m, 1)}</b></div>
         <div className="stat"><small>{t("tk.dayRange")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.dayLow != null && cd.dayHigh != null ? `${fmtPrice(cd.dayLow)} – ${fmtPrice(cd.dayHigh)}` : "–"}</b></div>
-        <div className="stat"><small>{t("tk.52w")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : "–"}</b></div>
+        <div className="stat"><small>{t("tk.52w")}</small><b className="num" style={{ fontSize: 15 }}>{cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : tech?.low52 != null && tech.high52 != null ? `${fmtPrice(tech.low52)} – ${fmtPrice(tech.high52)}` : "–"}</b></div>
         <div className="stat"><small>{t("tk.volume")}</small><b className="num">{fmtVol(cd?.volume)}</b></div>
       </div>
       {tech && (

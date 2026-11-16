@@ -9,11 +9,16 @@ A personal news site that catches you up on market news fast and tells you what 
 
 <sub>Screenshots use sample data.</sub>
 
-Three sections, each with its own news feed:
+Four sections, each with its own news feed:
 
-1. **My Interests**: Nasdaq, S&P 500 and chip stocks by default. Edit them in Settings → Interests and the news and analysis follow.
-2. **World**: geopolitics, foreign economies, central banks, oil, trade.
-3. **US**: Fed, economic data, Congress, the White House, regulation.
+1. **My Interests**: your own stocks. Nasdaq, S&P 500 and chip stocks by default. Add anything with the search (US, Vietnamese or global stocks, ETFs, indexes) or edit groups in Settings → Interests, and the news and analysis follow. With accounts on, this section is personal and asks visitors to sign in.
+2. **World**: geopolitics, foreign economies, central banks, oil, trade. The price strip shows the major world indexes (S&P 500, Euro Stoxx 50, FTSE, DAX, Nikkei, Hang Seng, Shanghai, KOSPI, Sensex) and global giants; the AI makes a call on US stocks, Europe, Japan, China & Hong Kong, oil and gold.
+3. **US**: Fed, economic data, Congress, the White House, regulation. Strip: S&P 500, Dow Jones, Nasdaq 100, Russell 2000 and the mega caps; calls on those four indexes.
+4. **Vietnam**: VN-Index, VN30, HNX, UPCoM, the big banks and large caps; calls on the index and five sector groups.
+
+World, US and Vietnam are the same for everyone and never include anyone's personal stocks. Each keeps its own graded track record (switch sections in the Track record sheet).
+
+**Search like Apple Stocks**: the magnifier (or the search bar on My Interests) finds any stock by name or symbol, accents optional ("vinamilk", "hoa phat", "Apple", "S&P 500"), shows live prices, and adds it to My Interests with one tap. The stock page has the same + button.
 
 Every section opens with an AI briefing, ordered by what helps you act fastest:
 
@@ -98,8 +103,9 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
                                           │
          ┌────────────────────────────────┼─────────────────────────────┐
          ▼                                ▼                             ▼
-  News: Google News RSS per interest,  Prices: Yahoo chart API      Track record:
-  Yahoo per-ticker RSS, CNBC,          (Nasdaq, Stooq fallback)     grade past calls
+  News: Google News RSS per interest,  Prices: Yahoo (batched),     Track record:
+  Yahoo per-ticker RSS, CNBC,          Nasdaq; Vietnam: DNSE,       grade past calls
+                                       Vietcap, VNDirect
   MarketWatch, BBC, NPR, Al Jazeera,
   VnExpress, CafeF, Vietstock,
   optional Finnhub
@@ -140,7 +146,18 @@ GitHub Actions cron (5x/day, free) ──► /api/refresh on Vercel
 
 A full briefing for the Vietnamese market, in the reader's language: headlines from VnExpress, CafeF, Vietstock, Tuổi Trẻ and Google News (Vietnamese and English), and a buy/hold/wait call with confidence, triggers and risks for VN-Index, banks, real estate, securities firms, tech & retail, and steel & industrials. The AI gets Vietnam-specific context: HOSE hours (ICT), State Bank of Vietnam policy, USD/VND, foreign flows, margin debt, the 7% daily limit. Calls are logged and graded like the others.
 
-Prices: Yahoo first (`FPT.VN`, `^VNINDEX.VN`), then the public TCBS and VNDirect endpoints, all free and keyless. They're unofficial, so any of them can change or block cloud servers; the chart shows which sources failed if all three do. The scheduler adds two Vietnam-only runs, before the HOSE open (8:15 ICT) and after the close (15:10 ICT). Holidays like Tet aren't modeled in the market clock.
+Prices come from Vietnamese brokers' public chart APIs, free and keyless: DNSE first (daily and 1-minute bars for every stock and index), then Vietcap, then VNDirect (which also prices dozens of symbols in one request for the strip and technicals). Yahoo is the last resort; it has no VN30 or HNX and rate-limits cloud servers. Charts show times in Vietnam time. The scheduler adds two Vietnam-only runs, before the HOSE open (8:15 ICT) and after the close (15:10 ICT). Holidays like Tet aren't modeled in the market clock.
+
+### Where prices come from (and what happens when a source says no)
+
+All sources are free, keyless and unofficial, checked from a cloud server in November 2026:
+
+| Symbols | Order tried |
+|---|---|
+| Vietnamese (`FPT.VN`, `^VNINDEX.VN`, `^VN30.VN`, `^HNX.VN`, `^UPCOM.VN`) | DNSE → Vietcap → VNDirect → Yahoo (stocks only) |
+| Everything else | Yahoo → Nasdaq (US stocks, ETFs, Nasdaq indexes) |
+
+Yahoo throttles busy cloud IPs (a burst of ~60 requests gets "429 Too Many Requests" for minutes, for every symbol). The app keeps well under that: one batch request per 20 symbols, at most 3 Yahoo requests in flight, and after a 429 it stops calling Yahoo for 90 seconds and uses the fallbacks. If nothing answers, the strip shows the last good price (dimmed, "last available price") and charts show the last saved daily history, rather than blank cards. Graded calls never use those stale prices. Stooq and TCBS were dropped: both now put a browser check in front of their data.
 
 ### Accounts for other people (optional, free)
 
@@ -152,7 +169,7 @@ By default the app is just for you, behind `APP_PASSWORD`. To let anyone sign in
 4. While the consent screen is in "Testing", only test users you add can sign in (up to 100). Press **Publish app** when you want anyone in. Basic sign-in (email, name, picture) doesn't need Google's verification review.
 
 What changes:
-- Visitors can read everything without signing in (default interests, shared sections in their language). Saving interests, holdings, alerts, Ask AI and refresh need an account. The password prompt goes away.
+- Visitors read World, US and Vietnam without signing in, in their language, and land on World (Vietnam for Vietnamese readers). My Interests is personal: visitors see what an account gets and a Google sign-in button. Saving interests, holdings, alerts, Ask AI and refresh need an account. The password prompt goes away.
 - World, US and Vietnam are generated once per language and shared by everyone. Personal briefings are shared too when interests and language match exactly, so 50 people on the defaults cost the same as one.
 - The scheduler refreshes the 2 stalest personal sets per call, 3 calls per run (6 sets, about 5x a day). Past roughly 6 distinct interest sets, briefings get refreshed less often, not more expensively. Raise the `INTEREST_ROUNDS` repo variable when you have the quota for it. Manual refresh has a cooldown (30 min shared, 5 min personal) to protect the free AI tier.
 - Actions minutes: each run is now about 7 minutes. Fine on a public repo (unlimited); on a private repo that plus price alerts is about 1,300 of the 2,000 free minutes.
@@ -165,7 +182,7 @@ Set `ANTHROPIC_API_KEY` in Vercel and redeploy. It defaults to `claude-opus-5-5`
 
 | Key | Action |
 |---|---|
-| `1` `2` `3` | Switch section |
+| `1` `2` `3` `4` | Switch section |
 | `R` | Refresh this section |
 | `/` | Search headlines |
 | `⌘K` / `Ctrl+K` | Command palette |
@@ -204,7 +221,8 @@ Locally, data is stored as JSON in `.data/`.
 - Headlines only, no full articles. The AI sees what a fast reader would see, not paywalled analysis.
 - "Live" means polled every ~20 seconds, not tick-by-tick streaming. Good for a daily-trend tool. True streaming needs a paid data feed.
 - Price alerts are as fresh as the check interval (~20 min by default).
-- Free feeds and the Yahoo price endpoint are unofficial and can change or rate-limit. Failures show up under "feed(s) failed", and the app keeps going with whatever loaded.
+- Free feeds and price endpoints are unofficial and can change or rate-limit. Failures show up under "feed(s) failed", and the app keeps going with whatever loaded.
+- World indexes, currencies and commodities have no free, keyless backup to Yahoo that works from servers. During a Yahoo cooldown they show the last available price (dimmed) until Yahoo answers again. Vietnamese prices don't depend on Yahoo.
 - Free LLM tiers change their limits and models often. If one starts failing, the fallback note on the page will say so. Swap the model via `GROQ_MODEL` / `GEMINI_MODEL`.
 - Technical levels and the mood gauge are context computed from price history. They are not signals on their own.
 - Scenario probabilities are the AI's estimates, not market-implied odds.

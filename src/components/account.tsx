@@ -100,3 +100,37 @@ export function SignInCard() {
     </section>
   );
 }
+
+/**
+ * My Interests for signed-out visitors (multi-user mode): what an account gets, one button to sign
+ * in, and a way back to the sections anyone can read.
+ */
+export function InterestsGate({ onBrowse }: { onBrowse: () => void }) {
+  const { t } = usePrefs();
+  const points = [t("gate.point1"), t("gate.point2"), t("gate.point3")];
+  return (
+    <section className="card gate" aria-labelledby="gate-h">
+      <div className="gate-orb" aria-hidden="true">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="m12 3.5 2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />
+        </svg>
+      </div>
+      <h2 id="gate-h">{t("gate.title")}</h2>
+      <p className="gate-body">{t("gate.body")}</p>
+      <ul className="gate-points">
+        {points.map((p) => (
+          <li key={p}>
+            <span className="gate-check" aria-hidden="true">✓</span>
+            {p}
+          </li>
+        ))}
+      </ul>
+      <div className="gate-actions">
+        <GoogleButton label={t("auth.signin")} />
+        <button className="btn-plain" onClick={onBrowse}>
+          {t("gate.browse")} →
+        </button>
+      </div>
+    </section>
+  );
+}

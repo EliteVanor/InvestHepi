@@ -19,22 +19,36 @@ npm run refresh -- world       # run the pipeline once from the terminal
 
 Tests are plain `tsx` scripts using `node:assert`, not a framework. They mock `globalThis.fetch` (no network), set env vars at the top, then dynamically `import()` modules and route handlers and call `GET/PUT/POST` directly with `Request` objects. A suite prints `<NAME> OK` on success. New suites must be added to the `test` script in `package.json`.
 
-Gotcha: the store is `.data/` locally and `/tmp/invest-helper` when `VERCEL` is set. Caches persist between runs (e.g. `market:*` for 10 min), so tests that need a clean store set `VERCEL=1` and `rm -rf /tmp/invest-helper` first. Stale `.data/` can make a test fail for reasons unrelated to the code.
+Gotcha: the store is `.data/` locally and `/tmp/invest-helper` when `VERCEL` is set. Caches persist between runs (e.g. `market:*` for 10 min, `px:last`, `vnlist`), so tests that need a clean store set `VERCEL=1` and `rm -rf /tmp/invest-helper` first. Stale `.data/` can make a test fail for reasons unrelated to the code, and some suites (v4btest) delete `.data/`, so re-seed before manual browser checks.
+
+Price-layer modules keep in-memory state (Yahoo cooldown, chart/live caches); tests reset it with `resetYahoo()` and `clearPriceCaches()`. Test fetch mocks must handle Yahoo's batch endpoint (`/v8/finance/spark?symbols=A,B`, flat JSON keyed by symbol) as well as `/v8/finance/chart/`.
+
+For live checks against real APIs from a cloud sandbox, Node's built-in fetch ignores `HTTPS_PROXY` unless run with `NODE_USE_ENV_PROXY=1`. Don't hammer Yahoo while testing: it rate-limits the IP for minutes.
 
 `scripts/i18ntest.ts` enforces that every key in the `en` dictionary in `src/lib/i18n.ts` exists in all 8 languages (en, vi, zh, ja, ko, es, fr, de). Any new UI string needs all 8.
 
 ## Architecture
 
-**Pipeline (`src/lib/pipeline.ts`)** is the core. `buildDigest` fetches news (`news.ts`, feeds in `config.ts` `SECTION_FEEDS`), market data (quotes, macro, sectors, technicals, cached 10 min), and the calendar, then calls `analyze()` and returns a `Digest`. Callers:
-- `refreshShared(section, lang)` for world/us/vn: one digest per language, stored at `digest:<section>:<lang>`.
+**Pipeline (`src/lib/pipeline.ts`)** is the core. `buildDigest` fetches news (`news.ts`, feeds in `config.ts` `SECTION_FEEDS`), market data (quotes, macro, sectors, technicals, cached 10 min), and the calendar, then calls `analyze()` and returns a `Digest`. What gets priced is decided by `coverage(section, interests)`:
+- My Interests: `BENCHMARKS` + the user's tickers, US sectors, mood from SPY.
+- World/US/Vietnam: never personal stocks. `config.ts` holds `SECTION_STRIPS` (labeled strip groups, copied onto `Digest.strip`), `SECTION_GROUPS` (`WORLD_GROUPS`/`US_GROUPS`/`VN_GROUPS`: the markets the AI makes calls on, passed to the prompt as "interests"), `SECTION_MACRO`, and `MOOD_BENCH` (SPY / ACWI / ^VNINDEX.VN; the mood breadth set is world indexes or VN large caps instead of US sectors).
+
+Callers:
+- `refreshShared(section, lang)` for world/us/vn: one digest per language, stored at `digest:<section>:<lang>`. Calls are recorded and graded per section (`SHARED_CALLS`: `calls:world|us|vn`); `/api/track?section=` serves them.
 - `refreshInterestSet(interests, lang, uids)`: one digest per distinct interest set, keyed `ib:<hash>` where hash = sha1(normalized interests + language). Users with identical interests share one briefing.
 - `refreshScheduled` is what the cron hits: refreshes the stalest interest sets in small batches (`INTEREST_BATCH`), and shared sections only for languages active users read.
 
 **LLM (`src/lib/llm/`)**: provider chain Claude → Groq → Gemini → rule-based (`rules.ts`), first that works. Free providers get a "compact" prompt; `fitPrompt` in `index.ts` trims headlines to stay under Groq's ~8k tokens/minute. Output is validated against `schema.ts`. `prompt.ts` holds the analyst rules, per-section focus, and Vietnam-specific rules/clock (`VN_RULES`, `vnMarketPhase`). The historical playbook the model must prefer over memory is `analogs.ts`.
 
-**Track record (`track.ts`)**: each digest's outlook calls are recorded and later graded against prices. Calls are keyed by date+ticker+horizon so re-generating in several languages doesn't double-count. Call stores: `calls:<interest hash>` per interest set, `calls:vn` for Vietnam.
+**Track record (`track.ts`)**: each digest's outlook calls are recorded and later graded against prices. Calls are keyed by date+ticker+horizon so re-generating in several languages doesn't double-count. Call stores: `calls:<interest hash>` per interest set, `calls:world|us|vn` for shared sections. Grading uses `getQuotes(..., { allowStale: false })`: never the stale fallback.
 
-**Prices**: `market.ts` (quotes) and `chart.ts` (charts) try sources in order and aggregate the errors. US: Yahoo → Nasdaq public API → Stooq. Vietnamese symbols (`*.VN`, indexes `^VNINDEX.VN`, `^VN30.VN`): Yahoo → TCBS → VNDirect (`vnmarket.ts`; VNDirect stock prices come in thousand VND and are normalized to VND). All of these are unofficial, keyless endpoints that may block cloud IPs.
+**Prices** (all unofficial, keyless; verified from a cloud server Nov 2026):
+- `yahoo.ts`: every Yahoo call goes through `yahooJson` (max 3 in flight, 90 s cooldown after a 429, no retry on the second host). Prefer `yahooSpark` (20 symbols per request, closes only) over per-symbol charts.
+- `vnmarket.ts`: Vietnamese symbols are `CODE.VN` for any listing and `^VNINDEX.VN`/`^VN30.VN`/`^HNX.VN`/`^HNX30.VN`/`^UPCOM.VN` for indexes (`VN_INDEXES` maps each source's code). Order: DNSE (daily + 1/5-min/1H, stocks in thousand VND) → Vietcap (one symbol per POST, full VND) → VNDirect (daily, many codes per request, thousand VND; zero-volume pre-open rows skipped). All normalized to full VND. Yahoo has no usable VN index series.
+- `market.ts` `getQuotes`: one spark batch for non-VN symbols, one VNDirect batch for VN ones, bounded per-symbol fallbacks, then the `px:last` last-good blob (quotes flagged `stale`). `chart.ts` `getChart`: VN → DNSE/Vietcap/VNDirect/Yahoo; others → Yahoo/Nasdaq; saved daily history (`chart:<sym>`) as a stale fallback. `getLiveQuotes` batches the same way and is cached 25 s per instance. `technicals.ts` uses spark 1y (close-only bars) and VNDirect.
+- TCBS (Cloudflare check), Stooq (JS bot check), CNBC (Akamai) refuse servers; don't reintroduce them. Don't use API keys scraped from websites.
+
+**Search (`search.ts`, `vnlist.ts`)**: merges the VNDirect listing of every VN stock/ETF (cached a day in `vnlist`, built-in fallback list, accent-insensitive via `fold`), index/commodity names from `symbols.ts` `SYMBOL_LABELS`, and Yahoo search; ranked, Vietnamese results boosted for `lang=vi`. Following a stock from search creates a one-ticker interest (`src/lib/follow.ts` builds its news query; VN tickers get Vietnamese Google News in `news.ts`). `src/components/search.tsx` holds the sheet and `useFollow`; the page refreshes the personal briefing once when the sheet closes, not per tap.
 
 **Storage (`store.ts`)**: `getJSON/setJSON` over Upstash Redis (`KV_REST_API_*`) or local JSON files. No database schema; the key layout is the contract.
 
@@ -55,6 +69,11 @@ Vercel Hobby allows one cron a day (`vercel.json`), so `.github/workflows/refres
 ### Frontend
 
 Single page: `src/app/page.tsx` holds the state (tabs, digests, sheets, account) and composes components from `src/components/`. Files named `v3.tsx`/`v4.tsx` group features by the release that added them, not by type. Client-side preferences (theme, language, password, read state, saved headlines) live in localStorage via `prefs.tsx`, always wrapped in try/catch. Styling is one global stylesheet (`src/app/globals.css`) with CSS variables for light/dark; the mobile layout uses a bottom tab bar (`.tabbar`) and hides `.desktop-only` elements.
+
+- The price strip (`MarketStrip` in `sections.tsx`) takes labeled groups; for shared sections the page builds them from `Digest.strip` (or `SECTION_STRIPS` for older digests) overlaid with live quotes. Mouse users get arrow buttons and drag-to-scroll.
+- Background: a fixed `.ambient` layer (drifting radial color fields, dot matrix, grain) whose palette follows `data-section`; colors are `@property`-registered so tab switches morph. Cards/strip use translucent `--material` with backdrop blur; `prefers-reduced-motion` and `prefers-reduced-transparency` are honored.
+- Multi-user visitors: My Interests shows `InterestsGate` (sign-in) instead of content; visitors land on World (Vietnam if the UI language is vi). The setup checklist is only for single-user mode or the admin.
+- Charts format times in the exchange's time zone (`exchangeTz` in `symbols.ts`). Number formatters (`fmtPct`/`fmtPrice`) tolerate missing values; keep it that way, data comes from many free sources.
 
 ## Conventions
 

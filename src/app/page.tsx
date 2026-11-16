@@ -9,8 +9,11 @@ import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, mer
 import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
 import type { MsgKey } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
-import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type SectionId } from "@/lib/types";
-import { AccountButton, AccountCtx, SignInCard, SignInSheet, type Account } from "@/components/account";
+import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
+import { AccountButton, AccountCtx, InterestsGate, SignInCard, SignInSheet, type Account } from "@/components/account";
+import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
+import { symLabel } from "@/lib/symbols";
+import { SECTION_MACRO, SECTION_STRIPS, type SharedSection } from "@/lib/config";
 
 const SECTION_IDS: SectionId[] = ALL_SECTIONS;
 const TAB_KEY = "ih-tab";
@@ -29,7 +32,8 @@ type Sheet =
   | null
   | { kind: "settings"; tab?: SettingsTab; symbol?: string }
   | { kind: "track" }
-  | { kind: "ticker"; symbol: string }
+  | { kind: "ticker"; symbol: string; back?: "search" }
+  | { kind: "search" }
   | { kind: "history" }
   | { kind: "ask"; q?: string }
   | { kind: "catchup" }
@@ -46,6 +50,7 @@ function App() {
   // Guests (VIEWER_PASSWORD) get a read-only view. The server enforces it; this just hides controls.
   const [readOnly, setReadOnly] = useState(false);
   const [account, setAccount] = useState<Account>({ mode: "single", user: null, admin: false });
+  const [accountKnown, setAccountKnown] = useState(false);
   const [signIn, setSignIn] = useState(false);
   useEffect(() => {
     const on = () => setSignIn(true);
@@ -112,6 +117,16 @@ function App() {
     loadInterests();
     Promise.all([api<Account>("/api/me").catch(() => null), api<{ role?: "owner" | "viewer" | null }>("/api/status").catch(() => null)]).then(([me, st]) => {
       if (me) setAccount(me);
+      setAccountKnown(true);
+      // Signed-out visitors land on a section they can read (Vietnam for Vietnamese readers), unless
+      // they picked a tab before.
+      if (me?.mode === "multi" && !me.user) {
+        let saved: string | null = null;
+        try {
+          saved = localStorage.getItem(TAB_KEY);
+        } catch {}
+        if (!saved || saved === "interests") setTab(lang === "vi" ? "vn" : "world");
+      }
       // Multi-user: visitors are read-only until they sign in. Single-user: guest password.
       const viewer = me?.mode === "multi" ? !me.user : st?.role === "viewer";
       setReadOnly(viewer);
@@ -210,7 +225,7 @@ function App() {
       if (e.metaKey || e.ctrlKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable) return;
       if (sheet && e.key !== "Escape") return;
       const k = e.key.toLowerCase();
-      if (k === "1" || k === "2" || k === "3") switchTab(SECTION_IDS[Number(k) - 1]);
+      if (k >= "1" && k <= String(SECTION_IDS.length) && k.length === 1) switchTab(SECTION_IDS[Number(k) - 1]);
       else if (k === "r" && !readOnly) refresh(tab);
       else if (k === "/") {
         e.preventDefault();
@@ -241,11 +256,31 @@ function App() {
   // and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
 
-  // Live prices for the strip (polls only while the market session is active).
-  const stripSymbols = useMemo(() => (shown ? [...shown.quotes.map((q) => q.symbol), ...(shown.macro ?? []).map((q) => q.symbol)] : []), [shown]);
-  const live = useLiveQuotes(stripSymbols);
+  // Strip: My Interests shows the user's tickers; shared sections show their own market groups
+  // (from the digest, or from config for digests made before strips existed) and their macro list.
+  const stripPlan = useMemo(() => {
+    if (!shown) return { groups: [] as { key?: string; symbols: string[] }[], macro: [] as string[] };
+    if (tab === "interests") return { groups: [{ symbols: shown.quotes.map((q) => q.symbol) }], macro: (shown.macro ?? []).map((q) => q.symbol) };
+    const shared = tab as SharedSection;
+    return { groups: shown.strip ?? SECTION_STRIPS[shared], macro: SECTION_MACRO[shared] };
+  }, [shown, tab]);
+  const stripSymbols = useMemo(() => [...stripPlan.groups.flatMap((g) => g.symbols), ...stripPlan.macro], [stripPlan]);
+  const live = useLiveQuotes(stripSymbols, tab === "vn" ? "vn" : tab === "world" ? "world" : "us");
   const liveQuotes = useMemo(() => (shown ? mergeLive(shown.quotes, live) : []), [shown, live]);
-  const liveMacro = useMemo(() => (shown ? mergeLive(shown.macro ?? [], live) : []), [shown, live]);
+  const stripRows = useMemo(() => {
+    const known = new Map<string, Quote>();
+    for (const q of [...(shown?.quotes ?? []), ...(shown?.macro ?? [])]) known.set(q.symbol, q);
+    const resolve = (s: string): Quote | null => {
+      const q = known.get(s);
+      const l = live.get(s);
+      if (q) return l ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false } : q;
+      if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.spark.map((c, i) => [String(i), c] as [string, number]), source: "yahoo" };
+      return null;
+    };
+    const ok = (q: Quote | null): q is Quote => q != null && Number.isFinite(q.price) && Number.isFinite(q.changePct);
+    const pick = (syms: string[]) => syms.map(resolve).filter(ok);
+    return { groups: stripPlan.groups.map((g) => ({ key: g.key, quotes: pick(g.symbols) })), macro: pick(stripPlan.macro) };
+  }, [shown, live, stripPlan]);
   const chartSymbols = useMemo(() => {
     const bench = interests.map((i) => i.tickers[0]).filter(Boolean);
     const rest = interests.flatMap((i) => i.tickers.slice(1));
@@ -253,10 +288,27 @@ function App() {
     return list.length ? list.slice(0, 14) : ["SPY", "QQQ", "SOXX"];
   }, [interests]);
   const openTicker = useCallback((symbol: string) => setSheet({ kind: "ticker", symbol }), []);
+  // Follow/unfollow from search and stock pages. The personal briefing is refreshed once, when the
+  // search sheet closes, not on every tap (each refresh of a new interest set is one AI call).
+  const followDirty = useRef(false);
+  const follow = useFollow(interests, readOnly, (list) => {
+    setInterests(list);
+    followDirty.current = true;
+  });
+  const closeSearch = useCallback(() => {
+    setSheet(null);
+    if (followDirty.current) {
+      followDirty.current = false;
+      switchTab("interests");
+      refresh("interests");
+    }
+  }, [refresh, switchTab]);
   const watchSymbols = useMemo(() => [...new Set([...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)])], [interests, holdings]);
   const interestsDigest = digests.interests;
   const interestsLive = useMemo(() => (interestsDigest ? mergeLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
   const isHome = tab === "interests";
+  // Multi-user mode: My Interests is personal, so signed-out visitors get a sign-in invitation there.
+  const gated = isHome && account.mode === "multi" && !account.user && accountKnown;
   const paletteActions: PaletteActions = useMemo(
     () => ({
       section: switchTab,
@@ -277,6 +329,13 @@ function App() {
 
   return (
     <AccountCtx.Provider value={account}>
+      <div className="ambient" data-section={tab} aria-hidden="true">
+        <div className="ambient-orb a" />
+        <div className="ambient-orb b" />
+        <div className="ambient-orb c" />
+        <div className="ambient-dots" />
+        <div className="ambient-grain" />
+      </div>
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -293,8 +352,11 @@ function App() {
             ))}
           </nav>
           <span className="spacer desktop-only" />
-          <button className="icon-btn desktop-only" aria-label={t("sc.palette")} title={`${t("sc.palette")} (⌘K)`} onClick={() => setSheet({ kind: "palette" })}>
+          <button className="icon-btn" aria-label={t("search.title")} title={t("search.title")} onClick={() => setSheet({ kind: "search" })}>
             <IconSearch />
+          </button>
+          <button className="icon-btn desktop-only cmd-btn" aria-label={t("sc.palette")} title={`${t("sc.palette")} (⌘K)`} onClick={() => setSheet({ kind: "palette" })}>
+            <span aria-hidden="true">⌘</span>
           </button>
           <button className="icon-btn" aria-label={t("nav.track")} title={`${t("nav.track")} (T)`} onClick={() => setSheet({ kind: "track" })}>
             <IconTarget />
@@ -325,7 +387,13 @@ function App() {
           <StatusPill market={tab === "vn" ? "vn" : "us"} />
         </div>
 
-        {shown && <MarketStrip quotes={liveQuotes} macro={liveMacro} onOpen={openTicker} />}
+        {shown && !gated && <MarketStrip groups={stripRows.groups} macro={stripRows.macro} onOpen={openTicker} />}
+        {isHome && !gated && !readOnly && (
+          <button className="ss-bar" onClick={() => setSheet({ kind: "search" })}>
+            <IconSearch />
+            <span>{t("search.placeholder")}</span>
+          </button>
+        )}
 
         {error && (
           <div className="banner">
@@ -343,16 +411,27 @@ function App() {
 
         {loading ? (
           <Skeleton />
+        ) : gated ? (
+          <InterestsGate onBrowse={() => switchTab(lang === "vi" ? "vn" : "world")} />
         ) : !shown ? (
-          <div className="card empty">
-            <div className="empty-orb" />
-            <h2>{t("empty.title")}</h2>
-            <p>{t("empty.body")}</p>
-            <button className="btn-primary" onClick={() => refresh(tab)} disabled={!!refreshing}>
-              {refreshing ? t("empty.working") : t("empty.cta")}
-            </button>
-            <SetupChecklist />
-          </div>
+          readOnly ? (
+            <div className="card empty">
+              <div className="empty-orb" />
+              <h2>{t("empty.waitTitle")}</h2>
+              <p>{t("empty.waitBody")}</p>
+            </div>
+          ) : (
+            <div className="card empty">
+              <div className="empty-orb" />
+              <h2>{t("empty.title")}</h2>
+              <p>{t("empty.body")}</p>
+              <button className="btn-primary" onClick={() => refresh(tab)} disabled={!!refreshing}>
+                {refreshing ? t("empty.working") : t("empty.cta")}
+              </button>
+              {/* Setup steps are for whoever runs the app, not for every signed-in user. */}
+              {(account.mode !== "multi" || account.admin) && <SetupChecklist />}
+            </div>
+          )
         ) : (
           <>
             {interestsDigest && (
@@ -373,7 +452,7 @@ function App() {
                     {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                 {isHome && readOnly && account.mode === "multi" && <SignInCard />}
                     <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
-                    {tab !== "vn" && <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />}
+                    {(tab === "us" || tab === "interests") && <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />}
                   </>
                 )}
                 <Events events={shown.analysis.events} news={shown.news} />
@@ -401,7 +480,7 @@ function App() {
                 {isHome && !readOnly && <PortfolioCard holdings={holdings} onEdit={() => setSheet({ kind: "settings", tab: "holdings" })} onOpen={openTicker} />}
                 {isHome && readOnly && account.mode === "multi" && <SignInCard />}
                 <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
-                {tab !== "vn" && <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />}
+                {(tab === "us" || tab === "interests") && <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />}
                 <UpNext events={calendar.events} notes={calendar.notes} />
                 <WatchNext items={shown.analysis.watchNext} />
               </aside>
@@ -471,11 +550,19 @@ function App() {
           onHoldingsSaved={setHoldings}
         />
       )}
-      {sheet?.kind === "track" && <TrackSheet onClose={() => setSheet(null)} />}
+      {sheet?.kind === "track" && <TrackSheet onClose={() => setSheet(null)} section={tab} />}
       {sheet?.kind === "history" && <HistorySheet section={tab} current={oldDigest?.key ?? null} onPick={pickHistory} onClose={() => setSheet(null)} />}
       {sheet?.kind === "ticker" && (
-        <TickerSheet symbol={sheet.symbol} quote={quoteFor(sheet.symbol)} digests={allDigests} onClose={() => setSheet(null)} onAlert={readOnly ? undefined : (symbol) => setSheet({ kind: "settings", tab: "alerts", symbol })} />
+        <TickerSheet
+          symbol={sheet.symbol}
+          quote={quoteFor(sheet.symbol)}
+          digests={allDigests}
+          onClose={() => (sheet.back === "search" ? setSheet({ kind: "search" }) : followDirty.current ? closeSearch() : setSheet(null))}
+          onAlert={readOnly ? undefined : (symbol) => setSheet({ kind: "settings", tab: "alerts", symbol })}
+          action={<FollowButton symbol={sheet.symbol} name={symLabel(sheet.symbol)} region={sheet.symbol.endsWith(".VN") ? "vn" : "intl"} type={sheet.symbol.startsWith("^") ? "INDEX" : undefined} follow={follow} label />}
+        />
       )}
+      {sheet?.kind === "search" && <StockSearchSheet onClose={closeSearch} onOpen={(symbol) => setSheet({ kind: "ticker", symbol, back: "search" })} follow={follow} readOnly={readOnly} />}
       {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} tickers={chartSymbols} initial={sheet.q} />}
       {sheet?.kind === "catchup" && shown && (
         <CatchUp digest={shown} calendar={calendar.events} onClose={() => setSheet(null)} onAsk={() => setSheet({ kind: "ask" })} />
