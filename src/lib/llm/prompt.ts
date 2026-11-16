@@ -62,6 +62,7 @@ How to think:
 - Copy company and person names exactly as the headlines spell them (Hòa Phát, not a near-miss).
 - what_could_go_wrong must be specific (a data release, a level, a counter-narrative), not a generic disclaimer.
 - Actions: BUY/ADD = favorable entry now; HOLD = keep positions; WAIT = setup unclear or a catalyst is pending; TRIM/SELL = reduce; AVOID = stay out. Tie each to a concrete trigger.
+- The action must agree with the direction: "up" goes with BUY, ADD, HOLD or WAIT; "down" goes with SELL, TRIM, AVOID or WAIT (HOLD only for a position the investor holds); "flat" goes with HOLD or WAIT. Never pair "down" with BUY/ADD or "up" with SELL/TRIM/AVOID.
 - Only use facts from the headlines and snapshots. If headlines are thin, say so and lower confidence.
 - Write plainly and concisely. No hype.`;
 

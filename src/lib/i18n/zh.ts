@@ -501,4 +501,5 @@ export const zh: Dict = {
   "track.actionHint": "正数表示该操作有利。买入/加仓/持有：涨跌幅。卖出/减仓/回避/观望：避开的跌幅（或错过的涨幅）。",
   "track.waiting": "等待收盘",
   "track.gradesAt": "{when}评分",
+  "track.noResult": "{n} 个判断的波动小于该代码的通常幅度：不计入",
 };

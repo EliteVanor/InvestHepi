@@ -90,6 +90,8 @@ export interface Outlook {
   risks: string;
   /** The model's own number when `confidence` was adjusted by the track record (track.ts calibrate). */
   aiConfidence?: number;
+  /** The model's own action when it contradicted its direction and was replaced (pipeline alignAction). */
+  aiAction?: Action;
   /** Graded calls at this confidence level for this section or set: how many, how many right. */
   record?: { n: number; hits: number };
 }
@@ -191,5 +193,7 @@ export interface Call {
   correct?: boolean;
   /** Flat calls: the band (in %) the move had to stay inside, from the ticker's typical daily move. */
   band?: number;
+  /** An up/down call whose move stayed inside `band`: graded, counted neither right nor wrong. */
+  noResult?: boolean;
   gradedAt?: string;
 }

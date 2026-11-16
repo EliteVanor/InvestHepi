@@ -501,4 +501,5 @@ export const ja: Dict = {
   "track.actionHint": "プラスはそのアクションが報われたことを示します。買い/買い増し/保有：値動き。売り/一部売却/回避/待機：避けた下落（または逃した上昇）。",
   "track.waiting": "終値待ち",
   "track.gradesAt": "{when}に採点",
+  "track.noResult": "{n} 件は通常の値幅より小さい動き：集計外",
 };

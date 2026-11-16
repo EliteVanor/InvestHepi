@@ -90,8 +90,8 @@ export function TrackSheet({ onClose, section = "interests" }: { onClose: () => 
                     <b className="tr-sym">{symLabel(c.ticker)}</b>
                     {callLabel(c)}
                     <span className="num muted">{c.confidence}%</span>
-                    <span className={`num tr-result ${c.correct ? "ok" : "bad"}`} title={c.band != null && c.direction === "flat" ? `±${c.band}%` : undefined}>
-                      {c.correct ? "✓" : "✗"} {fmtPct(c.returnPct ?? 0)}
+                    <span className={`num tr-result ${c.noResult ? "muted" : c.correct ? "ok" : "bad"}`} title={c.band != null ? `±${c.band}%` : undefined}>
+                      {c.noResult ? "–" : c.correct ? "✓" : "✗"} {fmtPct(c.returnPct ?? 0)}
                     </span>
                   </div>
                 ))}
@@ -116,6 +116,7 @@ function Summary({ s }: { s: TrackStats }) {
         <div className="tr-hero-main">
           <span className="big-stat num">{pctOf(d.rate)}</span>
           <span className="muted">{d.n ? t("track.dirRate", { n: d.n }) : t("track.none")}</span>
+          {d.noResult > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.noResult", { n: d.noResult })}</span>}
         </div>
         <div className="tr-chips">
           {d.low != null && <span className="chip num">{t("track.likely", { lo: Math.round(d.low * 100), hi: Math.round(d.high! * 100) })}</span>}

@@ -501,4 +501,5 @@ export const fr: Dict = {
   "track.actionHint": "Positif signifie que l’action a payé. Acheter/Renforcer/Conserver : le mouvement. Vendre/Alléger/Éviter/Attendre : la baisse évitée (ou la hausse manquée).",
   "track.waiting": "En attente de la clôture",
   "track.gradesAt": "noté {when}",
+  "track.noResult": "{n} ont moins bougé que la variation habituelle : non comptées",
 };

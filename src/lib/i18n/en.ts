@@ -499,6 +499,7 @@ export const en = {
   "track.actionHint": "Positive means the action paid off. Buy/Add/Hold: the move. Sell/Trim/Avoid/Wait: the drop avoided (or the rise missed).",
   "track.waiting": "Waiting for the close",
   "track.gradesAt": "graded {when}",
+  "track.noResult": "{n} moved less than the ticker's usual range: not counted",
 };
 
 export type MsgKey = keyof typeof en;
