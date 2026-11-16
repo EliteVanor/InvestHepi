@@ -67,6 +67,7 @@ export const AnalysisSchema = z.object({
         ticker: z.string(),
         change_pct: z.number().describe("Last-session % change from the snapshot"),
         why: z.string().describe("Most likely reason from the headlines, or 'No clear news catalyst'"),
+        source_ids: z.array(z.number()).optional().describe("Numbers of the headlines that explain this move; [] if none"),
       }),
     )
     .describe("1-4 of the user's tickers that moved most last session. Empty outside the interests section."),
@@ -119,7 +120,7 @@ export function toAnalysis(r: RawAnalysis): Analysis {
       risks: o.risks,
     })),
     watchNext: r.watch_next ?? [],
-    movers: (r.movers ?? []).map((m) => ({ ticker: m.ticker.toUpperCase(), changePct: Number(m.change_pct) || 0, why: m.why })),
+    movers: (r.movers ?? []).map((m) => ({ ticker: m.ticker.toUpperCase(), changePct: Number(m.change_pct) || 0, why: m.why, sourceIds: m.source_ids ?? [] })),
     scenarios: (r.scenarios ?? [])
       .filter((s) => s.catalyst && s.cases?.length >= 2)
       .slice(0, 1)
@@ -157,7 +158,7 @@ export const SCHEMA_HINT = `Return ONLY a JSON object with exactly this shape:
   }],
   "outlook": [{ "interest": string, "ticker": string, "direction": "up"|"down"|"flat", "confidence": 0-100, "horizon": "today"|"this week", "action": "BUY"|"ADD"|"HOLD"|"WAIT"|"TRIM"|"SELL"|"AVOID", "action_trigger": string, "rationale": string, "risks": string }],
   "watch_next": string[],
-  "movers": [{ "ticker": string, "change_pct": number, "why": string }],
+  "movers": [{ "ticker": string, "change_pct": number, "why": string, "source_ids": number[] }],
   "scenarios": [{ "catalyst": string, "when": string, "cases": [{ "label": string, "probability": 0-100, "reaction": string, "action": string }] }]
 }`;
 
@@ -207,7 +208,7 @@ export function normalizeRaw(input: unknown): unknown {
       risks: str(x?.risks),
     })),
     watch_next: arr(o.watch_next).map(str),
-    movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why) })),
+    movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why), source_ids: arr(m?.source_ids).map((x: unknown) => Number(x)).filter((x: number) => Number.isInteger(x) && x >= 0) })),
     scenarios: arr(o.scenarios).map((s: any) => ({
       catalyst: str(s?.catalyst),
       when: str(s?.when),

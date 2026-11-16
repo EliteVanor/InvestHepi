@@ -11,7 +11,7 @@ import { SECTION_IDS, type Call, type Digest, type Holding, type Interest, type 
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart } from "./LiveChart";
-import { Ring, Sheet, arrow, fmtPct, fmtPrice, symLabel } from "./primitives";
+import { Ring, Sheet, arrow, fmtPct, fmtPrice, symLabel, openOverlay } from "./primitives";
 import { AlertsTab } from "./v3";
 import { useAccount } from "./account";
 import { VN_PRESET } from "@/lib/config";
@@ -306,7 +306,10 @@ function StatusTab() {
 function ShortcutsTab() {
   const { t } = usePrefs();
   const rows: [string[], MsgKey][] = [
-    [["1", "2", "3"], "sc.sections"],
+    [["1", "2", "3", "4"], "sc.sections"],
+    [["N"], "sc.news"],
+    [["["], "sc.sidebar"],
+    [["]"], "sc.chat"],
     [["R"], "sc.refresh"],
     [["/"], "sc.search"],
     [["⌘", "K"], "sc.palette"],
@@ -481,7 +484,7 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert, action }
   };
 
   return (
-    <Sheet title={<span>{symLabel(symbol)}{cd?.name ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide actions={action}>
+    <Sheet title={<span>{symLabel(symbol)}{cd?.name && cd.name !== symLabel(symbol) ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide actions={action}>
       <LiveChart symbol={symbol} height={300} onData={(d) => d.range === "1d" && setCd(d)} />
       <div className="stats stats-5" style={{ marginTop: 14 }}>
         <div className="stat"><small>{t("tk.5d")}</small><b className={`num ${(chg5 ?? 0) >= 0 ? "up" : "down"}`}>{chg5 == null ? "–" : fmtPct(chg5, 1)}</b></div>
@@ -647,6 +650,7 @@ export function PasswordSheet() {
       setBusy(false);
     }
   };
+  useEffect(() => openOverlay(), []);
   return (
     <div className="scrim">
       <form

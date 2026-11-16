@@ -1,13 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, IconStar, IconTarget, IconAlert } from "@/components/Icons";
+import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, IconStar, IconTarget, IconAlert, IconNews, IconSidebar, IconPanelRight } from "@/components/Icons";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
 import { ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, canOverlay, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
 import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
-import type { MsgKey } from "@/lib/i18n";
+import { relTime, type MsgKey } from "@/lib/i18n";
 import { isLang, langInfo } from "@/lib/languages";
 import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
 import { AccountButton, AccountCtx, InterestsGate, SignInCard, SignInSheet, type Account } from "@/components/account";
@@ -119,15 +119,47 @@ function App() {
       wq.removeEventListener("change", on);
     };
   }, []);
-  // One way to start a question: the docked panel on wide screens, the sheet elsewhere.
+  // Wide screens: the sidebar can shrink to an icon rail and the Ask AI dock can hide (saved per device).
+  const [sideRail, setSideRail] = useState(false);
+  const [dockOpen, setDockOpen] = useState(true);
+  useEffect(() => {
+    try {
+      setSideRail(localStorage.getItem("ih-side") === "rail");
+      setDockOpen(localStorage.getItem("ih-dock") !== "closed");
+    } catch {}
+  }, []);
+  const toggleRail = useCallback(() => {
+    setSideRail((r) => {
+      try {
+        localStorage.setItem("ih-side", r ? "open" : "rail");
+      } catch {}
+      return !r;
+    });
+  }, []);
+  const toggleDock = useCallback((open?: boolean) => {
+    setDockOpen((d) => {
+      const next = open ?? !d;
+      try {
+        localStorage.setItem("ih-dock", next ? "open" : "closed");
+      } catch {}
+      return next;
+    });
+  }, []);
+  // One way to start a question: the docked panel on wide screens (reopened if hidden), the sheet elsewhere.
   const [askReq, setAskReq] = useState<{ q?: string; n: number } | null>(null);
   const openAsk = useCallback(
     (q?: string) => {
-      if (isWide) setAskReq({ q, n: Date.now() });
-      else setSheet({ kind: "ask", q });
+      if (isWide) {
+        toggleDock(true);
+        setAskReq({ q, n: Date.now() });
+      } else setSheet({ kind: "ask", q });
     },
-    [isWide],
+    [isWide, toggleDock],
   );
+  // The headlines list sits at the end of the page: jump there from the sidebar, the top bar or "N".
+  const jumpToNews = useCallback(() => {
+    document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   // Restore last tab.
   useEffect(() => {
@@ -382,11 +414,14 @@ function App() {
         e.preventDefault();
         openAsk();
       } else if (k === "c") setSheet({ kind: "catchup" });
+      else if (k === "n") jumpToNews();
+      else if (e.key === "[" && isWide) toggleRail();
+      else if (e.key === "]" && isWide && !readOnly) toggleDock();
       else if (e.key === "?") setSheet({ kind: "settings", tab: "shortcuts" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sheet, tab, refresh, switchTab, toggleTheme, readOnly, canRefresh, openAsk]);
+  }, [sheet, tab, refresh, switchTab, toggleTheme, readOnly, canRefresh, openAsk, jumpToNews, isWide, toggleRail, toggleDock]);
 
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
   const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);
@@ -506,6 +541,10 @@ function App() {
           <button className="icon-btn" aria-label={t("search.title")} title={t("search.title")} onClick={() => setSheet({ kind: "search" })}>
             <IconSearch />
           </button>
+          <button className="icon-btn news-jump" aria-label={t("news.title")} title={`${t("news.title")} (N)`} onClick={jumpToNews} disabled={!shown}>
+            <IconNews />
+            {newIds.size > 0 && <span className="refresh-left num">{newIds.size > 99 ? "99+" : newIds.size}</span>}
+          </button>
           <button className="icon-btn desktop-only cmd-btn" aria-label={t("sc.palette")} title={`${t("sc.palette")} (⌘K)`} onClick={() => setSheet({ kind: "palette" })}>
             <span aria-hidden="true">⌘</span>
           </button>
@@ -533,12 +572,17 @@ function App() {
         </div>
       )}
 
-      <div className={isWide ? "shell" : undefined}>
+      <div className={isWide ? `shell${sideRail ? " rail" : ""}${readOnly || !dockOpen ? " nodock" : ""}` : undefined}>
       {isWide && (
-        <aside className="sidebar" aria-label={t("ui.sections")}>
-          <div className="brand">
-            <span className="brand-mark" aria-hidden="true" />
-            <span>InvestHepi</span>
+        <aside className={`sidebar${sideRail ? " rail" : ""}`} aria-label={t("ui.sections")}>
+          <div className="side-top">
+            <div className="brand">
+              <span className="brand-mark" aria-hidden="true" />
+              <span className="side-label">InvestHepi</span>
+            </div>
+            <button className="icon-btn side-toggle" onClick={toggleRail} aria-label={sideRail ? t("ui.expand") : t("ui.collapse")} title={`${sideRail ? t("ui.expand") : t("ui.collapse")} ([)`} aria-expanded={!sideRail}>
+              <IconSidebar />
+            </button>
           </div>
           <nav className="side-nav">
             {SECTION_IDS.map((s, i) => {
@@ -546,38 +590,56 @@ function App() {
               return (
                 <button key={s} aria-current={tab === s ? "page" : undefined} onClick={() => switchTab(s)} title={`${t(`sec.${s}` as MsgKey)} (${i + 1})`}>
                   <Icon />
-                  <span>{t(`sec.${s}` as MsgKey)}</span>
+                  <span className="side-label">{t(`sec.${s}` as MsgKey)}</span>
                   {badge(s) > 0 && <span className="badge">{badge(s) > 99 ? "99+" : badge(s)}</span>}
                 </button>
               );
             })}
+            {/* The headlines list is at the end of the page: jump straight to it. */}
+            <button className="side-news-btn" onClick={jumpToNews} title={`${t("news.title")} (N)`} disabled={!shown}>
+              <IconNews />
+              <span className="side-label">{t("news.title")}</span>
+              {newIds.size > 0 && <span className="badge">{newIds.size > 99 ? "99+" : newIds.size}</span>}
+            </button>
           </nav>
+          {!sideRail && shown && shown.news.length > 0 && (
+            <div className="side-headlines" aria-label={t("side.top")}>
+              <div className="side-caption">{t("side.top")}</div>
+              {shown.news.slice(0, 5).map((n) => (
+                <a key={n.id} href={n.link} target="_blank" rel="noreferrer" title={n.titleOrig ?? n.title} className={newIds.has(n.id) ? "is-new" : undefined}>
+                  <span className="side-hl-title">{n.title}</span>
+                  <small>{n.source} · {relTime(n.publishedAt, lang)}</small>
+                </a>
+              ))}
+              <button className="side-more" onClick={jumpToNews}>{t("side.allNews", { n: shown.news.length })}</button>
+            </div>
+          )}
           <div className="side-actions">
-            <button onClick={() => setSheet({ kind: "search" })}>
+            <button onClick={() => setSheet({ kind: "search" })} title={t("search.title")}>
               <IconSearch />
-              <span>{t("search.title")}</span>
+              <span className="side-label">{t("search.title")}</span>
             </button>
-            <button onClick={() => setSheet({ kind: "palette" })}>
+            <button onClick={() => setSheet({ kind: "palette" })} title={`${t("sc.palette")} (⌘K)`}>
               <span className="side-kbd" aria-hidden="true">⌘</span>
-              <span>{t("sc.palette")}</span>
-              <kbd>⌘K</kbd>
+              <span className="side-label">{t("sc.palette")}</span>
+              <kbd className="side-label">⌘K</kbd>
             </button>
-            <button onClick={() => setSheet({ kind: "track" })}>
+            <button onClick={() => setSheet({ kind: "track" })} title={`${t("nav.track")} (T)`}>
               <IconTarget />
-              <span>{t("nav.track")}</span>
-              <kbd>T</kbd>
+              <span className="side-label">{t("nav.track")}</span>
+              <kbd className="side-label">T</kbd>
             </button>
             {canRefresh && (
               <button className="refresh-btn" onClick={() => refresh(tab)} disabled={!!refreshing || refreshBlocked} title={refreshTitle}>
                 <IconRefresh className={refreshing ? "spin" : ""} />
-                <span>{t("nav.refresh")}</span>
+                <span className="side-label">{t("nav.refresh")}</span>
                 {!account.admin && quota && <span className="badge">{quota.left}</span>}
               </button>
             )}
           </div>
           <span className="spacer" />
           <div className="side-foot">
-            {readOnly && account.mode !== "multi" && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
+            {readOnly && account.mode !== "multi" && !sideRail && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
             <AccountButton />
             <button className="icon-btn" aria-label={t("nav.settings")} title={t("nav.settings")} onClick={() => setSheet({ kind: "settings" })}>
               <IconGear />
@@ -709,9 +771,9 @@ function App() {
           <a href="/terms" style={{ color: "inherit" }}>{t("foot.terms")}</a>
         </footer>
       </main>
-      {isWide && !readOnly && (
+      {isWide && !readOnly && dockOpen && (
         <aside className="chat-dock">
-          <AskPanel docked digest={shown} calendar={calendar.events} section={tab} request={askReq} />
+          <AskPanel docked digest={shown} calendar={calendar.events} section={tab} request={askReq} onClose={() => toggleDock(false)} closeLabel={`${t("ui.hideChat")} (])`} />
         </aside>
       )}
       </div>
@@ -740,8 +802,8 @@ function App() {
         )}
       </nav>
 
-      {!readOnly && !isWide && (
-        <button className="ask-fab" onClick={() => openAsk()} aria-label={t("ask.title")}>
+      {!readOnly && (!isWide || !dockOpen) && (
+        <button className="ask-fab" onClick={() => openAsk()} aria-label={t("ask.title")} title={isWide ? `${t("ui.showChat")} (])` : undefined}>
           <IconSparkles /> <span className="fab-text">{t("ask.title")}</span> <kbd>A</kbd>
         </button>
       )}

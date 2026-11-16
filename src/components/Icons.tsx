@@ -39,3 +39,8 @@ export const IconEye = (p: P) => (<svg {...base(p)}><path d="M2 12s3.5-7 10-7 10
 export const IconCheck = (p: P) => (<svg {...base(p)}><path d="m5 12 5 5 9-10" /></svg>);
 export const IconPlus = (p: P) => (<svg {...base(p)}><path d="M12 5v14M5 12h14" /></svg>);
 export const IconMoon = (p: P) => (<svg {...base(p)}><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" /></svg>);
+export const IconNews = (p: P) => (<svg {...base(p)}><path d="M4 5h13v14H6a2 2 0 0 1-2-2z" /><path d="M17 9h3v8a2 2 0 0 1-2 2" /><path d="M7.5 9h6M7.5 12.5h6M7.5 16h4" /></svg>);
+/** Sidebar toggle: a panel with its left column. */
+export const IconSidebar = (p: P) => (<svg {...base(p)}><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M9.5 4.5v15" /></svg>);
+/** Right panel toggle (Ask AI dock). */
+export const IconPanelRight = (p: P) => (<svg {...base(p)}><rect x="3.5" y="4.5" width="17" height="15" rx="3" /><path d="M14.5 4.5v15" /></svg>);

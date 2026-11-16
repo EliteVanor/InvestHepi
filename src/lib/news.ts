@@ -45,6 +45,30 @@ async function fetchWithTimeout(url: string, ms = 9000): Promise<Response> {
 }
 
 /** Parse an RSS 2.0 or Atom document into NewsItems. */
+const AHEAD_MS = 10 * 60_000;
+
+/**
+ * Some feeds label local time as UTC: Tuổi Trẻ stamps Hanoi time with GMT, so its headlines looked
+ * 7 hours in the future ("in 1 hour" in the app, wrong times in the AI's prompt). When any item of a
+ * Vietnamese site's feed is more than 10 minutes ahead, the whole feed is Hanoi time mislabeled:
+ * every item moves back exactly 7 hours. Elsewhere a future time is clamped to now. Exported for tests.
+ */
+export function fixFeedTimes(items: NewsItem[], url: string, now = new Date()): NewsItem[] {
+  const ahead = (i: NewsItem) => new Date(i.publishedAt).getTime() - now.getTime() > AHEAD_MS;
+  if (!items.some(ahead)) return items;
+  let host = "";
+  try {
+    host = new URL(url).hostname;
+  } catch {}
+  if (host.endsWith(".vn")) {
+    return items.map((i) => {
+      const t = new Date(new Date(i.publishedAt).getTime() - 7 * 3600_000);
+      return { ...i, publishedAt: (t.getTime() - now.getTime() > AHEAD_MS ? now : t).toISOString() };
+    });
+  }
+  return items.map((i) => (ahead(i) ? { ...i, publishedAt: now.toISOString() } : i));
+}
+
 export function parseFeed(xml: string, feedName: string): NewsItem[] {
   const doc = parser.parse(xml);
   const rawItems: Record<string, unknown>[] = [];
@@ -99,7 +123,7 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
       try {
         const res = await fetchWithTimeout(f.url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return parseFeed(await res.text(), f.name);
+        return fixFeedTimes(parseFeed(await res.text(), f.name), f.url);
       } catch (e) {
         errors.push(`${f.name}: ${(e as Error).message}`);
         return [];

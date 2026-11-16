@@ -106,6 +106,16 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(!("^N225" in W.SAME_HOURS_ETF) && !("^HSI" in W.SAME_HOURS_ETF), "non-US indexes are never estimated from US-hours ETFs");
   assert.match(M.levelText({ symbol: "^GSPC", price: 7599.5, prevClose: 7561.67, changePct: 0.5, history: [["2026-11-13", 7561.67], ["2026-11-16", 7599.5]], source: "vndirect-world", estimatedVia: "SPY" }), /^≈7599\.50 \[estimate .*SPY.*say "about"\]/);
 
+  /* ---------------- feed times: Hanoi time mislabeled as UTC */
+  const N = await import("../src/lib/news");
+  const at = new Date("2026-11-16T04:00:55Z");
+  const item = (iso: string) => ({ id: iso, title: "t", link: "", source: "Tuổi Trẻ", publishedAt: iso });
+  const fixed = N.fixFeedTimes([item("2026-11-16T09:40:00.000Z"), item("2026-11-16T03:00:00.000Z")], "https://tuoitre.vn/rss/kinh-doanh.rss", at);
+  assert.deepEqual(fixed.map((i) => i.publishedAt), ["2026-11-16T02:40:00.000Z", "2026-11-15T20:00:00.000Z"], "a Vietnamese feed in the future is Hanoi time: every item moves back 7 h");
+  const ok = [item("2026-11-16T03:00:00.000Z")];
+  assert.equal(N.fixFeedTimes(ok, "https://tuoitre.vn/rss", at), ok, "feeds with sane times are untouched");
+  assert.equal(N.fixFeedTimes([item("2026-11-16T09:00:00.000Z")], "https://example.com/rss", at)[0].publishedAt, at.toISOString(), "elsewhere: clamped to now");
+
   /* ---------------- yields move in basis points */
   const mt = M.macroAsText([{ symbol: "^TNX", price: 5.15, prevClose: 5.1, changePct: 0.98, history: [["2026-11-06", 4.84], ["2026-11-09", 4.88], ["2026-11-10", 4.98], ["2026-11-11", 5.0], ["2026-11-12", 5.1], ["2026-11-13", 5.15]], source: "vndirect-world", dailyOnly: true }], ["^TNX"]);
   assert.match(mt, /\(1d \+5 bp, 5d \+31 bp\)/, "not a percent of the yield");
@@ -123,6 +133,33 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   const quotes = [{ symbol: "KDH.VN", price: 15550, prevClose: 15300, changePct: 1.63, history: [], source: "vndirect" as const }];
   const aligned = Pl.alignMovers([{ ticker: "kdh.vn", changePct: 15.2, why: "5-day gain" }, { ticker: "MADEUP", changePct: 9, why: "x" }], quotes);
   assert.deepEqual(aligned.map((m) => [m.ticker, m.changePct]), [["KDH.VN", 1.63]], "last-session change from the data; tickers not in the snapshot dropped");
+
+  /* ---------------- movers: a reason only when a cited headline is about the company */
+  const hq = [
+    { symbol: "VHM.VN", price: 62800, prevClose: 62200, changePct: 0.96, history: [], source: "vndirect" as const },
+    { symbol: "VIC.VN", price: 248300, prevClose: 243000, changePct: 2.18, history: [], source: "vndirect" as const },
+    { symbol: "NVDA", price: 162.85, prevClose: 166.2, changePct: -2.0, history: [], source: "nasdaq" as const },
+  ];
+  const hn = [
+    { id: "0", title: "Novaland chuyển đổi trái phiếu quốc tế thành cổ phiếu", link: "", source: "x", publishedAt: "" },
+    { id: "1", title: "Vingroup lãi đột biến quý III, cổ phiếu VIC tăng mạnh", link: "", source: "x", publishedAt: "" },
+    { id: "2", title: "Nvidia shares slide as chip export curbs tighten", link: "", source: "x", publishedAt: "" },
+  ];
+  const mv = Pl.alignMovers(
+    [
+      { ticker: "VHM.VN", changePct: 1, why: "Recent earnings beat", sourceIds: [] },
+      { ticker: "VIC.VN", changePct: 1, why: "Novaland conversion boosts the sector", sourceIds: [0] },
+      { ticker: "VIC.VN", changePct: 1, why: "Q3 profit jump", sourceIds: [1] },
+      { ticker: "NVDA", changePct: 1, why: "Export curbs", sourceIds: [2] },
+    ],
+    hq,
+    hn,
+  );
+  assert.equal(mv[0].why, "No clear news in today's headlines.", "no cited headline: no invented cause");
+  assert.equal(mv[1].why, "No clear news in today's headlines.", "a headline about another company doesn't count");
+  assert.equal(mv[2].why, "Q3 profit jump", "a headline naming the stock keeps the reason");
+  assert.equal(mv[3].why, "Export curbs", "company name (Nvidia) matches NVDA");
+  assert.ok(Pl.headlineMentions("Cổ phiếu VIC tăng trần", "VIC.VN") && !Pl.headlineMentions("VICTORY Securities tăng", "VIC.VN"), "codes match as whole words only");
 
   /* ---------------- live overlay: a real level may replace an ETF stand-in, never the reverse */
   const V3 = await import("../src/components/v3");

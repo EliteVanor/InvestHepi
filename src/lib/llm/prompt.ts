@@ -58,7 +58,8 @@ How to think:
 - SCENARIOS: if a major scheduled catalyst (FOMC, CPI, jobs report, or earnings of a followed ticker) falls within the next 7 days, return ONE scenario set for the nearest one with 2-3 cases (e.g. hot / in line / cool), probabilities that sum to 100, the expected reaction of the user's interests, and what to do in each case. Probabilities are your estimates; keep them sober. Otherwise return an empty array.
 - Use the UPCOMING catalysts: a pending CPI print, FOMC decision or earnings report often argues for WAIT or smaller size until it passes. Put dated catalysts in watch_next. Only give a date that appears in UPCOMING CATALYSTS or a headline; otherwise name the item without a date. Never invent release dates.
 - Historical analogs: use a PLAYBOOK entry only when it is the same kind of event (a China growth scare is not a US inflation print). Otherwise set analog to null: a loose analog misleads more than none. analog.event is a short plain description of the past event ("Hot August 2022 US CPI"), never the bracketed tag. If you use one from memory, keep numbers approximate and only cite events you are sure happened.
-- movers: if no headline explains a move, say so ("no clear news") instead of guessing a cause.
+- movers: put the numbers of the headlines that explain each move in source_ids. A headline only counts if it is about that company or its sector news names it. If none does, source_ids is [] and why is "No clear news in today's headlines": never guess a cause (earnings, flows, sentiment) that no headline states.
+- Copy company and person names exactly as the headlines spell them (Hòa Phát, not a near-miss).
 - what_could_go_wrong must be specific (a data release, a level, a counter-narrative), not a generic disclaimer.
 - Actions: BUY/ADD = favorable entry now; HOLD = keep positions; WAIT = setup unclear or a catalyst is pending; TRIM/SELL = reduce; AVOID = stay out. Tie each to a concrete trigger.
 - Only use facts from the headlines and snapshots. If headlines are thin, say so and lower confidence.
@@ -127,6 +128,7 @@ const VN_RULES = `
 VIETNAM SECTION:
 - Prices are in VND; indexes in points. VN-Index moves are driven mostly by banks, real estate (Vingroup family) and foreign/retail flows, so weigh those first.
 - Key drivers: State Bank of Vietnam rates, credit growth and liquidity (OMO), USD/VND pressure, foreign net buying/selling, margin debt, earnings seasons, public investment, FDI and export data, and index reclassification news. US rates and the dollar matter through the exchange rate and foreign flows.
+- The central bank and the dong: SBV SELLING dollars (spot or forwards) supports the dong; SBV BUYING dollars adds dong liquidity and is done when the dong is strong or to rebuild reserves (it does not "keep the dong strong"). A rising USD/VND means a weaker dong, which raises import costs and tends to push foreign investors to sell.
 - HOSE has a 7% daily price limit and T+2 settlement; retail investors dominate turnover, so momentum and sentiment swings are sharp.
 - "today" means the next HOSE session; "week" means the next 5 HOSE sessions.`;
 

@@ -104,7 +104,8 @@ export interface Analysis {
   events: KeyEvent[];
   outlook: Outlook[];
   watchNext: string[];
-  movers: { ticker: string; changePct: number; why: string }[];
+  /** sourceIds: the headlines (indexes into Digest.news) that explain the move; empty = no clear news. */
+  movers: { ticker: string; changePct: number; why: string; sourceIds?: number[] }[];
   /** "If hot / in line / cool" playbook for the next major catalyst (may be empty or missing on old digests). */
   scenarios?: Scenario[];
 }

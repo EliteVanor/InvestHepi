@@ -390,19 +390,41 @@ input, select, textarea { font: inherit; color: inherit; }
 footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin: 36px auto 0; max-width: 60ch; }
 
 /* ---------- Sheets ---------- */
-.scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.32); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.2s ease; }
+/*
+ * Overlays fit the screen the person can actually see: --app-h is the visual viewport's height (set
+ * by openOverlay in primitives.tsx; it shrinks for browser bars and the keyboard), falling back to dvh
+ * and then vh. The scrim spans exactly that box, so a bottom sheet's top can't slide above the screen.
+ */
+.scrim {
+  position: fixed; left: 0; right: 0; top: var(--app-top, 0px); z-index: 60;
+  height: 100vh; height: 100dvh; height: var(--app-h, 100dvh);
+  background: rgba(0, 0, 0, 0.36); display: flex; align-items: flex-end; justify-content: center;
+  padding-top: max(env(safe-area-inset-top), 10px);
+  animation: fade 0.2s ease; overscroll-behavior: contain; touch-action: none;
+}
+.scrim > * { touch-action: auto; }
 @media (min-width: 720px) { .scrim { align-items: center; padding: 32px; } }
 .sheet:focus { outline: none; }
 .sheet {
-  width: 100%; max-width: 680px; max-height: 92vh; overflow: auto; overscroll-behavior: contain;
+  width: 100%; max-width: 680px; max-height: 100%; overflow: auto; overscroll-behavior: contain;
   background: var(--surface); border-radius: 22px 22px 0 0; box-shadow: var(--shadow-lg);
   padding: 8px 20px calc(24px + env(safe-area-inset-bottom));
   animation: rise 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-@media (min-width: 720px) { .sheet { border-radius: 22px; padding: 8px 24px 24px; } }
+/* Header outside the scroller: only the body scrolls, so title and close stay reachable. */
+.sheet.split { display: flex; flex-direction: column; overflow: hidden; padding: 8px 0 0; }
+.sheet.split > .grabber, .sheet.split > .sheet-head { flex: none; margin-left: 20px; margin-right: 20px; }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 20px calc(24px + env(safe-area-inset-bottom)); }
+@media (min-width: 720px) {
+  .sheet { border-radius: 22px; padding: 8px 24px 24px; max-height: min(100%, 880px); }
+  .sheet.split { padding: 8px 0 0; }
+  .sheet.split > .grabber, .sheet.split > .sheet-head { margin-left: 24px; margin-right: 24px; }
+  .sheet-body { padding: 0 24px 24px; }
+}
 .grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--fill); margin: 0 auto 8px; }
 @media (min-width: 720px) { .grabber { display: none; } }
 .sheet-head { position: sticky; top: -8px; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 10px 0 12px; background: var(--surface); }
+.sheet.split .sheet-head { position: relative; top: 0; border-bottom: 0.5px solid transparent; }
 .sheet-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.022em; margin: 0; }
 .sheet-section { margin-top: 18px; }
 .sheet-section h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--label-2); margin: 0 0 8px; }
@@ -638,7 +660,7 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .since-more { display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; }
 
 /* ---------- Catch-up mode ---------- */
-.cu { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; background: var(--bg); animation: fade 0.2s ease; }
+.cu { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); z-index: 80; display: flex; flex-direction: column; background: var(--bg); animation: fade 0.2s ease; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 .cu::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(700px circle at 15% 0%, var(--glow-a), transparent 60%), radial-gradient(600px circle at 90% 100%, var(--glow-b), transparent 60%); }
 .cu > * { position: relative; }
 .cu-top { padding: calc(10px + env(safe-area-inset-top)) 16px 0; max-width: 720px; width: 100%; margin: 0 auto; }
@@ -883,12 +905,20 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .qcard .via { margin-left: 6px; font-family: var(--font); font-size: 10px; font-weight: 600; letter-spacing: 0.02em; padding: 1px 5px; border-radius: 5px; color: var(--label-2); background: var(--fill); vertical-align: 2px; }
 
 /* ---------- Wide layout (≥1280px): sidebar | content | Ask AI ---------- */
-.shell { display: grid; grid-template-columns: 232px minmax(0, 1fr) 380px; min-height: 100vh; align-items: start; }
+.shell { display: grid; grid-template-columns: 248px minmax(0, 1fr) 380px; min-height: 100vh; align-items: start; transition: grid-template-columns 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* Collapsed sidebar = icon rail; hidden Ask AI dock = no third column. The content column takes the room. */
+.shell.rail { grid-template-columns: 68px minmax(0, 1fr) 380px; }
+.shell.nodock { grid-template-columns: 248px minmax(0, 1fr); }
+.shell.rail.nodock { grid-template-columns: 68px minmax(0, 1fr); }
 .shell > .page { max-width: 1120px; width: 100%; margin: 0 auto; padding: 0 24px 80px; }
 /* The content column is narrower beside two panels: keep one column until there's room for two. */
 .shell .grid { grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 1640px) {
   .shell .grid { grid-template-columns: minmax(0, 1fr) 340px; }
+}
+/* With a panel tucked away there's room for the two-column grid sooner. */
+@media (min-width: 1440px) {
+  .shell.nodock .grid, .shell.rail .grid { grid-template-columns: minmax(0, 1fr) 320px; }
 }
 .sidebar, .chat-dock {
   position: sticky; top: 0; height: 100vh; z-index: 20;
@@ -927,3 +957,65 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .chat-open { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; padding: 8px 10px; border-radius: 12px; }
 .chat-open:hover { background: var(--fill-2); }
 .chat-title { font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Sidebar: header, News, top headlines, icon rail ---------- */
+.side-top { display: flex; align-items: center; gap: 4px; padding: 0 0 0 0; }
+.side-top .brand { flex: 1; min-width: 0; }
+.side-toggle { color: var(--label-2); }
+.side-toggle svg { width: 18px; height: 18px; }
+.side-nav .side-news-btn { margin-top: 6px; position: relative; }
+.side-nav .side-news-btn::before { content: ""; position: absolute; left: 10px; right: 10px; top: -4px; height: 0.5px; background: var(--sep); }
+.side-nav button[disabled] { opacity: 0.45; cursor: default; }
+.side-headlines { display: grid; gap: 2px; margin-top: -6px; }
+.side-caption { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--label-3); padding: 4px 10px 4px; }
+.side-headlines a { display: grid; gap: 2px; padding: 7px 10px; border-radius: 10px; color: var(--label); transition: background 0.15s ease; }
+.side-headlines a:hover { background: var(--fill-2); }
+.side-headlines a.is-new .side-hl-title::before { content: ""; display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-right: 6px; vertical-align: 2px; }
+.side-hl-title { font-size: 13px; line-height: 1.35; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.side-headlines small { font-size: 11px; color: var(--label-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-more { justify-self: start; font-size: 12px; font-weight: 600; color: var(--accent); padding: 4px 10px; border-radius: 8px; }
+.side-more:hover { background: var(--accent-tint); }
+.sidebar.rail { padding: 18px 10px; align-items: stretch; }
+.sidebar.rail .side-label { display: none; }
+.sidebar.rail .side-top { flex-direction: column; gap: 10px; }
+.sidebar.rail .brand { justify-content: center; padding: 4px 0; }
+.sidebar.rail .side-nav button, .sidebar.rail .side-actions button { justify-content: center; padding: 0; position: relative; }
+.sidebar.rail .badge { position: absolute; top: 2px; right: 2px; margin: 0; min-width: 16px; height: 16px; font-size: 10px; padding: 0 4px; }
+.sidebar.rail .side-foot { flex-direction: column; padding: 0; }
+.sidebar.rail .side-foot > :first-child { flex: none; }
+.sidebar.rail .side-kbd { width: auto; }
+.news-jump { position: relative; }
+.ask-fab[title] { z-index: 36; }
+@media (prefers-reduced-motion: reduce) {
+  .shell { transition: none; }
+}
+
+/* ---------- v11 polish ---------- */
+/* Story count on the briefing: a quiet link to the headlines. */
+.meta-link { color: inherit; font: inherit; padding: 0; border-radius: 4px; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: color 0.15s ease, text-decoration-color 0.15s ease; }
+.meta-link:hover { color: var(--accent); text-decoration-color: currentColor; }
+/* Phones: one more header button (News) fits with tighter spacing. */
+@media (max-width: 719px) {
+  .topbar-inner { gap: 2px; }
+  .topbar-inner .brand { margin-right: auto; }
+}
+/* Sidebar: the current section gets an accent bar, like a selected row in a Mac sidebar. */
+.side-nav button { position: relative; }
+.side-nav button[aria-current="page"]::after { content: ""; position: absolute; left: -12px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent); }
+.sidebar.rail .side-nav button[aria-current="page"]::after { left: -10px; }
+.side-nav button[aria-current="page"] .side-label { color: var(--label); }
+/* Keyboard focus is visible everywhere in the panels. */
+.side-nav button:focus-visible, .side-actions button:focus-visible, .side-headlines a:focus-visible, .side-more:focus-visible, .ask .pill-btn:focus-visible, .chat-open:focus-visible, .meta-link:focus-visible, .icon-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Strip cards lift slightly under the pointer (not on touch screens). */
+@media (hover: hover) {
+  .qcard:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12), inset 0 1px 0 var(--sheen); }
+}
+/* Docked chat: a soft fade under the header so scrolled messages don't cut off hard. */
+.ask.docked .ask-body { mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%); }
+@media (prefers-reduced-motion: reduce) {
+  .qcard:hover { transform: none; }
+  .meta-link { transition: none; }
+}
+/* Jumping to the headlines lands below the sticky top bar (no top bar on wide screens). */
+#headlines { scroll-margin-top: 68px; }
+.shell #headlines { scroll-margin-top: 16px; }

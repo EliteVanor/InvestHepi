@@ -302,7 +302,10 @@ export function Briefing({
       <div className="hero-meta">
         <span>{t("brief.updated", { t: relTime(digest.generatedAt, lang) })}</span>
         <span>{digest.provider === "rules" ? t("brief.rules") : providerName(digest.provider)}</span>
-        <span>{t("brief.stories", { n: digest.news.length })}</span>
+        {/* The story count jumps to the headlines list at the end of the page. */}
+        <button className="meta-link" onClick={() => document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+          {t("brief.stories", { n: digest.news.length })}
+        </button>
         <div className="hero-actions">
           <button className="pill-btn catch-btn" onClick={onCatchUp} title="C">
             <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" /></svg>

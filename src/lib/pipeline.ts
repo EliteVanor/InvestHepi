@@ -29,7 +29,10 @@ import { delJSON, getJSON, setJSON } from "./store";
 import { getTechnicals, type Technicals } from "./technicals";
 import { computeStats, gradeCalls, loadCalls, recordCalls, trackRecordText } from "./track";
 import { activeUsers, multiUser } from "./users";
-import type { Digest, DigestMeta, Interest, Quote, SectionId, Settings } from "./types";
+import { fold, vnNameSync } from "./vnlist";
+import { symLabel } from "./symbols";
+import { ALIASES } from "./tickers";
+import type { Digest, DigestMeta, Interest, NewsItem, Quote, SectionId, Settings } from "./types";
 
 const HISTORY_SIZE = 10;
 export const DEFAULT_SETTINGS: Settings = { briefingLanguage: "en" };
@@ -392,7 +395,7 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
   }, o.route ?? (o.section === "interests" ? "userAuto" : "shared"));
   // Movers' numbers come from the price data, never from the model (it once reported a 5-day gain as
   // the last session's). A ticker that isn't in the snapshot is dropped.
-  analysis.movers = alignMovers(analysis.movers ?? [], quotes);
+  analysis.movers = alignMovers(analysis.movers ?? [], quotes, news);
   return {
     section: o.section,
     generatedAt: o.now.toISOString(),
@@ -411,12 +414,35 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
   };
 }
 
-/** Movers with the snapshot's own last-session change; tickers not in the snapshot are dropped. Exported for tests. */
-export function alignMovers<M extends { ticker: string; changePct: number }>(movers: M[], quotes: Quote[]): M[] {
+const NO_CLEAR_NEWS = "No clear news in today's headlines.";
+
+/** Words a headline would use for a ticker: its code, our label, and the Vietnamese listing's short name. */
+function namesFor(symbol: string): string[] {
+  const code = symbol.replace(/\.VN$/i, "").replace(/^\^/, "");
+  const names = [code, symLabel(symbol), vnNameSync(code) ?? "", ...(ALIASES[symbol] ?? [])];
+  return [...new Set(names.map((n) => fold(n)).filter((n) => n.length >= 2))];
+}
+
+/** Whether a headline mentions the company (code as a whole word, names as substrings; accents ignored). */
+export function headlineMentions(title: string, symbol: string): boolean {
+  const t = fold(title);
+  return namesFor(symbol).some((n) => (n.length <= 4 ? new RegExp(`(^|[^a-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(t) : t.includes(n)));
+}
+
+/**
+ * Movers with the snapshot's own last-session change (tickers not in the snapshot are dropped), and a
+ * reason only when a cited headline actually mentions the company; otherwise "No clear news". The model
+ * once explained VHM's move with an "earnings beat" no headline mentioned. Exported for tests.
+ */
+export function alignMovers<M extends { ticker: string; changePct: number; why: string; sourceIds?: number[] }>(movers: M[], quotes: Quote[], news?: NewsItem[]): M[] {
   const by = new Map(quotes.map((q) => [q.symbol.toUpperCase(), q]));
   return movers.flatMap((m) => {
     const q = by.get(m.ticker.toUpperCase());
-    return q ? [{ ...m, ticker: q.symbol, changePct: q.changePct }] : [];
+    if (!q) return [];
+    const out = { ...m, ticker: q.symbol, changePct: q.changePct };
+    if (!news) return [out];
+    const backed = (m.sourceIds ?? []).filter((i) => news[i] && headlineMentions(news[i].title, q.symbol));
+    return [backed.length ? { ...out, sourceIds: backed } : { ...out, why: NO_CLEAR_NEWS, sourceIds: [] }];
   });
 }
 

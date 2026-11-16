@@ -12,7 +12,7 @@ import type { CalendarEvent, Digest } from "@/lib/types";
 import type { T } from "@/lib/i18n";
 import { relTime } from "@/lib/i18n";
 import { useAccount } from "./account";
-import { IconSparkles, IconX } from "./Icons";
+import { IconPanelRight, IconSparkles, IconX } from "./Icons";
 import { calTitle, groupName, symName } from "./labels";
 import { usePrefs } from "./prefs";
 import { Sheet, fmtPct } from "./primitives";
@@ -60,7 +60,7 @@ const FOLLOW_UPS = ["ask.fRisks", "ask.fWrong", "ask.fSimple", "ask.fAct"] as co
 const CURRENT = "ih-chat-current";
 
 export function AskPanel({
-  digest, calendar, section, request, docked, onClose,
+  digest, calendar, section, request, docked, onClose, closeLabel,
 }: {
   digest?: Digest | null;
   calendar?: CalendarEvent[];
@@ -69,6 +69,8 @@ export function AskPanel({
   request?: { q?: string; n: number } | null;
   docked?: boolean;
   onClose?: () => void;
+  /** Label for the close button (the dock hides rather than closes). */
+  closeLabel?: string;
 }) {
   const { t, api, lang } = usePrefs();
   const account = useAccount();
@@ -103,9 +105,12 @@ export function AskPanel({
       });
   }, [api, canSave]);
 
+  // Keep the newest message in view: the docked panel scrolls itself, the phone sheet scrolls its body.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const scroller = el.scrollHeight > el.clientHeight + 1 ? el : (el.closest(".sheet-body") as HTMLElement | null);
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }, [msgs, busy, view]);
 
   const remember = (id?: string) => {
@@ -214,8 +219,8 @@ export function AskPanel({
           </button>
         )}
         {onClose && (
-          <button className="icon-btn" onClick={onClose} aria-label={t("set.close")}>
-            <IconX />
+          <button className="icon-btn" onClick={onClose} aria-label={closeLabel ?? t("set.close")} title={closeLabel}>
+            {docked ? <IconPanelRight /> : <IconX />}
           </button>
         )}
       </div>
