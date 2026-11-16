@@ -32,7 +32,12 @@ export const limits = {
   userRefreshGapMin: () => Number(process.env.USER_REFRESH_GAP_MIN) || 90,
   /** Fresh rule-based copies per user per day (no AI, so generous). */
   rules: () => Number(process.env.RULES_DAILY_LIMIT) || 30,
+  /** Background briefings per user per day: a new set's first one, and the catch-up after an absence. */
+  autogen: () => Number(process.env.AUTOGEN_DAILY_LIMIT) || 6,
 };
+
+/** Counts one background briefing against the caller's daily cap; false when the cap is reached. */
+export const autogenAllowed = async () => (await hit("autogen", limits.autogen())).ok;
 
 /** A user's refresh-button state: presses left today and when the next one is allowed. */
 export async function userRefreshQuota(now = new Date()): Promise<{ left: number; limit: number; nextAt: string | null }> {

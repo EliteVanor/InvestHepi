@@ -8,7 +8,7 @@
     "start": "next start",
     "typecheck": "tsc --noEmit",
     "refresh": "tsx scripts/refresh.ts",
-    "test": "tsx scripts/i18ntest.ts && tsx scripts/selftest.ts && tsx scripts/llmtest.ts && tsx scripts/v3test.ts && tsx scripts/v4test.ts && tsx scripts/v4btest.ts && tsx scripts/v5test.ts && tsx scripts/vntest.ts && tsx scripts/searchtest.ts && tsx scripts/securitytest.ts && tsx scripts/v9test.ts && tsx scripts/budgettest.ts && tsx scripts/v10test.ts && tsx scripts/v13test.ts"
+    "test": "tsx scripts/i18ntest.ts && tsx scripts/selftest.ts && tsx scripts/llmtest.ts && tsx scripts/v3test.ts && tsx scripts/v4test.ts && tsx scripts/v4btest.ts && tsx scripts/v5test.ts && tsx scripts/vntest.ts && tsx scripts/searchtest.ts && tsx scripts/securitytest.ts && tsx scripts/v9test.ts && tsx scripts/budgettest.ts && tsx scripts/v10test.ts && tsx scripts/v13test.ts && tsx scripts/v14test.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.8.0",

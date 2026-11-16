@@ -1,5 +1,5 @@
-import { after } from "next/server";
 import { isScheduler } from "@/lib/auth";
+import { background } from "@/lib/background";
 import { lateNow, markTick, runTick } from "@/lib/scheduler";
 
 export const dynamic = "force-dynamic";
@@ -16,12 +16,7 @@ async function handle(req: Request) {
   const src = new URL(req.url).searchParams.get("src") ?? (ua.startsWith("vercel-cron") ? "vercel" : ua.includes("cron-job.org") ? "cron-job.org" : "other");
   const now = new Date();
   const [late] = await Promise.all([lateNow(now.getTime()), markTick(src, now)]);
-  const work = () => runTick({ chain: true }).then(() => undefined, () => undefined);
-  try {
-    after(work);
-  } catch {
-    await work(); // outside a request (tests): run inline
-  }
+  await background(() => runTick({ chain: true }), "await");
   return Response.json({ ok: late.length === 0, late }, { status: late.length ? 503 : 200 });
 }
 

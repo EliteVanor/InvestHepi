@@ -16,7 +16,6 @@ delete process.env.APP_PASSWORD;
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.GEMINI_API_KEY;
 delete process.env.LLM_PROVIDER;
-delete process.env.SHARED_LANGUAGES;
 
 const feedsHit: string[] = [];
 const quoted: string[] = [];
@@ -121,7 +120,6 @@ const OWNER_EMAIL = "owner@example.com";
 
   // ---- scheduler: shared sections per language, interests grouped by identical sets
   const P = await import("../src/lib/pipeline");
-  assert.deepEqual((await P.sharedLanguages()).sort(), ["en", "vi"], "languages actually in use");
   const groups = await P.interestGroups();
   const byUids = [...groups.values()].map((g) => g.uids.sort().join(","));
   assert.ok(byUids.includes([U.uidFor(B), U.uidFor(C), "owner"].sort().join(",")), "Bob, Carol (Vietnamese) and the owner share one English briefing: language no longer splits sets");

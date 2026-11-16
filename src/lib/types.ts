@@ -3,13 +3,6 @@ export type SectionId = "interests" | "world" | "us" | "vn";
 export const SECTION_IDS: SectionId[] = ["interests", "world", "us", "vn"];
 export const SHARED_SECTIONS: SectionId[] = ["world", "us", "vn"];
 
-export const SECTIONS: { id: SectionId; label: string; blurb: string }[] = [
-  { id: "interests", label: "My Interests", blurb: "News about the markets and stocks you follow" },
-  { id: "world", label: "World", blurb: "Global events that move markets" },
-  { id: "us", label: "US", blurb: "US politics, economy and policy" },
-  { id: "vn", label: "Vietnam", blurb: "Vietnam's stock market and economy" },
-];
-
 /** Something the user follows, e.g. "Semiconductors". */
 export interface Interest {
   id: string;

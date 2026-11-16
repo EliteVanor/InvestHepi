@@ -271,7 +271,6 @@ async function vndirectChart(symbol: string, range: ChartRange): Promise<ChartDa
   return { ...d, range };
 }
 
-export const vnPriceName = (symbol: string) => VN_INDEXES[symbol]?.name;
 
 /* ------------------------------------------------------- world (VNDirect) */
 

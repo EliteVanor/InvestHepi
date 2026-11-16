@@ -231,7 +231,3 @@ export const PLAYBOOK: PlaybookEntry[] = [
   },
 ];
 
-export function playbookFor(types: EventType[]): PlaybookEntry[] {
-  const set = new Set(types);
-  return PLAYBOOK.filter((p) => set.has(p.type));
-}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AlertLogEntry, AlertSettings, PriceAlert, PriceOp } from "@/lib/alerts";
 import type { LiveQuote } from "@/lib/chart";
 import { relTime, type MsgKey } from "@/lib/i18n";
@@ -9,7 +9,7 @@ import type { Quote, SectionId } from "@/lib/types";
 import { IconBolt, IconChart, IconFlag, IconGear, IconGlobe, IconMoon, IconRefresh, IconSearch, IconSparkles, IconStar, IconTarget, IconX } from "./Icons";
 import { LiveChart } from "./LiveChart";
 import { usePrefs } from "./prefs";
-import { Sheet, fmtPct } from "./primitives";
+import { fmtPct } from "./primitives";
 
 /* ------------------------------------------------------------ live quotes */
 

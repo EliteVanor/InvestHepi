@@ -7,7 +7,7 @@ import type { AlertSettings } from "@/lib/alerts";
 import type { ChartData } from "@/lib/chart";
 import { tickerMatcher } from "@/lib/tickers";
 import type { TrackStats } from "@/lib/track";
-import { SECTION_IDS, type Call, type Digest, type Holding, type Interest, type Quote, type SectionId, type Settings } from "@/lib/types";
+import { SECTION_IDS, type Call, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart } from "./LiveChart";

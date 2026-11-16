@@ -110,8 +110,14 @@ export async function touchUser(u: User, now = new Date()): Promise<void> {
   await setJSON("users", list.slice(-5000));
 }
 
+/**
+ * Users whose interest sets the timetable refreshes: seen in the last day (owner's decision, Nov 16).
+ * Someone back after longer gets a catch-up briefing when they open the app (/api/me).
+ */
+export const SCHEDULED_ACTIVE_DAYS = 1;
+
 /** Users seen in the last `days` days (the owner is always included). */
-export async function activeUsers(days = 14, now = new Date()): Promise<string[]> {
+export async function activeUsers(days = SCHEDULED_ACTIVE_DAYS, now = new Date()): Promise<string[]> {
   const cutoff = now.getTime() - days * 86400_000;
   const uids = (await listUsers()).filter((u) => new Date(u.lastSeen).getTime() >= cutoff).map((u) => u.uid);
   return [...new Set([OWNER, ...uids])];

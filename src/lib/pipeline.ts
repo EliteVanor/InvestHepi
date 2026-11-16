@@ -16,7 +16,7 @@ import { afterRefresh } from "./alerts";
 import { getCalendar } from "./calendar";
 import { SECTORS } from "./chart";
 import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTION_FEEDS, SECTION_GROUPS, SECTION_MACRO, SECTION_STRIPS, type SharedSection, type StripGroup } from "./config";
-import { GUEST, OWNER, currentUid, ukey, withUser } from "./context";
+import { OWNER, currentUid, ukey, withUser } from "./context";
 import { isLang } from "./languages";
 import { analyze, type Route } from "./llm";
 import { analyzeWithRules } from "./llm/rules";
@@ -93,29 +93,27 @@ async function callsKeyFor(hash: string): Promise<string> {
   return key;
 }
 
-/** Shared sections are generated for the languages active users read (English always). */
-export async function sharedLanguages(): Promise<string[]> {
-  const fixed = process.env.SHARED_LANGUAGES?.split(",").map((s) => s.trim()).filter(isLang);
-  if (fixed?.length) return fixed;
-  const langs = new Set<string>(["en"]);
-  for (const uid of multiUser() ? await activeUsers() : [OWNER]) {
-    const s = await withUser(uid, loadSettings);
-    langs.add(s.briefingLanguage);
-  }
-  return [...langs].slice(0, 3);
-}
+/** A returning user's briefing older than this is refreshed when they open the app. */
+export const CATCH_UP_AFTER_MS = 12 * 3600_000;
 
 /**
- * A newly saved interest set gets its first briefing right away (users can't refresh by hand).
- * Costs nothing if anyone already follows the same set; capped per user per day.
- * Returns true if a briefing exists or was just made.
+ * The caller's interest briefing, made in the background when it's missing (a newly saved set) or,
+ * with `maxAgeMs`, older than that (a user back after the scheduler stopped refreshing them).
+ * Free when it's already fresh; otherwise `allowed()` counts it against the daily cap.
  */
-export async function ensureInterestBriefing(uid: string, onSpend?: () => Promise<boolean>): Promise<boolean> {
+export async function ensureInterestBriefing(uid: string, allowed?: () => Promise<boolean>, maxAgeMs = Infinity): Promise<"fresh" | "capped" | "refreshed"> {
   const { interests, hash } = await currentInterestSet();
-  if (await getJSON(`ib:${hash}`)) return true;
-  if (onSpend && !(await onSpend())) return false;
+  if (!(await interestBriefingStale(hash, maxAgeMs))) return "fresh";
+  if (allowed && !(await allowed())) return "capped";
   await refreshInterestSet(interests, "en", [uid]);
-  return true;
+  return "refreshed";
+}
+
+/** When the set's briefing was written, if it's missing or older than `maxAgeMs` (null = fresh). */
+export async function interestBriefingStale(hash: string, maxAgeMs = Infinity, now = Date.now()): Promise<{ at: string | null } | null> {
+  const last = await getJSON<{ at: string }>(`ib:${hash}:last`);
+  if (!last) return (await getJSON(`ib:${hash}`)) ? null : { at: null }; // briefings from before :last existed count as fresh
+  return now - new Date(last.at).getTime() > maxAgeMs ? { at: last.at } : null;
 }
 
 /* ------------------------------------------------------------- reading */
@@ -356,7 +354,6 @@ interface BuildOptions {
 
 /** Track records of the shared sections (calls on market groups, graded like personal ones). */
 export const SHARED_CALLS: Record<"world" | "us" | "vn", string> = { world: "calls:world", us: "calls:us", vn: "calls:vn" };
-export const VN_CALLS = SHARED_CALLS.vn;
 
 async function buildDigest(o: BuildOptions): Promise<Digest> {
   const cov = coverage(o.section, o.interests, o.extraSymbols);

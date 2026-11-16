@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   return gate(req, {}, async (user) => {
     const { lang, hash } = await currentInterestSet(new URL(req.url).searchParams.get("lang") ?? undefined);
     const last: Record<string, unknown> = { interests: await getJSON(`ib:${hash}:last`) };
-    for (const s of SHARED_SECTIONS) last[s] = (await getJSON(`digest:${s}:${lang}:last`)) ?? (await getJSON(`lastRefresh:${s}`));
+    for (const s of SHARED_SECTIONS) last[s] = await getJSON(`digest:${s}:${lang}:last`);
     const multi = multiUser();
     // Opt-in (a few store reads): slot states and the last tick, no secrets. Public on purpose so
     // anyone can check the schedule is running without signing in.

@@ -118,11 +118,6 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
   return uniq.map((s) => got.get(s)).filter((q): q is Quote => q != null);
 }
 
-/** One fresh quote (never stale: used for grading calls). */
-export async function getQuote(symbol: string): Promise<Quote | null> {
-  return (await getQuotes([symbol], { allowStale: false }))[0] ?? null;
-}
-
 export function quotesAsText(quotes: Quote[]): string {
   if (!quotes.length) return "(price data unavailable)";
   return quotes

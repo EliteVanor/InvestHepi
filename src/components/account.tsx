@@ -12,6 +12,8 @@ export interface Account {
   admin: boolean;
   /** Refresh button quota: users 5 a day (90 min apart, My Interests); admin 10 a day. */
   refresh?: { left: number; limit: number; nextAt: string | null } | null;
+  /** Set when the server is refreshing an old interest briefing: the old version's time. */
+  catchUp?: string;
 }
 
 export const AccountCtx = createContext<Account>({ mode: "single", user: null, admin: false });
