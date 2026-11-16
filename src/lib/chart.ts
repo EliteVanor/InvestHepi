@@ -6,7 +6,8 @@
  */
 import { VN_INDEXES, dnseBars, ictDay, isVnSymbol, pool, vietcapBars, vndirectDaily, type DnseRes, type VietcapFrame } from "./vnmarket";
 import { getJSON, setJSON } from "./store";
-import { PROXIES, symLabel } from "./symbols";
+import { PROXIES, exchangeTz, symLabel } from "./symbols";
+import { SAME_HOURS_ETF, estimateFromEtf, hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooCooling, yahooJson, yahooSpark } from "./yahoo";
 
 export type ChartRange = "1d" | "5d" | "1mo" | "6mo" | "1y";
@@ -21,7 +22,7 @@ export interface Bar {
   v: number;
 }
 
-export type PriceSource = "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect";
+export type PriceSource = "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "vndirect-world";
 
 export interface ChartData {
   symbol: string;
@@ -43,6 +44,12 @@ export interface ChartData {
   stale?: boolean;
   /** Priced from this tracking ETF (see PROXIES). */
   proxy?: string;
+  /** Real level carried forward by this same-hours ETF's move since the last official close (worldmarket.ts). */
+  estimatedVia?: string;
+  /** Daily closes only (no intraday source for this market): bars are whole sessions. */
+  dailyOnly?: boolean;
+  /** Price and previous close are official; only the intraday path is this same-hours ETF's, rescaled. */
+  shapeVia?: string;
 }
 
 const INTERVAL: Record<ChartRange, string> = { "1d": "1m", "5d": "5m", "1mo": "60m", "6mo": "1d", "1y": "1d" };
@@ -225,9 +232,24 @@ function vnChartData(symbol: string, range: ChartRange, all: Bar[], daily: Bar[]
   };
 }
 
+/**
+ * Daily bars used only for the previous close of intraday charts. They change once a day, so they're
+ * kept 15 minutes: the strip polls every symbol's 1-day chart, and this halves those requests.
+ * (DNSE's daily series doesn't include today's bar during the session, so it can't be the live price.)
+ */
+const dailyRef = new Map<string, { at: number; bars: Bar[] }>();
+async function dnseDailyRef(symbol: string): Promise<Bar[] | null> {
+  const hit = dailyRef.get(symbol);
+  if (hit && Date.now() - hit.at < 15 * 60_000) return hit.bars;
+  const bars = await dnseBars(symbol, "1D", 12).catch(() => null);
+  if (bars) dailyRef.set(symbol, { at: Date.now(), bars });
+  if (dailyRef.size > 300) dailyRef.delete(dailyRef.keys().next().value!);
+  return bars ?? hit?.bars ?? null;
+}
+
 async function dnseChart(symbol: string, range: ChartRange): Promise<ChartData> {
   const plan = VN_PLAN[range];
-  const [bars, daily] = await Promise.all([dnseBars(symbol, plan.dnse, plan.days), plan.dnse === "1D" ? null : dnseBars(symbol, "1D", 12).catch(() => null)]);
+  const [bars, daily] = await Promise.all([dnseBars(symbol, plan.dnse, plan.days), plan.dnse === "1D" ? null : dnseDailyRef(symbol)]);
   return vnChartData(symbol, range, bars, daily, "dnse");
 }
 
@@ -251,6 +273,72 @@ async function vndirectChart(symbol: string, range: ChartRange): Promise<ChartDa
 
 export const vnPriceName = (symbol: string) => VN_INDEXES[symbol]?.name;
 
+/* ------------------------------------------------------- world (VNDirect) */
+
+const SESSIONS: Record<ChartRange, number> = { "1d": 5, "5d": 10, "1mo": 22, "6mo": 126, "1y": 252 };
+const etfDate = (s: string, t: number) => new Intl.DateTimeFormat("en-CA", { timeZone: exchangeTz(s), year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t * 1000));
+
+/**
+ * Real index / futures / FX levels from VNDirect's daily closes. For US-hours markets with a same-hours
+ * ETF, a newer ETF session extends the series as an estimate (1D/5D: the ETF's intraday path scaled to
+ * the official level; longer ranges: one estimated bar). Everything else is daily closes, labeled so.
+ */
+async function worldChart(symbol: string, range: ChartRange): Promise<ChartData> {
+  const daily = (await worldDaily([symbol])).get(symbol);
+  if (!daily || daily.length < 2) throw new Error("vndirect-world: no data");
+  const etf = SAME_HOURS_ETF[symbol];
+  const name = symLabel(symbol);
+  if (etf) {
+    try {
+      const etfDaily = await getChart(etf, "1mo");
+      const closes = collapseDaily(etf, etfDaily.bars);
+      const est = estimateFromEtf(daily, closes, (t) => etfDate(etf, t));
+      if (est) {
+        if (range === "1d" || range === "5d") {
+          // The ETF's own intraday path, rescaled so its previous close sits on the official close.
+          const intra = await getChart(etf, range);
+          const k = est.prevClose / intra.prevClose;
+          const bars = intra.bars.map((b) => ({ ...b, o: b.o * k, h: b.h * k, l: b.l * k, c: b.c * k, v: 0 }));
+          return { symbol, range, bars, price: intra.price * k, prevClose: est.prevClose, changePct: intra.changePct, asOf: intra.asOf, source: "vndirect-world", estimatedVia: etf, name };
+        }
+        const t = Math.floor(Date.UTC(+est.date.slice(0, 4), +est.date.slice(5, 7) - 1, +est.date.slice(8, 10), 12) / 1000);
+        const bars = [...daily, { t, o: est.prevClose, h: Math.max(est.prevClose, est.price), l: Math.min(est.prevClose, est.price), c: est.price, v: 0 }].slice(-SESSIONS[range]);
+        return worldData(symbol, range, bars, { estimatedVia: etf });
+      }
+      // Same session in both: the official close is known; the ETF only supplies the intraday shape,
+      // scaled so it ends exactly on the official close.
+      const offLast = daily.at(-1)!;
+      if ((range === "1d" || range === "5d") && closes.at(-1)?.[0] === etfDate(etf, offLast.t)) {
+        const intra = await getChart(etf, range);
+        const k = offLast.c / intra.price;
+        const bars = intra.bars.map((b) => ({ ...b, o: b.o * k, h: b.h * k, l: b.l * k, c: b.c * k, v: 0 }));
+        const prev = daily.at(-2)!.c;
+        return { symbol, range, bars, price: offLast.c, prevClose: prev, changePct: pct(offLast.c, prev), asOf: intra.asOf, source: "vndirect-world", shapeVia: etf, name };
+      }
+    } catch {}
+  }
+  return worldData(symbol, range, daily.slice(-SESSIONS[range]), { dailyOnly: true });
+}
+
+function worldData(symbol: string, range: ChartRange, bars: Bar[], extra: Partial<ChartData>): ChartData {
+  const last = bars.at(-1)!;
+  const prev = bars.at(-2)?.c ?? last.c;
+  const year = bars.length > 150 ? bars : null;
+  return {
+    symbol, range, bars, price: last.c, prevClose: prev, changePct: pct(last.c, prev), asOf: last.t, source: "vndirect-world", name: symLabel(symbol),
+    dayHigh: last.h, dayLow: last.l,
+    ...(year ? { fiftyTwoWeekHigh: Math.max(...year.map((b) => b.h)), fiftyTwoWeekLow: Math.min(...year.map((b) => b.l)) } : {}),
+    ...extra,
+  };
+}
+
+/** Daily closes [exchange date, close] from any bars (intraday collapsed to each day's last bar). */
+function collapseDaily(symbol: string, bars: Bar[]): [string, number][] {
+  const m = new Map<string, number>();
+  for (const b of bars) m.set(etfDate(symbol, b.t), b.c);
+  return [...m.entries()];
+}
+
 /* ---------------------------------------------------------------- public */
 
 export async function getChart(symbol: string, range: ChartRange): Promise<ChartData> {
@@ -269,6 +357,8 @@ export async function getChart(symbol: string, range: ChartRange): Promise<Chart
     : [
         ["yahoo", () => yahooChart(symbol, range)],
         ["nasdaq", () => nasdaqChart(symbol, range)],
+        // Real levels (daily, or estimated from a same-hours ETF) before falling back to an ETF's price.
+        ...(hasWorldDaily(symbol) ? ([["vndirect-world", () => worldChart(symbol, range)]] as [string, () => Promise<ChartData>][]) : []),
       ];
   const errors: string[] = [];
   for (const [, run] of sources) {
@@ -333,6 +423,30 @@ export interface LiveQuote {
   spark: number[];
   /** Priced from this tracking ETF (see PROXIES). */
   proxy?: string;
+  /** Exchange-local date of the session the price and spark belong to (YYYY-MM-DD). */
+  session?: string;
+  /** True when `spark` is that session's intraday path (baseline: prevClose); false for daily closes. */
+  intraday?: boolean;
+  /** Real level estimated from this same-hours ETF's move (see worldmarket.ts). */
+  estimatedVia?: string;
+  /** Only daily closes exist for this market; the price is the last close. */
+  dailyOnly?: boolean;
+}
+
+/** Exchange-local date of a timestamp (Hanoi for Vietnamese symbols, the exchange's zone otherwise). */
+function sessionDate(symbol: string, t: number): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: exchangeTz(symbol), year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(t * 1000));
+}
+
+/** A live quote from a 1-day chart: identical numbers to the chart sheet, by construction. */
+function liveFromChart(s: string, d: ChartData): LiveQuote {
+  // An ETF-priced index trades on the ETF's exchange (New York), so date its session there.
+  const intraday = d.range === "1d" && d.source !== "vndirect" && !d.stale;
+  return {
+    symbol: s, price: d.price, prevClose: d.prevClose, changePct: d.changePct, asOf: d.asOf, spark: thin(d.bars.map((b) => b.c)),
+    session: sessionDate(d.estimatedVia ?? d.shapeVia ?? d.proxy ?? s, d.asOf), intraday: intraday && !d.dailyOnly,
+    ...(d.proxy ? { proxy: d.proxy } : {}), ...(d.estimatedVia ? { estimatedVia: d.estimatedVia } : {}), ...(d.dailyOnly ? { dailyOnly: true } : {}),
+  };
 }
 
 const liveCache = new Map<string, { at: number; q: LiveQuote }>();
@@ -373,17 +487,16 @@ export async function getLiveQuotes(symbols: string[]): Promise<LiveQuote[]> {
         if (!v || !v.points.length) continue;
         const price = v.points.at(-1)![1];
         const prev = v.chartPreviousClose ?? v.points[0][1];
-        put({ symbol: s, price, prevClose: prev, changePct: pct(price, prev), asOf: v.points.at(-1)![0], spark: thin(v.points.map((p) => p[1])) });
+        const asOf = v.points.at(-1)![0];
+        put({ symbol: s, price, prevClose: prev, changePct: pct(price, prev), asOf, spark: thin(v.points.map((p) => p[1])), session: sessionDate(s, asOf), intraday: true });
       }
     })(),
-    // Vietnam: DNSE daily bars (today's bar is live), a few at a time.
+    // Vietnam: the same 1-day chart the chart sheet shows (DNSE 1-minute bars, Vietcap backup), so the
+    // strip and the chart can't disagree; VNDirect's daily batch (today's row is live) as a last resort.
     (async () => {
       await pool(vn, 6, async (s) => {
         try {
-          const bars = await dnseBars(s, "1D", 12);
-          const last = bars.at(-1)!;
-          const prev = bars.at(-2)!.c;
-          put({ symbol: s, price: last.c, prevClose: prev, changePct: pct(last.c, prev), asOf: last.t, spark: bars.slice(-10).map((b) => b.c) });
+          put(liveFromChart(s, await getChart(s, "1d")));
         } catch {}
       });
       const missing = vn.filter((s) => !out.has(s));
@@ -392,17 +505,17 @@ export async function getLiveQuotes(symbols: string[]): Promise<LiveQuote[]> {
       for (const [s, bars] of m) {
         const last = bars.at(-1)!;
         const prev = bars.at(-2)!.c;
-        put({ symbol: s, price: last.c, prevClose: prev, changePct: pct(last.c, prev), asOf: last.t, spark: bars.map((b) => b.c) });
+        put({ symbol: s, price: last.c, prevClose: prev, changePct: pct(last.c, prev), asOf: last.t, spark: bars.map((b) => b.c), session: sessionDate(s, last.t), intraday: false });
       }
     })(),
   ]);
 
-  // Last resort, per symbol (bounded so a bad minute can't fan out into dozens of requests).
-  const rest = uniq.filter((s) => !out.has(s)).slice(0, 8);
-  await pool(rest, 2, async (s) => {
+  // Per symbol for whatever is still missing. With Yahoo refusing the server that's the whole
+  // non-VN strip (Nasdaq, one request per symbol, cached 20 s), so the bound covers a full strip.
+  const rest = uniq.filter((s) => !out.has(s)).slice(0, 32);
+  await pool(rest, 4, async (s) => {
     try {
-      const d = await getChart(s, "1d");
-      put({ symbol: s, price: d.price, prevClose: d.prevClose, changePct: d.changePct, asOf: d.asOf, spark: thin(d.bars.map((b) => b.c)), ...(d.proxy ? { proxy: d.proxy } : {}) });
+      put(liveFromChart(s, await getChart(s, "1d")));
     } catch {}
   });
   if (liveCache.size > 800) for (const k of [...liveCache.keys()].slice(0, 200)) liveCache.delete(k);

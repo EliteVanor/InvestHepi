@@ -42,11 +42,19 @@ export interface Quote {
   changePct: number;
   /** Daily closes, oldest first: [isoDate, close] */
   history: [string, number][];
-  source: "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "stooq";
+  source: "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "vndirect-world" | "stooq";
   /** Filled from the last good copy because every source failed this time. */
   stale?: boolean;
   /** Priced from this US-listed ETF because the symbol's own source refused (see PROXIES). */
   proxy?: string;
+  /** Live overlay only: the latest session's intraday closes (sparkline, baseline prevClose). */
+  spark?: number[];
+  /** Real level carried forward by this same-hours ETF's move since the last official close. */
+  estimatedVia?: string;
+  /** Only daily closes exist for this market: the price is the last close (see its date). */
+  dailyOnly?: boolean;
+  /** Exchange-local date of the session the price belongs to (live overlay). */
+  session?: string;
 }
 
 export type Direction = "up" | "down" | "flat";

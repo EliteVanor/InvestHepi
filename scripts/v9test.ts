@@ -188,7 +188,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const ko = await searchTickers("KO");
     assert.equal(ko[0].symbol, "KO", "an exact ticker comes first");
     assert.equal(ko[0].name, "Coca-Cola Company (The)", "boilerplate trimmed from names");
-    assert.ok(yahooOnly("0700.HK") && yahooOnly("^TNX") && !yahooOnly("^HSI") && !yahooOnly("VCB.VN") && !yahooOnly("AAPL"));
+    assert.ok(yahooOnly("0700.HK") && yahooOnly("005930.KS") && !yahooOnly("^HSI") && !yahooOnly("VCB.VN") && !yahooOnly("AAPL"));
+    assert.ok(!yahooOnly("^TNX") && !yahooOnly("VND=X"), "the 10-year yield (Treasury) and USD/VND (VNDirect) have real sources now");
     const tencent = await searchTickers("tencent");
     assert.ok(!tencent.some((h) => h.symbol === "0700.HK"), "a Hong Kong listing isn't offered when nothing can price it");
   }

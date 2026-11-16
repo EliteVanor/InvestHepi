@@ -390,6 +390,9 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
     language: o.lang,
     now: o.now,
   }, o.route ?? (o.section === "interests" ? "userAuto" : "shared"));
+  // Movers' numbers come from the price data, never from the model (it once reported a 5-day gain as
+  // the last session's). A ticker that isn't in the snapshot is dropped.
+  analysis.movers = alignMovers(analysis.movers ?? [], quotes);
   return {
     section: o.section,
     generatedAt: o.now.toISOString(),
@@ -406,6 +409,15 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
     feedErrors: newsRes.errors,
     language: provider === "rules" ? "en" : o.lang,
   };
+}
+
+/** Movers with the snapshot's own last-session change; tickers not in the snapshot are dropped. Exported for tests. */
+export function alignMovers<M extends { ticker: string; changePct: number }>(movers: M[], quotes: Quote[]): M[] {
+  const by = new Map(quotes.map((q) => [q.symbol.toUpperCase(), q]));
+  return movers.flatMap((m) => {
+    const q = by.get(m.ticker.toUpperCase());
+    return q ? [{ ...m, ticker: q.symbol, changePct: q.changePct }] : [];
+  });
 }
 
 /** Refresh one shared section in one language. */

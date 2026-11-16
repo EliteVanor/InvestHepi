@@ -6,10 +6,11 @@
  *   Vietnamese symbols (*.VN): one VNDirect request for all of them, then DNSE/Vietcap per symbol.
  */
 import { getChart, type Bar } from "./chart";
-import { PROXIES, symLabel } from "./symbols";
+import { PROXIES, isPercentQuote, priceDigits, symLabel } from "./symbols";
 import type { Quote } from "./types";
 import { getJSON, setJSON } from "./store";
 import { isVnSymbol, pool, vnDaily, vndirectDaily } from "./vnmarket";
+import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
 
 const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
@@ -39,7 +40,8 @@ async function singleQuote(symbol: string): Promise<Quote | null> {
     const d = await getChart(symbol, "1mo");
     // 1mo charts are hourly; collapse to daily closes.
     const q = quoteFromCloses(symbol, d.bars.map((b) => [b.t, b.c]), d.source);
-    return q && d.proxy ? { ...q, proxy: d.proxy } : q;
+    if (!q) return null;
+    return { ...q, ...(d.proxy ? { proxy: d.proxy } : {}), ...(d.estimatedVia ? { estimatedVia: d.estimatedVia } : {}), ...(d.dailyOnly ? { dailyOnly: true } : {}) };
   } catch {
     return null;
   }
@@ -100,6 +102,9 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
     })(),
   ]);
   const missing = uniq.filter((s) => !got.has(s));
+  // Real world levels (VNDirect daily) for Yahoo-only indexes, futures and FX: one request per table,
+  // which the per-symbol fallbacks below then read from cache.
+  if (missing.some(hasWorldDaily)) await worldDaily(missing.filter(hasWorldDaily)).catch(() => null);
   // Per-symbol fallbacks, bounded: a rate-limited minute shouldn't fan out into dozens of requests.
   const filled = await pool(missing.slice(0, 30), 4, singleQuote);
   filled.forEach((q) => q && got.set(q.symbol, q));
@@ -128,14 +133,25 @@ export function quotesAsText(quotes: Quote[]): string {
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       const name = symLabel(q.symbol);
       const label = `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}`;
-      // Proxied: the price is the ETF's (EWH ~23 for a Hang Seng near 25,000), so give moves only.
-      const level = q.proxy ? `level unknown [tracked by the ${q.proxy} ETF: use % moves only, never quote a price level]` : q.price.toFixed(2);
-      return `${label}: ${level}${q.stale ? " [stale, from an earlier fetch]" : ""} (last session ${f(q.changePct)}, 5d ${f(wk)}, 1mo ${f(mo)})`;
+      return `${label}: ${levelText(q)}${q.stale ? " [stale, from an earlier fetch]" : ""} (last session ${f(q.changePct)}, 5d ${f(wk)}, 1mo ${f(mo)})`;
     })
     .join("\n");
 }
 
 export const macroLabel = (symbol: string) => symLabel(symbol);
+
+/**
+ * How a price is shown to the AI, with the session it belongs to: a real level, a real level carried
+ * forward by a same-hours ETF (marked ≈), or "level unknown" when only an ETF's price exists.
+ */
+export function levelText(q: Quote): string {
+  const px = (v: number) => v.toFixed(priceDigits(q.symbol, v) ?? 2);
+  const date = q.history.at(-1)?.[0];
+  const prevDate = q.history.at(-2)?.[0];
+  if (q.proxy) return `level unknown [tracked by the ${q.proxy} ETF: use % moves only, never quote a price level]`;
+  if (q.estimatedVia) return `≈${px(q.price)} [estimate for the ${date} session: the ${prevDate} official close ${px(q.prevClose)} moved with the ${q.estimatedVia} ETF; say "about"]`;
+  return `${px(q.price)}${date ? ` [${q.dailyOnly ? "close of " : "as of "}${date}]` : ""}`;
+}
 /** Names for the AI, where the short UI label is ambiguous ("Dollar" was read as USD/VND). */
 const PROMPT_NAMES: Record<string, string> = { "DX-Y.NYB": "US dollar index (DXY, vs euro, yen etc.; not USD/VND)", "^TNX": "US 10-year Treasury yield (%)" };
 const promptName = (s: string) => PROMPT_NAMES[s] ?? macroLabel(s);
@@ -149,7 +165,13 @@ export function macroAsText(quotes: Quote[], wanted: string[] = []): string {
       const h = q.history;
       const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
-      if (!q.proxy) return `${promptName(q.symbol)}: ${q.price.toFixed(2)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;
+      // Yields move in basis points, not percent of themselves (5.10% → 5.15% is +5 bp, not "+1.0%").
+      if (isPercentQuote(q.symbol)) {
+        const bp = (d: number) => (Number.isFinite(d) ? `${d >= 0 ? "+" : ""}${Math.round(d * 100)} bp` : "n/a");
+        const back = h.length > 5 ? h[h.length - 6][1] : NaN;
+        return `${promptName(q.symbol)}: ${levelText(q)} (1d ${bp(q.price - q.prevClose)}, 5d ${bp(q.price - back)})`;
+      }
+      if (!q.proxy) return `${promptName(q.symbol)}: ${levelText(q)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;
       // e.g. USO ~145 is not "oil at $145", UUP ~29.5 is not the dollar index (or USD/VND).
       const note = q.symbol === "^VIX" ? "the VIXY futures ETF: direction only, it moves less than the VIX itself" : `the ${q.proxy} ETF: % moves only`;
       return `${promptName(q.symbol)}: level unknown [tracked by ${note}; never quote a price level] (1d ${f(q.changePct)}, 5d ${f(wk)})`;

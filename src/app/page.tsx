@@ -5,13 +5,14 @@ import { IconGear, IconGlobe, IconFlag, IconRefresh, IconSearch, IconSparkles, I
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, TrackSheet, type Tab as SettingsTab } from "@/components/sheets";
-import { AskSheet, ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
+import { ChartCard, CommandPalette, SectorHeatmap, SetupChecklist, canOverlay, mergeLive, useLiveQuotes, type PaletteActions } from "@/components/v3";
 import { CatchUp, MoodGaugeCard, PortfolioCard, ScenariosCard, SinceLastVisit, ToastProvider, Watchlist, useToast } from "@/components/v4";
 import type { MsgKey } from "@/lib/i18n";
 import { isLang, langInfo } from "@/lib/languages";
 import { SECTION_IDS as ALL_SECTIONS, type CalendarEvent, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
 import { AccountButton, AccountCtx, InterestsGate, SignInCard, SignInSheet, type Account } from "@/components/account";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
+import { AskPanel, AskSheet } from "@/components/ask";
 import { symLabel } from "@/lib/symbols";
 import { SECTION_MACRO, SECTION_STRIPS, type SharedSection } from "@/lib/config";
 
@@ -101,13 +102,32 @@ function App() {
   const searchRef = useRef<HTMLInputElement>(null);
   // Render only the layout that matches the viewport so widgets don't mount (and poll) twice.
   const [isMobile, setIsMobile] = useState(false);
+  // Wide screens: sections and actions in a left sidebar, Ask AI docked on the right.
+  const [isWide, setIsWide] = useState(false);
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 719px)");
-    const on = () => setIsMobile(mq.matches);
+    const wq = window.matchMedia("(min-width: 1280px)");
+    const on = () => {
+      setIsMobile(mq.matches);
+      setIsWide(wq.matches);
+    };
     on();
     mq.addEventListener("change", on);
-    return () => mq.removeEventListener("change", on);
+    wq.addEventListener("change", on);
+    return () => {
+      mq.removeEventListener("change", on);
+      wq.removeEventListener("change", on);
+    };
   }, []);
+  // One way to start a question: the docked panel on wide screens, the sheet elsewhere.
+  const [askReq, setAskReq] = useState<{ q?: string; n: number } | null>(null);
+  const openAsk = useCallback(
+    (q?: string) => {
+      if (isWide) setAskReq({ q, n: Date.now() });
+      else setSheet({ kind: "ask", q });
+    },
+    [isWide],
+  );
 
   // Restore last tab.
   useEffect(() => {
@@ -155,7 +175,9 @@ function App() {
   useEffect(() => () => {
     if (pollRef.current) window.clearInterval(pollRef.current);
   }, []);
-  const loadCalendar = useCallback(() => api<{ events: CalendarEvent[]; notes: string[] }>("/api/calendar").then(setCalendar).catch(() => {}), [api]);
+  // The calendar follows the tab (shared tabs: their market groups, not personal earnings dates).
+  const calTab = useRef<SectionId>("interests");
+  const loadCalendar = useCallback(() => api<{ events: CalendarEvent[]; notes: string[] }>(`/api/calendar?section=${calTab.current}`).then(setCalendar).catch(() => {}), [api]);
   const loadInterests = useCallback(() => api<{ interests: Interest[] }>("/api/interests").then((j) => setInterests(j.interests)).catch(() => {}), [api]);
 
   // Initial load waits for prefs (read state) so "new" dots are computed correctly.
@@ -323,6 +345,12 @@ function App() {
     }
   };
 
+  useEffect(() => {
+    if (calTab.current === tab) return;
+    calTab.current = tab;
+    if (ready) loadCalendar();
+  }, [tab, ready, loadCalendar]);
+
   const switchTab = useCallback((s: SectionId) => {
     setTab(s);
     setOldDigest(null);
@@ -352,22 +380,25 @@ function App() {
       else if (k === "l") window.dispatchEvent(new Event("ih-listen"));
       else if (k === "a" && !readOnly) {
         e.preventDefault();
-        setSheet({ kind: "ask" });
+        openAsk();
       } else if (k === "c") setSheet({ kind: "catchup" });
       else if (e.key === "?") setSheet({ kind: "settings", tab: "shortcuts" });
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [sheet, tab, refresh, switchTab, toggleTheme, readOnly, canRefresh]);
+  }, [sheet, tab, refresh, switchTab, toggleTheme, readOnly, canRefresh, openAsk]);
 
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
   const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);
   const quoteFor = (sym: string) => allDigests.flatMap((d) => [...d.quotes, ...(d.macro ?? [])]).find((q) => q.symbol === sym);
   const newIds = newSnap[tab]?.ids ?? new Set<string>();
-  const dateStr = useMemo(
-    () => (ready ? new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "long", month: "long", day: "numeric" }).format(new Date()) : ""),
-    [ready, lang],
-  );
+  // Market tabs show their market's date (Vietnam: Hanoi, US: New York), so the date matches the
+  // session pill; My Interests and World use the reader's own date.
+  const dateStr = useMemo(() => {
+    if (!ready) return "";
+    const timeZone = tab === "vn" ? "Asia/Ho_Chi_Minh" : tab === "us" ? "America/New_York" : undefined;
+    return new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "long", month: "long", day: "numeric", timeZone }).format(new Date());
+  }, [ready, lang, tab]);
   // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders
   // and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
@@ -389,8 +420,11 @@ function App() {
     const resolve = (s: string): Quote | null => {
       const q = known.get(s);
       const l = live.get(s);
-      if (q) return l && (l.proxy ?? "") === (q.proxy ?? "") ? { ...q, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false } : q;
-      if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.spark.map((c, i) => [String(i), c] as [string, number]), source: "yahoo", proxy: l.proxy };
+      // Live wins (same numbers as the chart sheet), with its intraday path for the sparkline.
+      const spark = l?.intraday ? l.spark : undefined;
+      const flags = l ? { estimatedVia: l.estimatedVia, dailyOnly: l.dailyOnly, session: l.session } : {};
+      if (q) return l && canOverlay(q.proxy, l.proxy) ? { ...q, proxy: l.proxy, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false, spark, ...flags } : q;
+      if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.intraday ? [] : l.spark.map((c, i) => [String(i), c] as [string, number]), spark, source: "yahoo", proxy: l.proxy, ...flags };
       return null;
     };
     const ok = (q: Quote | null): q is Quote => q != null && Number.isFinite(q.price) && Number.isFinite(q.changePct);
@@ -429,7 +463,7 @@ function App() {
     () => ({
       section: switchTab,
       ticker: openTicker,
-      ask: (q?: string) => setSheet({ kind: "ask", q }),
+      ask: (q?: string) => openAsk(q),
       catchup: () => setSheet({ kind: "catchup" }),
       searchNews: (q: string) => {
         document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -440,7 +474,7 @@ function App() {
       track: () => setSheet({ kind: "track" }),
       settings: (tabName?: SettingsTab) => setSheet({ kind: "settings", tab: tabName }),
     }),
-    [switchTab, openTicker, refresh, tab, toggleTheme, canRefresh],
+    [switchTab, openTicker, refresh, tab, toggleTheme, canRefresh, openAsk],
   );
 
   return (
@@ -452,6 +486,7 @@ function App() {
         <div className="ambient-dots" />
         <div className="ambient-grain" />
       </div>
+      {!isWide && (
       <header className="topbar">
         <div className="topbar-inner">
           <div className="brand">
@@ -490,6 +525,7 @@ function App() {
           </button>
         </div>
       </header>
+      )}
 
       {refreshing && (
         <div className="progress" role="progressbar" aria-label={t("nav.refreshing")}>
@@ -497,6 +533,58 @@ function App() {
         </div>
       )}
 
+      <div className={isWide ? "shell" : undefined}>
+      {isWide && (
+        <aside className="sidebar" aria-label={t("ui.sections")}>
+          <div className="brand">
+            <span className="brand-mark" aria-hidden="true" />
+            <span>InvestHepi</span>
+          </div>
+          <nav className="side-nav">
+            {SECTION_IDS.map((s, i) => {
+              const Icon = s === "interests" ? IconStar : s === "world" ? IconGlobe : s === "vn" ? IconVn : IconFlag;
+              return (
+                <button key={s} aria-current={tab === s ? "page" : undefined} onClick={() => switchTab(s)} title={`${t(`sec.${s}` as MsgKey)} (${i + 1})`}>
+                  <Icon />
+                  <span>{t(`sec.${s}` as MsgKey)}</span>
+                  {badge(s) > 0 && <span className="badge">{badge(s) > 99 ? "99+" : badge(s)}</span>}
+                </button>
+              );
+            })}
+          </nav>
+          <div className="side-actions">
+            <button onClick={() => setSheet({ kind: "search" })}>
+              <IconSearch />
+              <span>{t("search.title")}</span>
+            </button>
+            <button onClick={() => setSheet({ kind: "palette" })}>
+              <span className="side-kbd" aria-hidden="true">⌘</span>
+              <span>{t("sc.palette")}</span>
+              <kbd>⌘K</kbd>
+            </button>
+            <button onClick={() => setSheet({ kind: "track" })}>
+              <IconTarget />
+              <span>{t("nav.track")}</span>
+              <kbd>T</kbd>
+            </button>
+            {canRefresh && (
+              <button className="refresh-btn" onClick={() => refresh(tab)} disabled={!!refreshing || refreshBlocked} title={refreshTitle}>
+                <IconRefresh className={refreshing ? "spin" : ""} />
+                <span>{t("nav.refresh")}</span>
+                {!account.admin && quota && <span className="badge">{quota.left}</span>}
+              </button>
+            )}
+          </div>
+          <span className="spacer" />
+          <div className="side-foot">
+            {readOnly && account.mode !== "multi" && <span className="chip" title={t("ro.hint")}>{t("ro.badge")}</span>}
+            <AccountButton />
+            <button className="icon-btn" aria-label={t("nav.settings")} title={t("nav.settings")} onClick={() => setSheet({ kind: "settings" })}>
+              <IconGear />
+            </button>
+          </div>
+        </aside>
+      )}
       <main className="page">
         <div className="page-head">
           <div className="page-title">
@@ -578,7 +666,7 @@ function App() {
                 <Events events={shown.analysis.events} news={shown.news} />
                 {isMobile && (
                   <>
-                    <UpNext events={calendar.events} notes={calendar.notes} />
+                    <UpNext events={calendar.events} notes={calendar.notes} timeZone={tab === "vn" ? "Asia/Ho_Chi_Minh" : "America/New_York"} />
                     <WatchNext items={shown.analysis.watchNext} />
                   </>
                 )}
@@ -587,7 +675,7 @@ function App() {
                   interests={interests}
                   newIds={newIds}
                   searchRef={searchRef}
-                  onExplain={readOnly ? undefined : (title) => setSheet({ kind: "ask", q: t("ask.explain", { title }) })}
+                  onExplain={readOnly ? undefined : (title) => openAsk(t("ask.explain", { title }))}
                   onMarkRead={() => {
                     markSeen(shown.news.map((n) => n.id));
                     setNewSnap((p) => ({ ...p, [tab]: { at: shown.generatedAt, ids: new Set() } }));
@@ -601,7 +689,7 @@ function App() {
                 {isHome && readOnly && account.mode === "multi" && <SignInCard />}
                 <Movers movers={shown.analysis.movers} quotes={liveQuotes} onTicker={openTicker} />
                 {(tab === "us" || tab === "interests") && <SectorHeatmap sectors={shown.sectors} onOpen={openTicker} />}
-                <UpNext events={calendar.events} notes={calendar.notes} />
+                <UpNext events={calendar.events} notes={calendar.notes} timeZone={tab === "vn" ? "Asia/Ho_Chi_Minh" : "America/New_York"} />
                 <WatchNext items={shown.analysis.watchNext} />
               </aside>
               )}
@@ -621,6 +709,12 @@ function App() {
           <a href="/terms" style={{ color: "inherit" }}>{t("foot.terms")}</a>
         </footer>
       </main>
+      {isWide && !readOnly && (
+        <aside className="chat-dock">
+          <AskPanel docked digest={shown} calendar={calendar.events} section={tab} request={askReq} />
+        </aside>
+      )}
+      </div>
 
       <nav className="tabbar" role="tablist" aria-label={t("ui.sections")}>
         {SECTION_IDS.map((s) => {
@@ -639,15 +733,15 @@ function App() {
             <span>{t("nav.track")}</span>
           </button>
         ) : (
-          <button role="tab" aria-selected={sheet?.kind === "ask"} onClick={() => setSheet({ kind: "ask" })}>
+          <button role="tab" aria-selected={sheet?.kind === "ask"} onClick={() => openAsk()}>
             <IconSparkles />
             <span>{t("ask.title")}</span>
           </button>
         )}
       </nav>
 
-      {!readOnly && (
-        <button className="ask-fab" onClick={() => setSheet({ kind: "ask" })} aria-label={t("ask.title")}>
+      {!readOnly && !isWide && (
+        <button className="ask-fab" onClick={() => openAsk()} aria-label={t("ask.title")}>
           <IconSparkles /> <span className="fab-text">{t("ask.title")}</span> <kbd>A</kbd>
         </button>
       )}
@@ -682,9 +776,9 @@ function App() {
         />
       )}
       {sheet?.kind === "search" && <StockSearchSheet onClose={closeSearch} onOpen={(symbol) => setSheet({ kind: "ticker", symbol, back: "search" })} follow={follow} readOnly={readOnly} />}
-      {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} tickers={chartSymbols} initial={sheet.q} />}
+      {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} initial={sheet.q} digest={shown} calendar={calendar.events} section={tab} />}
       {sheet?.kind === "catchup" && shown && (
-        <CatchUp digest={shown} calendar={calendar.events} onClose={() => setSheet(null)} onAsk={() => setSheet({ kind: "ask" })} />
+        <CatchUp digest={shown} calendar={calendar.events} onClose={() => setSheet(null)} onAsk={() => { setSheet(null); openAsk(); }} />
       )}
       {sheet?.kind === "palette" && <CommandPalette onClose={() => setSheet(null)} tickers={chartSymbols} actions={paletteActions} readOnly={readOnly} />}
     </AccountCtx.Provider>

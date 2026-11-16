@@ -11,7 +11,7 @@ import {
 } from "./Icons";
 import { usePrefs } from "./prefs";
 import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
-import { isPercentQuote } from "@/lib/symbols";
+import { isPercentQuote, priceDigits } from "@/lib/symbols";
 import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";
 
 
@@ -144,10 +144,17 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
                   <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
                 </div>
                 <div className="px num">
-                  {fmtPrice(q.price)}
-                  {q.proxy && <span className="via" title={t("strip.via", { etf: q.proxy })}>{q.proxy}</span>}
+                  {q.estimatedVia ? "≈" : ""}{fmtPrice(q.price, priceDigits(q.symbol, q.price))}
+                  <QuoteTag q={q} />
                 </div>
-                <Sparkline values={q.history.map((h) => h[1])} />
+                {/* The latest session's path against the previous close, colored like the % beside it.
+                    Without live intraday data, the month of daily closes is shown in gray: context,
+                    not today's direction. */}
+                {q.spark && q.spark.length > 1 ? (
+                  <Sparkline values={q.spark} baseline={q.prevClose} up={q.changePct >= 0} />
+                ) : (
+                  <Sparkline values={q.history.map((h) => h[1])} neutral />
+                )}
               </button>
             ))}
           </Fragment>
@@ -159,11 +166,12 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
               <span>{symName(t, q.symbol)}</span>
             </div>
             <div className="px num">
-              {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : fmtPrice(q.price)}
-              {q.proxy && <span className="via" title={t("strip.via", { etf: q.proxy })}>{q.proxy}</span>}
+              {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : `${q.estimatedVia ? "≈" : ""}${fmtPrice(q.price, priceDigits(q.symbol, q.price))}`}
+              <QuoteTag q={q} />
             </div>
             <div className={`chg num ${q.changePct >= 0 ? "up" : "down"}`} style={{ fontSize: 12, fontWeight: 600 }}>
-              {fmtPct(q.changePct)}
+              {/* Yields: change in basis points (5.10% → 5.15% is +5 bp). */}
+              {isPercentQuote(q.symbol) ? `${q.price >= q.prevClose ? "+" : ""}${Math.round((q.price - q.prevClose) * 100)} bp` : fmtPct(q.changePct)}
             </div>
           </button>
         ))}
@@ -470,13 +478,23 @@ export function Events({ events, news }: { events: KeyEvent[]; news: NewsItem[] 
 
 /* --------------------------------------------------------------- Up next */
 
-function etToday(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+/** What a strip price is when it isn't a live quote: an ETF's price, an estimate, or a dated close. */
+function QuoteTag({ q }: { q: Quote }) {
+  const { t, lang } = usePrefs();
+  if (q.proxy) return <span className="via" title={t("strip.via", { etf: q.proxy })}>{q.proxy}</span>;
+  if (q.estimatedVia) return <span className="via" title={t("strip.est", { etf: q.estimatedVia })}>≈{q.estimatedVia}</span>;
+  const date = q.session ?? q.history.at(-1)?.[0];
+  if (q.dailyOnly && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const d = new Intl.DateTimeFormat(lang, { day: "numeric", month: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+    return <span className="via" title={t("strip.closeOf", { date: d })}>{d}</span>;
+  }
+  return null;
 }
 
-export function UpNext({ events, notes }: { events: CalendarEvent[]; notes: string[] }) {
+export function UpNext({ events, notes, timeZone = "America/New_York" }: { events: CalendarEvent[]; notes: string[]; timeZone?: string }) {
   const { t, lang } = usePrefs();
-  const today = etToday();
+  // "Today" in the tab's market (Hanoi for Vietnam), not always New York.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
   const tomorrow = new Date(new Date(today + "T12:00:00Z").getTime() + 86400_000).toISOString().slice(0, 10);
   const byDay = useMemo(() => {
     const m = new Map<string, CalendarEvent[]>();

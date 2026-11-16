@@ -12,7 +12,7 @@ import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, IPriceLine, Series
 import type { ChartData, ChartRange } from "@/lib/chart";
 import { langInfo } from "@/lib/languages";
 import { marketClock, vnMarketClock } from "@/lib/marketTime";
-import { exchangeTz } from "@/lib/symbols";
+import { exchangeTz, priceDigits } from "@/lib/symbols";
 import type { Call } from "@/lib/types";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { fmtPct, fmtPrice } from "./primitives";
@@ -230,7 +230,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       if (prevLineRef.current) area.removePriceLine(prevLineRef.current);
       prevLineRef.current = d.range === "1d" ? area.createPriceLine({ price: d.prevClose, color: cssVar("--label-3"), lineWidth: 1, lineStyle: 2, axisLabelVisible: false, title: "" }) : null;
       chart.applyOptions({
-        localization: { locale, timeFormatter: (time: number) => fmtTime(time, d.range !== "1d"), priceFormatter: (p: number) => fmtPrice(p) },
+        localization: { locale, timeFormatter: (time: number) => fmtTime(time, d.range !== "1d"), priceFormatter: (p: number) => fmtPrice(p, priceDigits(d.symbol, p)) },
         timeScale: {
           timeVisible: d.range !== "6mo" && d.range !== "1y",
           // Axis labels in the exchange's time zone, matching the crosshair readout.
@@ -313,6 +313,25 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   const chgPct = data && ref ? (chg / ref) * 100 : 0;
   const rangeLabel: Record<ChartRange, string> = { "1d": "1D", "5d": "5D", "1mo": "1M", "6mo": "6M", "1y": "1Y" };
   const stale = data ? Date.now() / 1000 - data.asOf > 20 * 60 && clockFor(symbol).phase === "open" : false;
+  // Daily-only data is never "live"; and a 1-day view of an earlier session says which day it is.
+  const isLive = live && !stale && !data?.dailyOnly;
+  const dayOf = (sec: number) => dayIn(sec, tz);
+  const sessionLabel = data
+    ? dayOf(data.asOf) === dayOf(Date.now() / 1000)
+      ? t("chart.today")
+      : new Intl.DateTimeFormat(locale, { timeZone: tz, weekday: "short", day: "numeric", month: "short" }).format(new Date(data.asOf * 1000))
+    : "";
+  const sourceNote = !data
+    ? ""
+    : data.proxy
+      ? t("strip.via", { etf: data.proxy })
+      : data.estimatedVia
+        ? t("strip.est", { etf: data.estimatedVia })
+        : data.shapeVia
+          ? t("chart.shape", { etf: data.shapeVia })
+          : data.dailyOnly
+            ? t("strip.closeOf", { date: new Intl.DateTimeFormat(locale, { timeZone: tz, day: "numeric", month: "short" }).format(new Date(data.asOf * 1000)) })
+            : "";
 
   return (
     <div className="chart">
@@ -320,24 +339,25 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
         <div className="chart-head">
           <div>
             <div className="chart-price num">
-              <span className={flash}>{shown != null ? fmtPrice(shown) : "—"}</span>
+              <span className={flash}>{shown != null ? `${data?.estimatedVia && !hover ? "≈" : ""}${fmtPrice(shown, priceDigits(symbol, shown))}` : "—"}</span>
             </div>
             <div className={`chart-chg num ${chg >= 0 ? "up" : "down"}`}>
               {data ? `${chg >= 0 ? "+" : ""}${fmtPrice(Math.abs(chg) < 1000 ? chg : Math.round(chg))} (${fmtPct(chgPct)})` : " "}
               <span className="chart-when">
-                {hover ? fmtTime(hover.time, range !== "1d") : data ? (range === "1d" ? t("chart.today") : t(`chart.range.${range}`)) : ""}
+                {hover ? fmtTime(hover.time, range !== "1d" || !!data?.dailyOnly) : data ? (range === "1d" ? sessionLabel : t(`chart.range.${range}`)) : ""}
               </span>
             </div>
           </div>
           <span className="spacer" />
           {data && (
             <span className="chart-live">
-              <span className={`dot ${live && !stale ? "live" : ""}`} />
-              {live && !stale ? t("chart.live") : stale ? t("chart.delayed") : t("chart.asOf", { t: new Intl.DateTimeFormat(locale, { timeZone: tz, month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(data.asOf * 1000)) })}
+              <span className={`dot ${isLive ? "live" : ""}`} />
+              {isLive ? t("chart.live") : stale && !data.dailyOnly ? t("chart.delayed") : t("chart.asOf", { t: new Intl.DateTimeFormat(locale, { timeZone: tz, month: "short", day: "numeric", ...(data.dailyOnly ? {} : { hour: "numeric", minute: "2-digit" }) }).format(new Date(data.asOf * 1000)) })}
             </span>
           )}
         </div>
       )}
+      {showHeader && sourceNote && <div className="chart-note">{sourceNote}</div>}
       <div className="chart-canvas" ref={box} style={{ height }} aria-label={`${symbol} chart`} role="img">
         {!data && !err && <div className="skeleton chart-skel" />}
         {err && (

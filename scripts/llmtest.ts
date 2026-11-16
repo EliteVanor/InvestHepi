@@ -68,7 +68,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const d2 = await refreshSection("world");
   assert.equal(d2.provider, "gemini:gemini-3.5-flash-lite", "falls back to Gemini (Flash-Lite: 500 requests a day) on Groq 429");
   assert.ok(d2.providerNote?.includes("429"), "fallback note mentions the 429");
-  assert.equal(d2.analysis.movers.length, 1, "movers parsed");
+  const S = await import("../src/lib/llm/schema");
+  const parsed = S.toAnalysis(S.AnalysisSchema.parse(S.normalizeRaw(S.extractJSON(sloppy))));
+  assert.deepEqual([parsed.movers[0].ticker, parsed.movers[0].changePct], ["NVDA", 3.2], "movers parsed from the model's reply");
+  assert.equal(d2.analysis.movers.length, 0, "but a mover with no price in the snapshot is dropped (this test has no price data)");
   const { loadCalls } = await import("../src/lib/track");
   const { currentCallsKey } = await import("../src/lib/pipeline");
   const calls = await loadCalls(await currentCallsKey());

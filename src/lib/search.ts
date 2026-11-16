@@ -9,6 +9,7 @@
  * queries typed with Vietnamese accents.
  */
 import { PROXIES, SYMBOL_LABELS } from "./symbols";
+import { hasWorldDaily } from "./worldmarket";
 import { ALIASES } from "./tickers";
 import { fold, scoreVn, searchVn } from "./vnlist";
 import { yahooJson } from "./yahoo";
@@ -67,7 +68,7 @@ async function nasdaqSearch(q: string): Promise<SearchHit[]> {
 }
 
 /** Symbols only Yahoo can price (foreign listings, yields): don't offer them while Yahoo is unreachable. */
-export const yahooOnly = (s: string) => !s.endsWith(".VN") && !PROXIES[s] && s !== "^IXIC" && /[\^=.]|-USD$/.test(s);
+export const yahooOnly = (s: string) => !s.endsWith(".VN") && !PROXIES[s] && !hasWorldDaily(s) && s !== "^IXIC" && /[\^=.]|-USD$/.test(s);
 
 export function localSearch(q: string): SearchHit[] {
   const needle = q.toLowerCase();
