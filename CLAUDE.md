@@ -102,7 +102,8 @@ These are the habits from past sessions. Follow them without being asked.
 
 **Starting a session**
 - Read `docs/HANDOFF.md`, then restate the goal and the rules that apply in a few lines before doing anything.
-- Before starting, ask every question needed to make the task clear, so the work hits what the owner actually wants: scope, priorities, expected behavior, edge cases, limits, models, schedule, UX, what "done" looks like. Put them in one numbered list. Give lettered options where they help and mark the one you recommend. The owner answers by number ("1 B, 2 yes"). After that, build without more check-ins.
+- Before starting, ask every question needed to make the task clear, so the work hits what the owner actually wants: scope, priorities, expected behavior, edge cases, limits, models, schedule, UX, what "done" looks like. Put them in one numbered list. Give lettered options where they help and mark the one you recommend. The owner answers by number ("1 B, 2 yes").
+- Then give a plan before running anything: the steps in order, the files and services each touches, how each will be tested, the AI and free-tier cost, the risks, and what will need the owner (accounts, tokens, a merge). Wait for the owner's go. After the go, build without more check-ins, and say so if the plan has to change along the way.
 - "Use all of the token" means: keep working through the whole task list without stopping for approval. If the context gets long, write a summary that keeps every decision, file change and open item so nothing is lost.
 
 **Stress testing** ("stress test", "test every detail", "to the last minute")
