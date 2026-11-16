@@ -13,10 +13,34 @@ on:
     # Vietnam only (ICT = UTC+7): before the HOSE open and after the close.
     - cron: "15 1 * * 1-5"    # 8:15 ICT
     - cron: "10 8 * * 1-5"    # 15:10 ICT
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      yahoo_test:
+        description: "Only check whether Yahoo answers GitHub's runners (no app or AI calls)"
+        type: boolean
+        default: false
 
 jobs:
+  # One-off check: does Yahoo serve GitHub's runners? Touches no secrets, the app or any AI.
+  yahoo-test:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.yahoo_test }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask Yahoo for a few symbols
+        run: |
+          UA="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
+          for host in query1 query2; do
+            url="https://$host.finance.yahoo.com/v8/finance/spark?symbols=%5EGSPC,%5EHSI,%5EN225,%5ETNX,VND%3DX,CL%3DF,GC%3DF,%5EVIX,0700.HK,005930.KS&range=1y&interval=1d"
+            code=$(curl -s -o spark.json -w "%{http_code}" -A "$UA" "$url")
+            echo "spark via $host: HTTP $code, $(wc -c < spark.json) bytes"
+            python3 -c "import json;d=json.load(open('spark.json'));[print(' ',k,len(v.get('close') or []),'closes, last',(v.get('close') or [None])[-1]) for k,v in d.items()]" 2>/dev/null || head -c 300 spark.json
+            sleep 3
+          done
+          code=$(curl -s -o chart.json -w "%{http_code}" -A "$UA" "https://query1.finance.yahoo.com/v8/finance/chart/%5EHSI?range=1d&interval=5m")
+          echo "chart ^HSI 1d: HTTP $code"; python3 -c "import json;m=json.load(open('chart.json'))['chart']['result'][0]['meta'];print('  price',m.get('regularMarketPrice'))" 2>/dev/null || head -c 300 chart.json
+
   refresh:
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.yahoo_test) }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
