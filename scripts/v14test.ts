@@ -166,6 +166,8 @@ const until = async (cond: () => Promise<boolean>, ms = 8000) => {
   }
   assert.deepEqual(results, ["refreshed", "refreshed", "refreshed", "refreshed", "refreshed", "refreshed", "capped"], "6 background briefings a day per user");
   assert.equal(await withUser(uid2, () => P.ensureInterestBriefing(uid2, R.autogenAllowed)), "fresh", "a set that has a briefing needs no first one");
+  await setJSON(`ib:${hash}:last`, { ...last, at: old });
+  assert.equal((await ask(U2)).catchUp, undefined, "cap used up: /api/me doesn't make the page wait for a briefing that won't come");
 
   console.log("V14 OK");
 })().catch((e) => {
