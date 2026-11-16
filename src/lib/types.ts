@@ -40,7 +40,9 @@ export interface Quote {
   changePct: number;
   /** Daily closes, oldest first: [isoDate, close] */
   history: [string, number][];
-  source: "yahoo" | "stooq";
+  source: "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "stooq";
+  /** Filled from the last good copy because every source failed this time. */
+  stale?: boolean;
 }
 
 export type Direction = "up" | "down" | "flat";
@@ -116,6 +118,8 @@ export interface Holding {
 }
 
 export interface Digest {
+  /** Shared sections: labeled groups for the price strip (World/US/Vietnam). */
+  strip?: { key: string; symbols: string[] }[];
   section: SectionId;
   generatedAt: string;
   provider: string; // e.g. "groq:openai/gpt-oss-120b" or "rules"

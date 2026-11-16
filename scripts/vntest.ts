@@ -1,5 +1,6 @@
 /**
- * Vietnam section: price fallbacks (Yahoo → TCBS → VNDirect), units, Vietnam-specific analysis.
+ * Prices and shared-section coverage: Vietnamese sources (DNSE → Vietcap → VNDirect), Yahoo batching
+ * and its rate-limit cooldown, last-good (stale) fallback, per-section strips/groups/mood.
  * `npx tsx scripts/vntest.ts`
  */
 import assert from "node:assert/strict";
@@ -14,94 +15,192 @@ delete process.env.KV_REST_API_URL;
 process.env.GROQ_API_KEY = "x";
 
 const hits: string[] = [];
-let tcbsDown = false;
+const down = { yahoo: false, dnse: false, vietcap: false, vndirect: false };
 let lastPrompt = { sys: "", user: "" };
-const day = (i: number) => new Date(Date.now() - (30 - i) * 86400_000).toISOString().slice(0, 10);
+const NOW = Math.floor(Date.now() / 1000);
+const dayTs = (i: number) => NOW - (40 - i) * 86400; // 40 daily bars ending today
+const isoDay = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
+
+function yahooSpark(url: string) {
+  const syms = decodeURIComponent(url.split("symbols=")[1].split("&")[0]).split(",");
+  const intraday = url.includes("interval=5m");
+  const body: Record<string, unknown> = {};
+  for (const s of syms) {
+    const ts = intraday ? Array.from({ length: 30 }, (_, i) => NOW - (30 - i) * 300) : Array.from({ length: 40 }, (_, i) => dayTs(i));
+    body[s] = { symbol: s, timestamp: ts, close: ts.map((_, i) => 100 + i), chartPreviousClose: 99 };
+  }
+  return new Response(JSON.stringify(body), { status: 200 });
+}
 
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
   hits.push(url);
   if (url.includes("finance.yahoo.com")) {
-    if (url.includes(".VN")) return new Response("Too Many Requests", { status: 429 }); // cloud IP refused
-    const ts = Array.from({ length: 30 }, (_, i) => Math.floor(Date.parse(day(i)) / 1000));
+    if (down.yahoo) return new Response("Too Many Requests", { status: 429 });
+    if (url.includes("/spark?")) return yahooSpark(url);
+    const ts = Array.from({ length: 40 }, (_, i) => dayTs(i));
     const c = ts.map((_, i) => 500 + i);
-    return new Response(JSON.stringify({ chart: { result: [{ meta: { regularMarketPrice: 530, chartPreviousClose: 528, regularMarketTime: ts.at(-1) }, timestamp: ts, indicators: { quote: [{ close: c, open: c, high: c, low: c, volume: c }] } }] } }), { status: 200 });
+    return new Response(JSON.stringify({ chart: { result: [{ meta: { regularMarketPrice: 539, chartPreviousClose: 538, regularMarketTime: ts.at(-1) }, timestamp: ts, indicators: { quote: [{ close: c, open: c, high: c, low: c, volume: c }] } }] } }), { status: 200 });
   }
-  if (url.includes("tcbs.com.vn")) {
-    if (tcbsDown) return new Response("", { status: 403 });
-    const index = url.includes("type=index");
-    const base = index ? 1250 : 95000;
-    return new Response(JSON.stringify({ data: Array.from({ length: 30 }, (_, i) => ({ open: base + i, high: base + i, low: base + i, close: base + i * 100 * (index ? 0.01 : 1), volume: 1000, tradingDate: `${day(i)}T00:00:00.000Z` })) }), { status: 200 });
+  if (url.includes("entrade.com.vn")) {
+    if (down.dnse) return new Response("<html>blocked</html>", { status: 200 });
+    const index = url.includes("/ohlcs/index");
+    const res = url.split("resolution=")[1];
+    const base = index ? 1700 : 50; // DNSE stocks: thousand VND
+    // Intraday: two sessions of 1-minute bars (yesterday and today, 02:00-07:45 UTC); daily: 40 days.
+    const t = res === "1D" ? Array.from({ length: 40 }, (_, i) => dayTs(i)) : [1, 0].flatMap((d) => Array.from({ length: 30 }, (_, i) => NOW - d * 86400 - (30 - i) * 60));
+    return new Response(JSON.stringify({ t, o: t.map(() => base), h: t.map(() => base + 1), l: t.map(() => base - 1), c: t.map((_, i) => base + i * 0.1), v: t.map(() => 1000), nextTime: 0 }), { status: 200 });
+  }
+  if (url.includes("vietcap.com.vn")) {
+    if (down.vietcap) return new Response("", { status: 403 });
+    const body = JSON.parse(String(init?.body));
+    const index = /INDEX|VN30|HNX/.test(body.symbols[0]);
+    const base = index ? 1710 : 51000;
+    const t = Array.from({ length: 20 }, (_, i) => String(dayTs(20 + i)));
+    return new Response(JSON.stringify([{ symbol: body.symbols[0], o: t.map(() => base), h: t.map(() => base), l: t.map(() => base), c: t.map((_, i) => base + i), v: t.map(() => 9), t }]), { status: 200 });
   }
   if (url.includes("vndirect.com.vn")) {
+    if (down.vndirect) return new Response("", { status: 503 });
     const index = url.includes("vnmarket_prices");
-    // newest first; stocks in thousand VND
-    return new Response(JSON.stringify({ data: Array.from({ length: 30 }, (_, i) => ({ code: "X", date: day(29 - i), open: index ? 1260 : 96.5, high: 0, low: 0, close: index ? 1260 - i : 96.5 - i * 0.1, nmVolume: 5 })) }), { status: 200 });
+    const codes = decodeURIComponent(url.split("q=code:")[1].split("~")[0]).split(",");
+    const rows = codes.flatMap((code) => [
+      // today's pre-open placeholder (no volume) must be ignored
+      { code, date: isoDay(NOW), close: index ? 1 : 0.1, nmVolume: 0, accumulatedVol: 0 },
+      ...Array.from({ length: 30 }, (_, i) => ({ code, date: isoDay(dayTs(39 - i)), open: index ? 1720 : 52.5, high: 0, low: 0, close: index ? 1720 - i : 52.5 - i * 0.1, nmVolume: 5, accumulatedVol: 5 })),
+    ]);
+    return new Response(JSON.stringify({ data: rows }), { status: 200 });
   }
   if (url.includes("api.groq.com")) {
     const msgs = JSON.parse(String(init?.body)).messages;
     lastPrompt = { sys: msgs[0].content, user: msgs[1].content };
-    const outlook = ["VN-Index", "Banks", "Real estate", "Securities firms", "Tech & retail", "Steel & industrials"].map((n, i) => ({
-      interest: n, ticker: ["^VNINDEX.VN", "VCB.VN", "VHM.VN", "SSI.VN", "FPT.VN", "HPG.VN"][i], direction: "up", confidence: 60, horizon: "today", action: "HOLD", action_trigger: "t", rationale: "r", risks: "k",
-    }));
-    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ headline: "VN up", mood: "risk-on", summary: ["s"], events: [], watch_next: [], movers: [], scenarios: [], outlook }) } }] }), { status: 200 });
+    const names = [...lastPrompt.user.matchAll(/^- (.+?) \(benchmark (\S+?)[;)]/gm)].map((m) => [m[1], m[2]]);
+    const outlook = names.map(([n, t]) => ({ interest: n, ticker: t, direction: "up", confidence: 60, horizon: "today", action: "HOLD", action_trigger: "t", rationale: "r", risks: "k" }));
+    return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ headline: "ok", mood: "risk-on", summary: ["s"], events: [], watch_next: [], movers: [], scenarios: [], outlook }) } }] }), { status: 200 });
   }
   return new Response(`<?xml version="1.0"?><rss><channel><item><title>VN-Index tăng điểm nhờ nhóm ngân hàng</title><link>https://cafef.vn/1</link><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`, { status: 200 });
 }) as typeof fetch;
 
+const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
+
 (async () => {
   await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
   const V = await import("../src/lib/vnmarket");
+  const C = await import("../src/lib/chart");
+  const M = await import("../src/lib/market");
+  const Y = await import("../src/lib/yahoo");
+
+  // ---- parsers and units
   assert.deepEqual(V.vnCode("^VNINDEX.VN"), { code: "VNINDEX", index: true });
   assert.deepEqual(V.vnCode("fpt.vn"), { code: "FPT", index: false });
+  assert.equal(V.parseDnse({ t: [1, 2], o: [50, 51], h: [51, 52], l: [49, 50], c: [50.1, 51.2], v: [1, 1] }, false)[1].c, 51200, "DNSE stocks: thousand VND → VND");
+  assert.equal(V.parseDnse({ t: [1], c: [1734.9] }, true)[0].c, 1734.9, "DNSE index points unchanged");
+  assert.equal(V.parseVietcap([{ symbol: "FPT", c: [50100], t: ["1794528000"] }])[0].c, 50100, "Vietcap already in VND");
+  const vb = V.parseVndirect({ data: [{ code: "FPT", date: "2026-11-16", close: 50.1, nmVolume: 0 }, { code: "FPT", date: "2026-11-13", close: 50.1, nmVolume: 9 }, { code: "VCB", date: "2026-11-13", close: 53.8, nmVolume: 9 }, { code: "FPT", date: "2026-11-12", close: 49.55, nmVolume: 9 }] }, false);
+  assert.deepEqual(vb.get("FPT")!.map((b) => b.c), [49550, 50100], "VNDirect: per code, oldest first, zero-volume placeholder skipped");
+  assert.equal(vb.get("VCB")!.length, 1);
+  assert.equal(V.parseDnse({ nothing: true }, false).length, 0, "bad shape → empty, not a crash");
+  assert.equal(Y.parseSpark({ spark: { result: [{ symbol: "SPY", response: [{ meta: { chartPreviousClose: 1 }, timestamp: [1, 2], indicators: { quote: [{ close: [5, null] }] } }] }] } }).get("SPY")!.points.length, 1, "spark nested shape, nulls dropped");
 
-  // VNDirect stock prices are in thousand VND → normalized to VND, sorted oldest first
-  const vb = V.parseVndirect({ data: [{ date: "2026-11-13", close: 96.5, open: 95 }, { date: "2026-11-12", close: 95, open: 94 }] }, false);
-  assert.deepEqual(vb.map((b) => b.c), [95000, 96500]);
-  assert.equal(V.parseVndirect({ data: [{ date: "2026-11-13", close: 1260.5 }] }, true)[0].c, 1260.5, "index points unchanged");
-  assert.equal(V.parseTcbs({ data: [{ close: 95100, tradingDate: "2026-11-13T00:00:00.000Z" }] })[0].c, 95100);
-  assert.equal(V.parseTcbs({ nothing: true }).length, 0, "bad shape → empty, not a crash");
+  // ---- batch quotes: one VNDirect request per kind for any number of VN symbols
+  hits.length = 0;
+  const vnSyms = ["^VNINDEX.VN", "^VN30.VN", "VCB.VN", "FPT.VN", "HPG.VN", "VHM.VN"];
+  const qs = await M.getQuotes(vnSyms);
+  assert.equal(qs.length, 6);
+  assert.equal(count(/vndirect/), 2, "stocks and indexes: one request each");
+  assert.equal(count(/finance\.yahoo/), 0, "Vietnamese quotes never touch Yahoo");
+  assert.ok(qs.find((q) => q.symbol === "FPT.VN")!.price > 40000, "VND");
+  assert.ok(qs.find((q) => q.symbol === "^VNINDEX.VN")!.price > 1000 && qs[0].price < 2000, "points");
 
-  // quotes: Yahoo refused → TCBS
-  const { getQuote } = await import("../src/lib/market");
-  const q = await getQuote("FPT.VN");
-  assert.ok(q && q.price > 90000, "FPT priced in VND via TCBS");
-  assert.ok(hits.some((u) => u.includes("tcbs") && u.includes("ticker=FPT&type=stock")));
-  const vi = await getQuote("^VNINDEX.VN");
-  assert.ok(vi && vi.price > 1000 && vi.price < 2000, "VN-Index in points");
-  // TCBS down too → VNDirect
-  tcbsDown = true;
-  const q2 = await getQuote("HPG.VN");
-  assert.ok(q2 && q2.price > 90000, "VNDirect fallback, thousand VND converted");
-  assert.ok(hits.some((u) => u.includes("vndirect") && u.includes("code:HPG")));
+  // ---- batch quotes for everything else: 1 Yahoo spark request per 20 symbols
+  hits.length = 0;
+  const us = Array.from({ length: 25 }, (_, i) => `T${i}`);
+  const uq = await M.getQuotes(us);
+  assert.equal(uq.length, 25);
+  assert.equal(count(/\/spark\?/), 2, "25 symbols → 2 spark requests");
+  assert.equal(count(/\/chart\//), 0, "no per-symbol requests when the batch works");
 
-  // charts
-  const { getChart } = await import("../src/lib/chart");
-  const c = await getChart("VCB.VN", "6mo");
-  assert.equal(c.source, "vndirect");
-  assert.equal(c.currency, "VND");
-  tcbsDown = false;
-  const c1 = await getChart("SSI.VN", "1mo");
-  assert.equal(c1.source, "tcbs");
-  await assert.rejects(getChart("NOPE", "1mo").then(() => { throw new Error("yahoo 429"); }));
+  // ---- charts: DNSE intraday (1D = latest session only, previous close from daily bars)
+  const c1 = await C.getChart("FPT.VN", "1d");
+  assert.equal(c1.source, "dnse");
+  assert.equal(c1.bars.length, 30, "only today's session of the two returned");
+  assert.ok(c1.prevClose > 40000 && c1.currency === "VND");
+  const ci = await C.getChart("^VN30.VN", "6mo");
+  assert.equal(ci.source, "dnse");
+  assert.equal(ci.name, "VN30");
+  down.dnse = true;
+  C.clearPriceCaches();
+  assert.equal((await C.getChart("VCB.VN", "6mo")).source, "vietcap", "DNSE blocked → Vietcap");
+  down.vietcap = true;
+  assert.equal((await C.getChart("HPG.VN", "1mo")).source, "vndirect", "then VNDirect");
+  down.vndirect = true;
+  hits.length = 0;
+  await assert.rejects(C.getChart("^HNX.VN", "1mo"), (e: Error) => /dnse/.test(e.message) && /vietcap/.test(e.message) && /vndirect/.test(e.message), "error lists every source");
+  assert.equal(count(/finance\.yahoo/), 0, "Yahoo has no usable VN index series, so it isn't tried");
+  Object.assign(down, { dnse: false, vietcap: false, vndirect: false });
 
-  // Vietnam briefing: Vietnamese groups, Vietnam hours/rules, own track record
+  // ---- live quotes: one spark for US symbols, DNSE for VN
+  C.clearPriceCaches();
+  hits.length = 0;
+  const lq = await C.getLiveQuotes(["AAPL", "MSFT", "^GSPC", "FPT.VN", "bad symbol!"]);
+  assert.deepEqual(lq.map((q) => q.symbol).sort(), ["AAPL", "FPT.VN", "MSFT", "^GSPC"].sort());
+  assert.equal(count(/\/spark\?/), 1);
+  assert.equal(lq.find((q) => q.symbol === "AAPL")!.prevClose, 99, "previous session close from spark");
+
+  // ---- Yahoo 429: cooldown (no hammering) + last good prices flagged stale; grading refuses stale
+  await new Promise((r) => setTimeout(r, 10));
+  down.yahoo = true;
+  C.clearPriceCaches();
+  hits.length = 0;
+  const during = await M.getQuotes(["T1", "T2", "NEVERSEEN"]);
+  const yahooCalls = count(/finance\.yahoo/);
+  assert.ok(Y.yahooCooling(), "429 starts a cooldown");
+  assert.ok(yahooCalls <= 3, `stops calling Yahoo after the 429 (made ${yahooCalls})`);
+  assert.ok(during.find((q) => q.symbol === "T1")?.stale, "last good price filled in, flagged stale");
+  assert.ok(!during.some((q) => q.symbol === "NEVERSEEN"), "nothing invented for symbols never seen");
+  assert.equal(await M.getQuote("T1"), null, "grading never uses stale prices");
+  down.yahoo = false;
+  Y.resetYahoo();
+
+  // ---- shared sections: market coverage, no personal stocks
   const P = await import("../src/lib/pipeline");
+  const { SECTION_STRIPS } = await import("../src/lib/config");
   const d = await P.refreshShared("vn", "vi");
-  assert.equal(d.analysis.outlook.length, 6, "one prediction per Vietnamese group");
-  assert.ok(lastPrompt.user.includes("VN-Index (benchmark ^VNINDEX.VN") && lastPrompt.user.includes("Banks (benchmark VCB.VN"), "groups in prompt");
-  assert.ok(!lastPrompt.user.includes("- Nasdaq (benchmark"), "US interests not predicted in the Vietnam tab");
+  assert.equal(d.analysis.outlook.length, 6, "one call per Vietnamese group");
+  assert.ok(lastPrompt.user.includes("MARKETS TO CALL") && lastPrompt.user.includes("VN-Index (benchmark ^VNINDEX.VN"), "groups in prompt");
+  assert.ok(!/SPY|QQQ|SOXX|NVDA/.test(lastPrompt.user.split("MACRO:")[0]), "no US interests or benchmarks in the Vietnam snapshot");
   assert.ok(lastPrompt.user.includes("ICT") && /HOSE/.test(lastPrompt.user), "Vietnam clock and session");
   assert.ok(lastPrompt.sys.includes("VIETNAM SECTION") && lastPrompt.sys.includes("Vietnamese"), "Vietnam rules + Vietnamese output");
   assert.ok(lastPrompt.user.includes("USD/VND"), "exchange rate in macro");
-  assert.equal(d.quotes[0].symbol, "^VNINDEX.VN", "VN-Index leads the strip");
+  assert.ok(!lastPrompt.user.includes("SECTORS"), "US sectors left out of the Vietnam prompt");
+  assert.deepEqual(d.strip?.map((g) => g.key), ["indexes", "banks", "largecaps"]);
+  assert.equal(d.quotes[0].symbol, "^VNINDEX.VN", "VN-Index leads");
+  assert.ok(d.gauge && d.gauge.parts.some((p) => p.key === "breadth"), "mood from the VN-Index and Vietnamese large caps");
   const { loadCalls } = await import("../src/lib/track");
-  const calls = await loadCalls(P.VN_CALLS);
+  const calls = await loadCalls(P.SHARED_CALLS.vn);
   assert.ok(calls.length >= 6, "Vietnam calls logged for grading");
   await P.refreshShared("vn", "en");
-  assert.equal((await loadCalls(P.VN_CALLS)).length, calls.length, "a second language doesn't double-count");
-  const us = await P.refreshShared("us", "en");
-  assert.ok(!lastPrompt.sys.includes("VIETNAM SECTION") && us.quotes[0].symbol === "SPY", "other sections unchanged");
+  assert.equal((await loadCalls(P.SHARED_CALLS.vn)).length, calls.length, "a second language doesn't double-count");
+
+  const u = await P.refreshShared("us", "en");
+  assert.deepEqual(u.strip, SECTION_STRIPS.us);
+  assert.ok(lastPrompt.user.includes("S&P 500 (benchmark ^GSPC") && lastPrompt.user.includes("Dow Jones (benchmark ^DJI"), "US calls on the indexes");
+  assert.ok(!/- Chip stocks|SOXX/.test(lastPrompt.user), "no personal interests in US");
+  assert.ok(lastPrompt.user.includes("SECTORS"), "US keeps the sector rotation");
+  assert.ok(!lastPrompt.sys.includes("VIETNAM SECTION"));
+  const w = await P.refreshShared("world", "en");
+  assert.equal(w.analysis.outlook.length, 6);
+  assert.ok(lastPrompt.user.includes("Europe (benchmark ^STOXX50E") && lastPrompt.user.includes("EUR/USD"), "world groups + world macro");
+  assert.ok((await loadCalls(P.SHARED_CALLS.world)).length >= 6, "world calls graded too");
+  const track = await import("../src/app/api/track/route");
+  const tv = await (await track.GET(new Request("http://x/api/track?section=vn"))).json();
+  assert.ok(tv.total >= 6, "track record API per shared section");
+  const csv = await (await track.GET(new Request("http://x/api/track?section=world&format=csv"))).text();
+  assert.ok(csv.includes("^STOXX50E"), "CSV export per section");
+
+  // My Interests is unchanged: the user's tickers plus the benchmarks.
+  const { DEFAULT_INTERESTS } = await import("../src/lib/config");
+  const i = await P.refreshInterestSet(DEFAULT_INTERESTS, "en", ["owner"]);
+  assert.ok(i.quotes.some((q) => q.symbol === "NVDA") && !i.strip, "personal strip = personal tickers");
 
   console.log("VN OK");
 })().catch((e) => {

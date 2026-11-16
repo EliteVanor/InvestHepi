@@ -111,16 +111,15 @@ export function Ring({ value, direction, size = 52 }: { value: number; direction
 
 export const arrow = (d: Direction) => (d === "up" ? "↑" : d === "down" ? "↓" : "→");
 
+/** Formatters never throw: prices come from several free sources and one bad value must not crash the page. */
 export function fmtPct(n: number, digits = 2) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "–";
   return `${n >= 0 ? "+" : ""}${n.toFixed(digits)}%`;
 }
 
-/** Friendly ticker label: "^VNINDEX.VN" → "VN-Index", "FPT.VN" → "FPT". */
-const SYM_LABEL: Record<string, string> = { "^VNINDEX.VN": "VN-Index", "^VN30.VN": "VN30", "^HNX.VN": "HNX", "VND=X": "USD/VND", "E1VFVN30.VN": "VN30 ETF" };
-export function symLabel(s: string) {
-  return SYM_LABEL[s] ?? s.replace(/\.VN$/, "");
-}
+export { symLabel } from "@/lib/symbols";
 
 export function fmtPrice(n: number) {
+  if (typeof n !== "number" || !Number.isFinite(n)) return "–";
   return n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2);
 }

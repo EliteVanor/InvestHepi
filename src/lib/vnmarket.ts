@@ -1,93 +1,209 @@
 /**
- * Vietnamese prices without an API key. Yahoo covers many HOSE stocks (".VN"), but cloud IPs
- * get refused often and its index coverage is patchy, so two local public endpoints back it up:
- *   TCBS  (apipubaws.tcbs.com.vn): daily and 5-minute bars, prices in VND, indexes in points.
- *   VNDirect (api-finfo.vndirect.com.vn): daily bars, stock prices in thousand VND.
- * Both are unofficial; if one changes its format, the others still run.
+ * Vietnamese prices without an API key, from Vietnamese brokers' public chart APIs (checked from a
+ * cloud server in Nov 2026; Yahoo is the last resort because it rate-limits and has no VN30/HNX):
+ *   DNSE   services.entrade.com.vn  daily + 1/5/15/30-min/1H bars, stocks and every index.
+ *                                   Stock prices in thousand VND.
+ *   Vietcap trading.vietcap.com.vn  daily/hourly/1-min bars, one symbol per request. Full VND.
+ *   VNDirect api-finfo.vndirect.com.vn daily bars, MANY symbols per request (used for batch
+ *                                   quotes and technicals). Stock prices in thousand VND.
+ * TCBS was dropped: it now sits behind a Cloudflare browser check.
+ * Everything here is normalized to full VND for stocks and points for indexes.
  */
 import type { Bar } from "./chart";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
-/** Our symbols: "FPT.VN" for stocks, "^VNINDEX.VN" / "^VN30.VN" / "^HNX.VN" for indexes. */
+/** Our symbols: "FPT.VN" for any listed stock/ETF (HOSE, HNX, UPCoM), "^VNINDEX.VN" etc. for indexes. */
 export const isVnSymbol = (s: string) => /\.VN$/i.test(s);
-const INDEXES: Record<string, string> = { "^VNINDEX.VN": "VNINDEX", "^VN30.VN": "VN30", "^HNX.VN": "HNX" };
+
+/** Index symbols → each source's code. */
+export const VN_INDEXES: Record<string, { name: string; dnse: string; vietcap: string; vndirect: string }> = {
+  "^VNINDEX.VN": { name: "VN-Index", dnse: "VNINDEX", vietcap: "VNINDEX", vndirect: "VNINDEX" },
+  "^VN30.VN": { name: "VN30", dnse: "VN30", vietcap: "VN30", vndirect: "VN30" },
+  "^HNX.VN": { name: "HNX-Index", dnse: "HNX", vietcap: "HNXIndex", vndirect: "HNX" },
+  "^HNX30.VN": { name: "HNX30", dnse: "HNX30", vietcap: "HNX30", vndirect: "HNX30" },
+  "^UPCOM.VN": { name: "UPCoM", dnse: "UPCOM", vietcap: "HNXUpcomIndex", vndirect: "UPCOM" },
+};
 
 export function vnCode(symbol: string): { code: string; index: boolean } {
   const s = symbol.toUpperCase();
-  if (INDEXES[s]) return { code: INDEXES[s], index: true };
-  return { code: s.replace(/\.VN$/, ""), index: false };
-}
-
-async function getJson(url: string, referer: string): Promise<unknown> {
-  const res = await fetch(url, {
-    headers: { "User-Agent": UA, Accept: "application/json", Referer: referer, Origin: referer.replace(/\/$/, "") },
-    cache: "no-store",
-    signal: AbortSignal.timeout(8000),
-  });
-  if (!res.ok) throw new Error(`${new URL(url).hostname.split(".").slice(-3, -2)[0]} ${res.status}`);
-  return res.json();
+  const ix = VN_INDEXES[s];
+  if (ix) return { code: ix.dnse, index: true };
+  return { code: s.replace(/^\^/, "").replace(/\.VN$/, ""), index: false };
 }
 
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v));
+const sane = (b: Bar) => Number.isFinite(b.c) && b.c > 0 && Number.isFinite(b.t);
 
-/** TCBS bars: { data: [{ open, high, low, close, volume, tradingDate }] } */
-export function parseTcbs(j: unknown): Bar[] {
-  const rows = ((j as { data?: Record<string, unknown>[] })?.data ?? []) as Record<string, unknown>[];
-  return rows
-    .map((r) => {
-      const c = num(r.close);
-      const t = Math.floor(Date.parse(String(r.tradingDate)) / 1000);
-      return { t, o: num(r.open) || c, h: num(r.high) || c, l: num(r.low) || c, c, v: num(r.volume) || 0 };
+async function getJson(url: string, init: RequestInit & { referer: string }, ms = 8000): Promise<unknown> {
+  const host = new URL(url).hostname;
+  const res = await fetch(url, {
+    ...init,
+    headers: { "User-Agent": UA, Accept: "application/json", Referer: init.referer, Origin: init.referer.replace(/\/$/, ""), ...(init.headers ?? {}) },
+    cache: "no-store",
+    signal: AbortSignal.timeout(ms),
+  });
+  const name = host.includes("entrade") ? "dnse" : host.includes("vietcap") ? "vietcap" : host.includes("vndirect") ? "vndirect" : host;
+  if (!res.ok) throw new Error(`${name} ${res.status}`);
+  const text = await res.text();
+  if (text.trimStart().startsWith("<")) throw new Error(`${name}: blocked (HTML)`);
+  return JSON.parse(text);
+}
+
+/* ---------------------------------------------------------------- DNSE */
+
+export type DnseRes = "1" | "5" | "15" | "30" | "1H" | "1D";
+
+/** DNSE (TradingView UDF style): { t:[], o:[], h:[], l:[], c:[], v:[] }. Stocks in thousand VND. */
+export function parseDnse(j: unknown, index: boolean): Bar[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = j as any;
+  const t: number[] = d?.t ?? [];
+  const k = index ? 1 : 1000;
+  return t
+    .map((ts, i) => {
+      const c = num(d.c?.[i]) * k;
+      return { t: num(ts), o: num(d.o?.[i]) * k || c, h: num(d.h?.[i]) * k || c, l: num(d.l?.[i]) * k || c, c, v: num(d.v?.[i]) || 0 };
     })
-    .filter((b) => Number.isFinite(b.c) && b.c > 0 && Number.isFinite(b.t))
+    .filter(sane)
     .sort((a, b) => a.t - b.t);
 }
 
-export async function tcbsBars(symbol: string, intraday: boolean, days: number): Promise<Bar[]> {
+export async function dnseBars(symbol: string, res: DnseRes, days: number): Promise<Bar[]> {
   const { code, index } = vnCode(symbol);
-  const to = Math.floor(Date.now() / 1000);
-  const path = intraday ? "bars" : "bars-long-term";
-  const url = `https://apipubaws.tcbs.com.vn/stock-insight/v2/stock/${path}?ticker=${code}&type=${index ? "index" : "stock"}&resolution=${intraday ? 5 : "D"}&to=${to}&countBack=${intraday ? 300 : days}`;
-  const bars = parseTcbs(await getJson(url, "https://tcinvest.tcbs.com.vn/"));
-  if (bars.length < 2) throw new Error("tcbs: no data");
+  const to = Math.floor(Date.now() / 1000) + 3600;
+  const from = to - Math.ceil(days * 86400);
+  const url = `https://services.entrade.com.vn/chart-api/v2/ohlcs/${index ? "index" : "stock"}?from=${from}&to=${to}&symbol=${encodeURIComponent(code)}&resolution=${res}`;
+  const bars = parseDnse(await getJson(url, { referer: "https://banggia.dnse.com.vn/" }), index);
+  if (bars.length < 2) throw new Error("dnse: no data");
   return bars;
 }
 
-/** VNDirect: { data: [{ date: "2026-11-13", open, high, low, close, nmVolume | accumulatedVol }] }, newest first. */
-export function parseVndirect(j: unknown, index: boolean): Bar[] {
-  const rows = ((j as { data?: Record<string, unknown>[] })?.data ?? []) as Record<string, unknown>[];
-  const k = index ? 1 : 1000; // stock prices come in thousand VND
-  return rows
-    .map((r) => {
-      const [y, m, d] = String(r.date).split("-").map(Number);
-      const c = num(r.close) * k;
-      // 14:45 ICT close = 07:45 UTC
-      return { t: Math.floor(Date.UTC(y, m - 1, d, 7, 45) / 1000), o: num(r.open) * k || c, h: num(r.high) * k || c, l: num(r.low) * k || c, c, v: num(r.nmVolume ?? r.accumulatedVol) || 0 };
+/* ------------------------------------------------------------- Vietcap */
+
+export type VietcapFrame = "ONE_MINUTE" | "ONE_HOUR" | "ONE_DAY";
+
+/** Vietcap: [{ symbol, o:[], h:[], l:[], c:[], v:[], t:["unix",...] }]. Full VND. */
+export function parseVietcap(j: unknown): Bar[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const d = (Array.isArray(j) ? j[0] : null) as any;
+  const t: unknown[] = d?.t ?? [];
+  return t
+    .map((ts, i) => {
+      const c = num(d.c?.[i]);
+      return { t: num(ts), o: num(d.o?.[i]) || c, h: num(d.h?.[i]) || c, l: num(d.l?.[i]) || c, c, v: num(d.v?.[i]) || 0 };
     })
-    .filter((b) => Number.isFinite(b.c) && b.c > 0 && Number.isFinite(b.t))
+    .filter(sane)
     .sort((a, b) => a.t - b.t);
 }
 
-export async function vndirectBars(symbol: string, days: number): Promise<Bar[]> {
-  const { code, index } = vnCode(symbol);
-  const from = new Date(Date.now() - days * 1.5 * 86400_000).toISOString().slice(0, 10);
-  const table = index ? "vnmarket_prices" : "stock_prices";
-  const url = `https://api-finfo.vndirect.com.vn/v4/${table}?sort=date&q=code:${code}~date:gte:${from}&size=${Math.min(days * 2, 400)}&page=1`;
-  const bars = parseVndirect(await getJson(url, "https://dstock.vndirect.com.vn/"), index);
-  if (bars.length < 2) throw new Error("vndirect: no data");
+export async function vietcapBars(symbol: string, frame: VietcapFrame, count: number): Promise<Bar[]> {
+  const s = symbol.toUpperCase();
+  const code = VN_INDEXES[s]?.vietcap ?? vnCode(s).code;
+  const body = JSON.stringify({ timeFrame: frame, symbols: [code], to: Math.floor(Date.now() / 1000) + 3600, countBack: count });
+  const bars = parseVietcap(
+    await getJson("https://trading.vietcap.com.vn/api/chart/OHLCChart/gap-chart", { method: "POST", body, headers: { "Content-Type": "application/json" }, referer: "https://trading.vietcap.com.vn/" }),
+  );
+  if (bars.length < 2) throw new Error("vietcap: no data");
   return bars;
 }
 
-/** Daily bars from the first local source that answers. */
-export async function vnDaily(symbol: string, days: number): Promise<Bar[]> {
+/* ------------------------------------------------------------ VNDirect */
+
+// 14:45 ICT close = 07:45 UTC
+const vndTime = (date: string) => {
+  const [y, m, d] = date.split("-").map(Number);
+  return Math.floor(Date.UTC(y, m - 1, d, 7, 45) / 1000);
+};
+
+/**
+ * VNDirect rows, newest first: stocks { code, date, open, high, low, close, nmVolume, basicPrice } in
+ * thousand VND; indexes { code, date, ..., accumulatedVol } in points. Returns bars per code.
+ * Rows with no matched volume (the pre-open placeholder for today, suspended days) are skipped.
+ */
+export function parseVndirect(j: unknown, index: boolean): Map<string, Bar[]> {
+  const rows = ((j as { data?: Record<string, unknown>[] })?.data ?? []) as Record<string, unknown>[];
+  const k = index ? 1 : 1000;
+  const out = new Map<string, Bar[]>();
+  for (const r of rows) {
+    const vol = num(r.nmVolume ?? r.accumulatedVol);
+    if (!(vol > 0)) continue;
+    const c = num(r.close) * k;
+    const bar = { t: vndTime(String(r.date)), o: num(r.open) * k || c, h: num(r.high) * k || c, l: num(r.low) * k || c, c, v: vol };
+    if (!sane(bar)) continue;
+    const code = String(r.code).toUpperCase();
+    (out.get(code) ?? out.set(code, []).get(code)!).push(bar);
+  }
+  for (const bars of out.values()) bars.sort((a, b) => a.t - b.t);
+  return out;
+}
+
+/** Daily bars for many VN symbols in one or two requests. Missing symbols are absent from the map. */
+export async function vndirectDaily(symbols: string[], days: number): Promise<Map<string, Bar[]>> {
+  const out = new Map<string, Bar[]>();
+  const from = new Date(Date.now() - days * 1.45 * 86400_000).toISOString().slice(0, 10);
+  const stocks = symbols.filter((s) => !VN_INDEXES[s.toUpperCase()]);
+  const indexes = symbols.filter((s) => VN_INDEXES[s.toUpperCase()]);
+  const run = async (list: string[], index: boolean) => {
+    if (!list.length) return;
+    const codes = list.map((s) => (index ? VN_INDEXES[s.toUpperCase()].vndirect : vnCode(s).code));
+    const table = index ? "vnmarket_prices" : "stock_prices";
+    const size = Math.min(codes.length * Math.ceil(days * 1.1 + 5), 6000);
+    const url = `https://api-finfo.vndirect.com.vn/v4/${table}?sort=date&q=code:${codes.join(",")}~date:gte:${from}&size=${size}&page=1`;
+    const byCode = parseVndirect(await getJson(url, { referer: "https://dstock.vndirect.com.vn/" }, 12_000), index);
+    list.forEach((s, i) => {
+      const bars = byCode.get(codes[i]);
+      if (bars && bars.length >= 2) out.set(s.toUpperCase(), bars.slice(-days));
+    });
+  };
+  await Promise.all([run(stocks, false).catch(() => {}), run(indexes, true).catch(() => {})]);
+  return out;
+}
+
+/* ------------------------------------------------------------ helpers */
+
+/** Daily bars for one symbol from the first source that answers (errors from each are joined). */
+export async function vnDaily(symbol: string, days: number): Promise<{ bars: Bar[]; source: VnSource }> {
   const errors: string[] = [];
-  for (const run of [() => tcbsBars(symbol, false, days), () => vndirectBars(symbol, days)]) {
+  const tries: [VnSource, () => Promise<Bar[]>][] = [
+    ["dnse", () => dnseBars(symbol, "1D", days * 1.5 + 5)],
+    ["vietcap", () => vietcapBars(symbol, "ONE_DAY", days)],
+    [
+      "vndirect",
+      async () => {
+        const m = await vndirectDaily([symbol], days);
+        const b = m.get(symbol.toUpperCase());
+        if (!b) throw new Error("vndirect: no data");
+        return b;
+      },
+    ],
+  ];
+  for (const [source, run] of tries) {
     try {
-      return await run();
+      return { bars: (await run()).slice(-days), source };
     } catch (e) {
       errors.push((e as Error).message.slice(0, 60));
     }
   }
   throw new Error(errors.join(" · "));
+}
+
+export type VnSource = "dnse" | "vietcap" | "vndirect";
+
+/** Session date in Vietnam (UTC+7) for a unix time. */
+export const ictDay = (t: number) => new Date((t + 7 * 3600) * 1000).toISOString().slice(0, 10);
+
+/** Run async jobs with at most `n` in flight. */
+export async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let i = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(n, items.length) }, async () => {
+      while (i < items.length) {
+        const k = i++;
+        out[k] = await fn(items[k]);
+      }
+    }),
+  );
+  return out;
 }

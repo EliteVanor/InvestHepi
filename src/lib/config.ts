@@ -21,25 +21,79 @@ export const DEFAULT_INTERESTS: Interest[] = [
   },
 ];
 
-/** Index proxies always shown in the market strip. */
+/** Index proxies always shown in the My Interests strip. */
 export const BENCHMARKS = ["SPY", "QQQ", "SOXX"];
 
-/**
- * Vietnam section coverage: the index plus the sector groups that move it. ".VN" = HOSE listing
- * (prices via Yahoo, then TCBS / VNDirect, see vnmarket.ts). "^VNINDEX.VN" is the VN-Index itself.
- * Each group gets its own prediction in the Vietnam briefing.
- */
-export const VN_GROUPS: Interest[] = [
-  { id: "vn-index", name: "VN-Index", query: '"VN-Index" OR "VN30" OR "thị trường chứng khoán"', tickers: ["^VNINDEX.VN", "^VN30.VN", "E1VFVN30.VN"] },
-  { id: "vn-banks", name: "Banks", query: '"cổ phiếu ngân hàng" OR Vietcombank OR Techcombank OR "MB Bank"', tickers: ["VCB.VN", "TCB.VN", "MBB.VN", "ACB.VN", "BID.VN"] },
-  { id: "vn-realestate", name: "Real estate", query: '"cổ phiếu bất động sản" OR Vingroup OR Vinhomes OR "Novaland"', tickers: ["VHM.VN", "VIC.VN", "NVL.VN", "KDH.VN"] },
-  { id: "vn-brokers", name: "Securities firms", query: '"cổ phiếu chứng khoán" OR SSI OR VNDirect OR "khối ngoại"', tickers: ["SSI.VN", "VND.VN", "VCI.VN", "HCM.VN"] },
-  { id: "vn-tech-retail", name: "Tech & retail", query: "FPT OR \"Thế Giới Di Động\" OR MWG OR \"bán lẻ\"", tickers: ["FPT.VN", "MWG.VN", "PNJ.VN"] },
-  { id: "vn-industrial", name: "Steel & industrials", query: '"Hòa Phát" OR "thép" OR "đầu tư công" OR "khu công nghiệp"', tickers: ["HPG.VN", "GVR.VN", "HSG.VN"] },
+/* ----------------------------------------------------------------------------------------------
+ * Shared sections (World, US, Vietnam) cover the market itself, never anyone's personal stocks.
+ *   STRIP:  what the price strip under the title shows, in labeled groups.
+ *   GROUPS: what the AI makes one call for (direction, confidence, action), graded later.
+ *   MACRO:  rates, currencies and commodities that matter for that market.
+ * Symbols are Yahoo-style; ".VN" = a Vietnamese listing (HOSE/HNX/UPCoM), priced via DNSE/Vietcap/VNDirect.
+ * -------------------------------------------------------------------------------------------- */
+
+export type StripKey = "indexes" | "megacaps" | "giants" | "banks" | "largecaps";
+export interface StripGroup {
+  key: StripKey;
+  symbols: string[];
+}
+export type SharedSection = "world" | "us" | "vn";
+
+export const SECTION_STRIPS: Record<SharedSection, StripGroup[]> = {
+  us: [
+    { key: "indexes", symbols: ["^GSPC", "^DJI", "^NDX", "^RUT"] },
+    { key: "megacaps", symbols: ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA"] },
+  ],
+  world: [
+    { key: "indexes", symbols: ["^GSPC", "^STOXX50E", "^FTSE", "^GDAXI", "^N225", "^HSI", "000001.SS", "^KS11", "^BSESN"] },
+    { key: "giants", symbols: ["TSM", "ASML", "005930.KS", "0700.HK", "7203.T", "MC.PA"] },
+  ],
+  vn: [
+    { key: "indexes", symbols: ["^VNINDEX.VN", "^VN30.VN", "^HNX.VN", "^UPCOM.VN"] },
+    { key: "banks", symbols: ["VCB.VN", "BID.VN", "CTG.VN", "TCB.VN", "MBB.VN", "VPB.VN", "ACB.VN"] },
+    { key: "largecaps", symbols: ["VIC.VN", "VHM.VN", "FPT.VN", "HPG.VN", "GAS.VN", "VNM.VN", "MSN.VN", "MWG.VN", "SSI.VN"] },
+  ],
+};
+
+export const SECTION_MACRO: Record<SectionId, string[]> = {
+  interests: ["^VIX", "^TNX", "CL=F", "GC=F", "DX-Y.NYB", "BTC-USD"],
+  us: ["^VIX", "^TNX", "DX-Y.NYB", "CL=F", "GC=F", "BTC-USD"],
+  world: ["CL=F", "GC=F", "DX-Y.NYB", "EURUSD=X", "JPY=X", "CNY=X", "^TNX", "^VIX", "BTC-USD"],
+  vn: ["VND=X", "DX-Y.NYB", "^TNX", "GC=F", "CL=F", "^VIX"],
+};
+
+export const US_GROUPS: Interest[] = [
+  { id: "us-sp500", name: "S&P 500", query: '"S&P 500" OR "Wall Street" OR "stock market"', tickers: ["^GSPC", "SPY"] },
+  { id: "us-ndx", name: "Nasdaq 100", query: '"Nasdaq" OR "tech stocks" OR "Big Tech"', tickers: ["^NDX", "QQQ"] },
+  { id: "us-dow", name: "Dow Jones", query: '"Dow Jones" OR "blue chips"', tickers: ["^DJI", "DIA"] },
+  { id: "us-small", name: "Small caps", query: '"Russell 2000" OR "small caps" OR "small-cap stocks"', tickers: ["^RUT", "IWM"] },
 ];
 
-/** Prices shown in the Vietnam tab's strip, first to last. VNM = US-listed VanEck Vietnam ETF. */
-export const VN_SYMBOLS = ["^VNINDEX.VN", "^VN30.VN", "VCB.VN", "FPT.VN", "HPG.VN", "VHM.VN", "SSI.VN", "MWG.VN", "VNM"];
+export const WORLD_GROUPS: Interest[] = [
+  { id: "w-us", name: "US stocks", query: '"Wall Street" OR "S&P 500"', tickers: ["^GSPC"] },
+  { id: "w-europe", name: "Europe", query: '"European stocks" OR "Stoxx 600" OR DAX OR FTSE', tickers: ["^STOXX50E", "^GDAXI", "^FTSE"] },
+  { id: "w-japan", name: "Japan", query: 'Nikkei OR "Japanese stocks" OR "Bank of Japan"', tickers: ["^N225"] },
+  { id: "w-china", name: "China & Hong Kong", query: '"Hang Seng" OR "Chinese stocks" OR "Shanghai Composite"', tickers: ["^HSI", "000001.SS"] },
+  { id: "w-oil", name: "Oil", query: '"oil prices" OR OPEC OR Brent', tickers: ["CL=F"] },
+  { id: "w-gold", name: "Gold", query: '"gold price" OR "gold prices"', tickers: ["GC=F"] },
+];
+
+/**
+ * Vietnam: the index plus the sector groups that move it. Each group gets its own call.
+ */
+export const VN_GROUPS: Interest[] = [
+  { id: "vn-index", name: "VN-Index", query: '"VN-Index" OR "VN30" OR "thị trường chứng khoán"', tickers: ["^VNINDEX.VN", "^VN30.VN"] },
+  { id: "vn-banks", name: "Banks", query: '"cổ phiếu ngân hàng" OR Vietcombank OR Techcombank OR "MB Bank"', tickers: ["VCB.VN", "BID.VN", "CTG.VN", "TCB.VN", "MBB.VN", "VPB.VN", "ACB.VN"] },
+  { id: "vn-realestate", name: "Real estate", query: '"cổ phiếu bất động sản" OR Vingroup OR Vinhomes OR "Novaland"', tickers: ["VHM.VN", "VIC.VN", "NVL.VN", "KDH.VN"] },
+  { id: "vn-brokers", name: "Securities firms", query: '"cổ phiếu chứng khoán" OR SSI OR VNDirect OR "khối ngoại"', tickers: ["SSI.VN", "VND.VN", "VCI.VN", "HCM.VN"] },
+  { id: "vn-tech-retail", name: "Tech & retail", query: 'FPT OR "Thế Giới Di Động" OR MWG OR "bán lẻ"', tickers: ["FPT.VN", "MWG.VN", "PNJ.VN", "MSN.VN"] },
+  { id: "vn-industrial", name: "Steel, energy & industrials", query: '"Hòa Phát" OR "thép" OR "PV Gas" OR "đầu tư công"', tickers: ["HPG.VN", "GAS.VN", "GVR.VN", "HSG.VN"] },
+];
+
+export const SECTION_GROUPS: Record<SharedSection, Interest[]> = { us: US_GROUPS, world: WORLD_GROUPS, vn: VN_GROUPS };
+
+/** Benchmark for the mood gauge (momentum/strength) and the "breadth" set, per section. */
+export const MOOD_BENCH: Record<SectionId, string> = { interests: "SPY", us: "SPY", world: "ACWI", vn: "^VNINDEX.VN" };
 
 /** One-tap preset for Vietnamese users. */
 export const VN_PRESET: Interest = {

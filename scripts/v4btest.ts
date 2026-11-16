@@ -26,12 +26,15 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(d1.price, 679.89);
   assert.equal(d1.prevClose, 688.1);
   assert.equal(d1.bars.length, 3);
-  assert.ok(hits.includes("query1.finance.yahoo.com") && hits.includes("query2.finance.yahoo.com"), "both Yahoo hosts tried first");
+  assert.ok(hits.includes("query1.finance.yahoo.com"), "Yahoo tried first");
+  assert.ok(!hits.includes("query2.finance.yahoo.com"), "a 429 isn't retried on the second host (same per-IP limit)");
+  const yahooBefore = hits.filter((h) => h.includes("yahoo")).length;
   const d6 = await C.getChart("QQQ", "6mo");
   assert.deepEqual(d6.bars.map((b) => b.c), [688.1, 679.89], "Nasdaq history parsed and sorted oldest first");
+  assert.equal(hits.filter((h) => h.includes("yahoo")).length, yahooBefore, "during the cooldown Yahoo isn't called at all");
   assert.equal(d6.bars[1].v, 50_000_000);
   mode = "all-blocked";
-  await assert.rejects(C.getChart("SPY", "1y"), (e: Error) => /yahoo: query2 429/.test(e.message) && /nasdaq 403/.test(e.message) && /stooq/.test(e.message), "error lists every source's reason");
+  await assert.rejects(C.getChart("SPY", "1y"), (e: Error) => /yahoo: rate-limited/.test(e.message) && /nasdaq 403/.test(e.message), "error lists every source's reason");
 
   // ---- guest access
   process.env.APP_PASSWORD = "owner-pw";

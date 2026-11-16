@@ -6,7 +6,7 @@
  * the latest view. "today" calls are graded on that session's close vs the prior close; "this week"
  * calls on the 5th session's close.
  */
-import { getQuote } from "./market";
+import { getQuotes } from "./market";
 import { getJSON, setJSON } from "./store";
 import type { Call, Interest, Outlook } from "./types";
 
@@ -88,7 +88,8 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
   if (!pending.length) return 0;
   const { date: today, mins } = etNow(now);
   const tickers = [...new Set(pending.map((c) => c.ticker))];
-  const quotes = new Map((await Promise.all(tickers.map(getQuote))).filter(Boolean).map((q) => [q!.symbol, q!]));
+  // Fresh prices only (never the stale fallback), fetched in one batch.
+  const quotes = new Map((await getQuotes(tickers, { allowStale: false })).map((q) => [q.symbol, q]));
   let graded = 0;
   for (const c of pending) {
     const q = quotes.get(c.ticker);

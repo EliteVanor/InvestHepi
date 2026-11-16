@@ -38,7 +38,11 @@ function ret(q: Quote | undefined, back: number): number | undefined {
   return base ? ((q!.price - base) / base) * 100 : undefined;
 }
 
-export function computeMood(input: { spy?: Technicals; sectors: Quote[]; macro: Quote[]; quotes: Quote[] }): MoodGauge | undefined {
+/**
+ * `spy` is the section's benchmark technicals (SPY, ACWI or the VN-Index), `sectors` the breadth set
+ * (US sectors, world indexes or Vietnamese large caps), `benchSymbol` the benchmark's quote symbol.
+ */
+export function computeMood(input: { spy?: Technicals; sectors: Quote[]; macro: Quote[]; quotes: Quote[]; benchSymbol?: string }): MoodGauge | undefined {
   const parts: MoodPart[] = [];
   const { spy } = input;
 
@@ -67,7 +71,7 @@ export function computeMood(input: { spy?: Technicals; sectors: Quote[]; macro: 
     parts.push({ key: "volatility", score: (level + relative) / 2, detail: `VIX ${vix.price.toFixed(1)}` });
   }
   // 5. Safe-haven demand: stocks vs gold over ~1 month (±10 points maps to 0/100).
-  const spyQ = input.quotes.find((q) => q.symbol === "SPY");
+  const spyQ = input.quotes.find((q) => q.symbol === (input.benchSymbol ?? "SPY"));
   const gold = input.macro.find((m) => m.symbol === "GC=F");
   const back = Math.min((spyQ?.history.length ?? 1) - 1, (gold?.history.length ?? 1) - 1, 20);
   const rs = back >= 5 ? ret(spyQ, back) : undefined;

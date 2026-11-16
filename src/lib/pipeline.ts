@@ -15,11 +15,11 @@ import { createHash } from "node:crypto";
 import { afterRefresh } from "./alerts";
 import { getCalendar } from "./calendar";
 import { SECTORS } from "./chart";
-import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, SECTION_FEEDS, VN_GROUPS, VN_SYMBOLS } from "./config";
+import { BENCHMARKS, DEFAULT_INTERESTS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTION_FEEDS, SECTION_GROUPS, SECTION_MACRO, SECTION_STRIPS, type SharedSection, type StripGroup } from "./config";
 import { GUEST, OWNER, currentUid, ukey, withUser } from "./context";
 import { isLang } from "./languages";
 import { analyze } from "./llm";
-import { MACRO, getQuotes } from "./market";
+import { getQuotes } from "./market";
 import { computeMood } from "./mood";
 import { dedupe, fetchFeeds, fetchInterestNews } from "./news";
 import { loadHoldings, positionsAsText } from "./portfolio";
@@ -148,19 +148,45 @@ interface MarketData {
 }
 const MARKET_TTL_MS = 10 * 60_000;
 
-/** Prices, macro, sectors and technicals, shared across sections and users for 10 minutes. */
-const VN_MACRO = ["VND=X"];
+/** What one digest prices: strip/AI symbols, macro, whether US sectors matter, and the mood inputs. */
+interface Coverage {
+  symbols: string[];
+  macro: string[];
+  sectors: boolean;
+  /** Technicals: mood benchmark first, then each group's benchmark (the free-tier prompt keeps those). */
+  tech: string[];
+  bench: string;
+  /** Quotes used for the mood gauge's breadth (US sectors when `sectors`). */
+  breadth: string[];
+  strip?: StripGroup[];
+}
 
-async function marketData(symbols: string[], extraMacro: string[] = []): Promise<MarketData> {
-  const key = [...new Set(symbols.map((s) => s.toUpperCase()))].sort().join(",") + (extraMacro.length ? `|${extraMacro.join(",")}` : "");
+export function coverage(section: SectionId, interests: Interest[], extra: string[] = []): Coverage {
+  const bench = MOOD_BENCH[section];
+  const firsts = interests.map((i) => i.tickers[0]).filter(Boolean);
+  if (section === "interests") {
+    const symbols = [...BENCHMARKS, ...interests.flatMap((i) => i.tickers), ...extra];
+    return { symbols, macro: SECTION_MACRO.interests, sectors: true, tech: [bench, ...firsts, ...symbols], bench, breadth: [] };
+  }
+  const strip = SECTION_STRIPS[section];
+  const stripSyms = strip.flatMap((g) => g.symbols);
+  // Shared sections: the strip, each group's tickers, and the (hidden) mood benchmark. No personal stocks.
+  const symbols = [...stripSyms, ...interests.flatMap((i) => i.tickers), bench];
+  const breadth = section === "world" ? strip[0].symbols : section === "vn" ? strip.slice(1).flatMap((g) => g.symbols) : [];
+  return { symbols, macro: SECTION_MACRO[section], sectors: section === "us", tech: [bench, ...firsts, ...stripSyms], bench, breadth, strip };
+}
+
+/** Prices, macro, sectors and technicals, shared across sections and users for 10 minutes. */
+async function marketData(cov: Coverage): Promise<MarketData> {
+  const key = [[...new Set(cov.symbols.map((s) => s.toUpperCase()))].sort().join(","), cov.macro.join(","), cov.sectors ? "s" : "", cov.tech.slice(0, 16).join(",")].join("|");
   const slot = `market:${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
   const cached = await getJSON<MarketData>(slot).catch(() => null);
   if (cached && cached.key === key && Date.now() - cached.at < MARKET_TTL_MS && cached.quotes.length) return cached;
   const [quotes, macro, sectors, technicals] = await Promise.all([
-    getQuotes(symbols),
-    getQuotes([...MACRO.map((m) => m.symbol), ...extraMacro]),
-    getQuotes(SECTORS.map((x) => x.symbol)),
-    getTechnicals(["SPY", ...symbols]).catch(() => ({}) as Record<string, Technicals>),
+    getQuotes(cov.symbols),
+    getQuotes(cov.macro),
+    cov.sectors ? getQuotes(SECTORS.map((x) => x.symbol)) : Promise.resolve([] as Quote[]),
+    getTechnicals(cov.tech).catch(() => ({}) as Record<string, Technicals>),
   ]);
   const data: MarketData = { key, at: Date.now(), quotes, macro, sectors, technicals };
   if (quotes.length) await setJSON(slot, data).catch(() => {});
@@ -179,22 +205,22 @@ interface BuildOptions {
   now: Date;
 }
 
-export const VN_CALLS = "calls:vn";
+/** Track records of the shared sections (calls on market groups, graded like personal ones). */
+export const SHARED_CALLS: Record<"world" | "us" | "vn", string> = { world: "calls:world", us: "calls:us", vn: "calls:vn" };
+export const VN_CALLS = SHARED_CALLS.vn;
 
 async function buildDigest(o: BuildOptions): Promise<Digest> {
-  // Vietnam: its own symbols lead the strip; US benchmarks stay for the global risk read.
-  const symbols = o.section === "vn"
-    ? [...(o.extraSymbols ?? []), ...o.interests.flatMap((i) => i.tickers), ...BENCHMARKS]
-    : [...BENCHMARKS, ...o.interests.flatMap((i) => i.tickers), ...(o.extraSymbols ?? [])];
+  const cov = coverage(o.section, o.interests, o.extraSymbols);
   const [newsRes, market, calendar] = await Promise.all([
     o.section === "interests"
       ? fetchInterestNews(o.interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY)
       : fetchFeeds(SECTION_FEEDS[o.section]).then((r) => ({ items: dedupe(r.items), errors: r.errors })),
-    marketData(symbols, o.section === "vn" ? VN_MACRO : []),
+    marketData(cov),
     getCalendar(o.interests).catch(() => ({ events: [], notes: [], generatedAt: o.now.toISOString() })),
   ]);
   const { quotes, macro, sectors, technicals } = market;
-  const gauge = computeMood({ spy: technicals.SPY, sectors, macro, quotes });
+  const breadth = cov.sectors ? sectors : quotes.filter((q) => cov.breadth.includes(q.symbol));
+  const gauge = computeMood({ spy: technicals[cov.bench], sectors: breadth, macro, quotes, benchSymbol: cov.bench });
   const news = newsRes.items.slice(0, MAX_ITEMS_PER_SECTION);
   const stats = computeStats(await loadCalls(o.callsKey));
   const { analysis, provider, note } = await analyze({
@@ -224,6 +250,7 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
     sectors,
     technicals,
     gauge,
+    strip: cov.strip,
     feedErrors: newsRes.errors,
     language: provider === "rules" ? "en" : o.lang,
   };
@@ -231,14 +258,14 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
 
 /** Refresh one shared section in one language. */
 export async function refreshShared(section: SectionId, lang: string, now = new Date()): Promise<Digest> {
-  const isVn = section === "vn";
-  // Vietnam gets its own coverage (VN-Index + sector groups) and its own track record.
-  const interests = isVn ? VN_GROUPS : DEFAULT_INTERESTS;
-  const callsKey = isVn ? VN_CALLS : `calls:${interestHash(DEFAULT_INTERESTS, "en")}`;
-  if (isVn) await gradeCalls(now, callsKey).catch(() => 0);
-  const d = await buildDigest({ section, interests, lang, callsKey, extraSymbols: isVn ? VN_SYMBOLS : [], now });
+  const shared = section as SharedSection;
+  // Each shared section covers its own market groups and keeps its own track record.
+  const interests = SECTION_GROUPS[shared];
+  const callsKey = SHARED_CALLS[shared];
+  await gradeCalls(now, callsKey).catch(() => 0);
+  const d = await buildDigest({ section, interests, lang, callsKey, now });
   // Calls are keyed by date + ticker + horizon, so refreshing in several languages doesn't double-count.
-  if (isVn) await recordCalls(d.analysis.outlook, interests, d.provider, now, callsKey).catch(() => {});
+  await recordCalls(d.analysis.outlook, interests, d.provider, now, callsKey).catch(() => {});
   const prefix = prefixFor(section, lang);
   await setJSON(prefix, d);
   await archive(prefix, d).catch(() => {});
@@ -262,7 +289,8 @@ export async function refreshInterestSet(interests: Interest[], lang: string, ui
     interests,
     lang,
     callsKey,
-    positions: holdings.length ? positionsAsText(holdings, (await marketData([...BENCHMARKS, ...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)])).quotes) : undefined,
+    // Same coverage (and cache slot) as the digest below, so this costs no extra price requests.
+    positions: holdings.length ? positionsAsText(holdings, (await marketData(coverage("interests", interests, holdings.map((h) => h.symbol)))).quotes) : undefined,
     extraSymbols: holdings.map((h) => h.symbol),
     now,
   });
@@ -303,7 +331,7 @@ interface Group {
   uids: string[];
 }
 
-/** Distinct interest sets among active users, plus the default set guests see. */
+/** Distinct interest sets among active users (identical interests + language share one briefing). */
 export async function interestGroups(): Promise<Map<string, Group>> {
   const groups = new Map<string, Group>();
   const add = (interests: Interest[], lang: string, uid?: string) => {
@@ -318,7 +346,7 @@ export async function interestGroups(): Promise<Map<string, Group>> {
       add(interests, lang, uid);
     });
   }
-  if (multiUser()) for (const lang of await sharedLanguages()) add(DEFAULT_INTERESTS, lang);
+  // Signed-out visitors don't see My Interests (they're asked to sign in), so no guest set is kept fresh.
   return groups;
 }
 
