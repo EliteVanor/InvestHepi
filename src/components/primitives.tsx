@@ -5,10 +5,71 @@ import type { Direction } from "@/lib/types";
 import { IconX } from "./Icons";
 import { usePrefs } from "./prefs";
 
-/** Bottom sheet on phones, centered panel on desktop. Esc and scrim click close it. */
+/*
+ * Overlays on phones. iOS sizes `vh` with the browser bars hidden, so a sheet capped at 92vh is taller
+ * than the visible screen when Safari's or Brave's bars are showing, and its top (title, close button)
+ * slides above the screen. While any overlay is open we publish the real visible height as
+ * --app-h (visualViewport, which also shrinks for the on-screen keyboard; CSS falls back to dvh/vh),
+ * and lock the page behind it the way iOS respects (body fixed at the current scroll position;
+ * `overflow: hidden` alone doesn't stop iOS from scrolling the page).
+ */
+let overlays = 0;
+let savedY = 0;
+let stopVV: (() => void) | null = null;
+
+function trackViewport() {
+  const root = document.documentElement;
+  const vv = window.visualViewport;
+  const set = () => {
+    root.style.setProperty("--app-h", `${Math.round(vv ? vv.height : window.innerHeight)}px`);
+    root.style.setProperty("--app-top", `${Math.round(vv ? vv.offsetTop : 0)}px`);
+  };
+  set();
+  vv?.addEventListener("resize", set);
+  vv?.addEventListener("scroll", set);
+  window.addEventListener("resize", set);
+  return () => {
+    vv?.removeEventListener("resize", set);
+    vv?.removeEventListener("scroll", set);
+    window.removeEventListener("resize", set);
+    root.style.removeProperty("--app-h");
+    root.style.removeProperty("--app-top");
+  };
+}
+
+/** Call while an overlay is open: real visible height + page scroll lock. Nested overlays share one lock. Exported for tests. */
+export function openOverlay(): () => void {
+  if (overlays++ === 0) {
+    savedY = window.scrollY;
+    const b = document.body.style;
+    b.position = "fixed";
+    b.top = `-${savedY}px`;
+    b.left = "0";
+    b.right = "0";
+    b.overflow = "hidden";
+    stopVV = trackViewport();
+  }
+  let closed = false;
+  return () => {
+    if (closed) return;
+    closed = true;
+    if (--overlays > 0) return;
+    const b = document.body.style;
+    b.position = b.top = b.left = b.right = b.overflow = "";
+    window.scrollTo(0, savedY);
+    stopVV?.();
+    stopVV = null;
+  };
+}
+
+/**
+ * Bottom sheet on phones, centered panel on desktop. Esc and scrim click close it. The header (title,
+ * actions, close) sits outside the scrolling body, so it's always on screen.
+ */
 export function Sheet({ title, onClose, children, actions, wide }: { title: ReactNode; onClose: () => void; children: ReactNode; actions?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
   const { t } = usePrefs();
+  useEffect(() => openOverlay(), []);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
     ref.current?.focus();
@@ -31,16 +92,14 @@ export function Sheet({ title, onClose, children, actions, wide }: { title: Reac
       }
     };
     window.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
     return () => {
       window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-      prev?.focus?.();
+      prev?.focus?.({ preventScroll: true });
     };
   }, [onClose]);
   return (
     <div className="scrim" onClick={onClose}>
-      <div className="sheet" role="dialog" aria-modal="true" tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()} style={wide ? { maxWidth: 820 } : undefined}>
+      <div className="sheet split" role="dialog" aria-modal="true" tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()} style={wide ? { maxWidth: 820 } : undefined}>
         <div className="grabber" />
         <div className="sheet-head">
           <h2>{title}</h2>
@@ -50,7 +109,7 @@ export function Sheet({ title, onClose, children, actions, wide }: { title: Reac
             <IconX />
           </button>
         </div>
-        {children}
+        <div className="sheet-body">{children}</div>
       </div>
     </div>
   );

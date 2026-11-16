@@ -103,9 +103,12 @@ export function AskPanel({
       });
   }, [api, canSave]);
 
+  // Keep the newest message in view: the docked panel scrolls itself, the phone sheet scrolls its body.
   useEffect(() => {
     const el = scrollRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
+    if (!el) return;
+    const scroller = el.scrollHeight > el.clientHeight + 1 ? el : (el.closest(".sheet-body") as HTMLElement | null);
+    if (scroller) scroller.scrollTop = scroller.scrollHeight;
   }, [msgs, busy, view]);
 
   const remember = (id?: string) => {

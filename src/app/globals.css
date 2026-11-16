@@ -390,19 +390,41 @@ input, select, textarea { font: inherit; color: inherit; }
 footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin: 36px auto 0; max-width: 60ch; }
 
 /* ---------- Sheets ---------- */
-.scrim { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.32); display: flex; align-items: flex-end; justify-content: center; animation: fade 0.2s ease; }
+/*
+ * Overlays fit the screen the person can actually see: --app-h is the visual viewport's height (set
+ * by openOverlay in primitives.tsx; it shrinks for browser bars and the keyboard), falling back to dvh
+ * and then vh. The scrim spans exactly that box, so a bottom sheet's top can't slide above the screen.
+ */
+.scrim {
+  position: fixed; left: 0; right: 0; top: var(--app-top, 0px); z-index: 60;
+  height: 100vh; height: 100dvh; height: var(--app-h, 100dvh);
+  background: rgba(0, 0, 0, 0.36); display: flex; align-items: flex-end; justify-content: center;
+  padding-top: max(env(safe-area-inset-top), 10px);
+  animation: fade 0.2s ease; overscroll-behavior: contain; touch-action: none;
+}
+.scrim > * { touch-action: auto; }
 @media (min-width: 720px) { .scrim { align-items: center; padding: 32px; } }
 .sheet:focus { outline: none; }
 .sheet {
-  width: 100%; max-width: 680px; max-height: 92vh; overflow: auto; overscroll-behavior: contain;
+  width: 100%; max-width: 680px; max-height: 100%; overflow: auto; overscroll-behavior: contain;
   background: var(--surface); border-radius: 22px 22px 0 0; box-shadow: var(--shadow-lg);
   padding: 8px 20px calc(24px + env(safe-area-inset-bottom));
   animation: rise 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
-@media (min-width: 720px) { .sheet { border-radius: 22px; padding: 8px 24px 24px; } }
+/* Header outside the scroller: only the body scrolls, so title and close stay reachable. */
+.sheet.split { display: flex; flex-direction: column; overflow: hidden; padding: 8px 0 0; }
+.sheet.split > .grabber, .sheet.split > .sheet-head { flex: none; margin-left: 20px; margin-right: 20px; }
+.sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 0 20px calc(24px + env(safe-area-inset-bottom)); }
+@media (min-width: 720px) {
+  .sheet { border-radius: 22px; padding: 8px 24px 24px; max-height: min(100%, 880px); }
+  .sheet.split { padding: 8px 0 0; }
+  .sheet.split > .grabber, .sheet.split > .sheet-head { margin-left: 24px; margin-right: 24px; }
+  .sheet-body { padding: 0 24px 24px; }
+}
 .grabber { width: 36px; height: 5px; border-radius: 3px; background: var(--fill); margin: 0 auto 8px; }
 @media (min-width: 720px) { .grabber { display: none; } }
 .sheet-head { position: sticky; top: -8px; z-index: 2; display: flex; align-items: center; gap: 10px; padding: 10px 0 12px; background: var(--surface); }
+.sheet.split .sheet-head { position: relative; top: 0; border-bottom: 0.5px solid transparent; }
 .sheet-head h2 { font-size: 22px; font-weight: 700; letter-spacing: -0.022em; margin: 0; }
 .sheet-section { margin-top: 18px; }
 .sheet-section h3 { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--label-2); margin: 0 0 8px; }
@@ -638,7 +660,7 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .since-more { display: inline-block; margin-top: 12px; font-size: 13px; font-weight: 600; }
 
 /* ---------- Catch-up mode ---------- */
-.cu { position: fixed; inset: 0; z-index: 80; display: flex; flex-direction: column; background: var(--bg); animation: fade 0.2s ease; }
+.cu { position: fixed; left: 0; right: 0; top: var(--app-top, 0px); height: 100vh; height: 100dvh; height: var(--app-h, 100dvh); z-index: 80; display: flex; flex-direction: column; background: var(--bg); animation: fade 0.2s ease; padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
 .cu::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(700px circle at 15% 0%, var(--glow-a), transparent 60%), radial-gradient(600px circle at 90% 100%, var(--glow-b), transparent 60%); }
 .cu > * { position: relative; }
 .cu-top { padding: calc(10px + env(safe-area-inset-top)) 16px 0; max-width: 720px; width: 100%; margin: 0 auto; }

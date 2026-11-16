@@ -11,7 +11,7 @@ import type { TrackStats } from "@/lib/track";
 import type { Action, CalendarEvent, Digest, Direction, Holding, Outlook, Quote, Scenario } from "@/lib/types";
 import { IconAlert, IconCalendar, IconEye, IconHistory, IconPlus, IconSearch, IconSparkles, IconTarget, IconX } from "./Icons";
 import { lsGet, lsSet, usePrefs } from "./prefs";
-import { Ring, arrow, fmtPct, fmtPrice } from "./primitives";
+import { Ring, arrow, fmtPct, fmtPrice, openOverlay } from "./primitives";
 import { useLiveQuotes } from "./v3";
 import { calTitle, calWhen, groupName, moodDetail } from "./labels";
 
@@ -328,12 +328,10 @@ export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; 
       }
     };
     window.addEventListener("keydown", onKey);
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = "";
-    };
+    return () => window.removeEventListener("keydown", onKey);
   }, [next, prev, onClose]);
+  // Real visible height + page lock (shared with sheets; see openOverlay).
+  useEffect(() => openOverlay(), []);
 
   const touch = useRef<number | null>(null);
   const card = cards[i];
