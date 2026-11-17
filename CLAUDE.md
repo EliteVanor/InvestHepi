@@ -26,6 +26,8 @@ Gotcha: the store is `.data/` locally and `/tmp/invest-helper` when `VERCEL` is 
 
 Price-layer modules keep in-memory state (Yahoo cooldown, chart/live caches); tests reset it with `resetYahoo()` and `clearPriceCaches()`. Test fetch mocks must handle Yahoo's batch endpoint (`/v8/finance/spark?symbols=A,B`, flat JSON keyed by symbol) as well as `/v8/finance/chart/`.
 
+Local browser checks: run the production build (`npm run build` then `npx next start -p <port>`); stop it with `pkill -f next-server` (the process isn't named "next start", so an old server can keep the port and serve stale HTML whose chunks 404). Seed data with `npx tsx scripts/selftest.ts` (writes `.data/`). Signed-in views: build with the `AUTH_*` vars, start with `E2E_FAKE_AUTH=1 OWNER_EMAIL=...`, and send `x-test-user: <email>` from Playwright (`extraHTTPHeaders`). The theme is stored JSON-encoded: `localStorage.setItem('ih-theme', JSON.stringify('dark'))`. Freeze time with Playwright's `context.clock.setFixedTime` for repeatable screenshots.
+
 For live checks against real APIs from a cloud sandbox, Node's built-in fetch ignores `HTTPS_PROXY` unless run with `NODE_USE_ENV_PROXY=1`. Don't hammer Yahoo while testing: it rate-limits the IP for minutes.
 
 `scripts/i18ntest.ts` enforces that every key in `src/lib/i18n/en.ts` exists in all 8 language files under `src/lib/i18n/` (en, vi, zh, ja, ko, es, fr, de). Any new UI string needs all 8.
@@ -52,8 +54,8 @@ For live checks against real APIs from a cloud sandbox, Node's built-in fetch ig
 | `v13test` | the scheduler: timetable, order, 65 s gap, skip and retry rules, lock, late/missed, alerts window |
 | `v14test` | golden values (interest hash, `coverage`, API routes, storage keys, env docs), dates, the 1-day cutoff and catch-up |
 | `v15test` | the page's pure logic: price strip (live vs snapshot, ETF rule), chart symbols, who sees Refresh and what it says |
-| `v17test` | no-result moves (and the retroactive fix), actions aligned with directions (`alignAction`) |
 | `v16test` | track record: each exchange's close, grade timing, flat band, Wilson range, skill vs always-up, Brier, actions, calibration, raw confidence recorded |
+| `v17test` | no-result moves (and the retroactive fix), actions aligned with directions (`alignAction`) |
 
 ## Code map
 
@@ -173,7 +175,9 @@ These are the habits from past sessions. Follow them without being asked.
 - One short-named branch per round (`v12`, `v13`, ...).
 - Before pushing: `npm test`, `npm run typecheck`, and `npm run build` both with and without the `AUTH_*` env vars.
 - Update this file for architecture changes, and add a section to `docs/HANDOFF.md` for the round: what changed, what was verified and how, what wasn't, and open items.
-- Ask before merging to `main` (it deploys) unless the owner said to merge without asking. After a merge, check production with read-only GET requests only.
+- Ask before merging to `main` (it deploys) unless the owner said to merge without asking. After a merge, check production with read-only GET requests only: first wait for the new build (poll for something only it has: a new CSS rule, UI string or API field), then the endpoints, then a real-browser pass (wide and phone, no console errors).
+- Refactors that must not change the UI: screenshot the views before and after with the same seeded data and a frozen clock, and compare pixel by pixel (`compare -metric AE`); report the counts.
+- When a result can only be checked later (a market close, an hourly job), schedule a check-in (`send_later`) instead of holding the session.
 - On long tasks, post a one-line status now and then.
 - End with: what changed, what was verified, what wasn't, open risks, and the one question that decides the next step.
 

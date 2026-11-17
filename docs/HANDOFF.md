@@ -21,17 +21,20 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - **When no AI model works:** keep the last AI briefing and explain it in a banner; readers can switch to a rule-based summary of the latest news (only they see it; cached).
 - **One language setting per person**, used for the app, briefings and alert emails. **Every briefing is generated in English and translated** (cached per briefing version). Never regenerate a briefing to change its language.
 - **Signed-out visitors** can read World / US / Vietnam; My Interests shows a sign-in invitation. Visitors land on World (Vietnam if their language is Vietnamese).
+- **Track record (decided Nov 16, v16-v17):** it must make predictions better over time. The headline is the up/down hit rate next to the "always up" baseline, with a likely range and an "Early data" label under 30 calls; flat calls are judged against each ticker's usual daily move; Hold/Wait are scored apart (result by action); moves inside the band are "no result"; each call shows its record at that confidence, and from 20 graded calls at a level the shown confidence moves toward the real hit rate (the AI's own number stays visible and is what gets recorded); grading happens within the hour after each market closes; an action must agree with its direction.
+- **Wide-screen panels (decided Nov 16, v16):** macOS-style. The sidebar folds to an icon rail with its toggle top-left; Ask AI folds to a slim rail with its toggle top-right in the same spot as the close button; both slide; refined glass look, minimal, Apple-like.
 - **Search like Apple Stocks:** find any US, Vietnamese or global stock / ETF / index (accents optional), tap + to follow. Following creates a one-ticker interest.
 - **Prices must never just disappear:** Vietnamese prices come from Vietnamese brokers (DNSE, Vietcap, VNDirect); Yahoo is batched and backs off; Yahoo-only symbols fall back to tracking ETFs (tagged); last good prices fill gaps (dimmed). Grading never uses stale prices.
 - **No scraped API keys** and no bypassing rate limits (an automated permission check blocked both; respect that).
 
 ## How the owner likes to work
 
-The working rules (session start, stress testing, research and ideas, delivering, lines not to cross) are in `CLAUDE.md` under "Working with the owner", so they load in every session. In short: direct, concise writing with no em dashes or jargon; stress-test ideas and give other perspectives; research before building; short branch names; ask before merging to `main`.
+The working rules (session start, stress testing, research and ideas, delivering, lines not to cross) are in `CLAUDE.md` under "Working with the owner", so they load in every session. The owner answers questions by number ("1 A, 2 yes"), says "go" to start a planned round and "merge" to merge it; when busy they ask for the plan and then the whole job without check-ins. In short: direct, concise writing with no em dashes or jargon; stress-test ideas and give other perspectives; research before building; short branch names; ask before merging to `main`.
 
 ## Current state
 
-- `main` = v13, deployed on Vercel at `investhepi.vercel.app`.
+- `main` = v17, deployed on Vercel at `investhepi.vercel.app`.
+- Scheduler fully set up (Nov 16): Vercel Schedules from `vercel.json`, the owner's cron-job.org job (`TICK_SECRET` in Vercel, failure emails on), GitHub backup every 3 h. Watch it at `/api/status?schedule=1`.
 - Multi-user mode is on (Google sign-in via Auth.js). Vercel env vars in use: AI keys (`GROQ_API_KEY`, `GEMINI_API_KEY`), Upstash (`KV_REST_API_*`), `APP_PASSWORD`, `CRON_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `OWNER_EMAIL`, optionally `CONTACT_EMAIL` (shown on `/privacy` and `/terms`). GitHub repo secrets `APP_URL`, `CRON_SECRET` drive the GitHub backup poker.
 - Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT` (admin, 10), `USER_REFRESH_DAILY_LIMIT` (5), `USER_REFRESH_GAP_MIN` (90), `RULES_DAILY_LIMIT` (30), `ASK_DAILY_LIMIT`, `TICK_SECRET` (lets cron-job.org poke the scheduler and nothing else), model overrides `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, limits `GROQ_TPD`, `GEMINI_RPD`.
 - Google OAuth consent screen: branding filled in, privacy/terms pages exist; publishing needs no logo (a logo triggers brand verification).
@@ -75,6 +78,20 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Movers carry `source_ids` (schema + prompt); a mover's reason is kept only if a cited headline names the stock.
 - GitHub's scheduler is unreliable: since Nov 15 only one scheduled run fired (01:15 slot ran at 02:22); the Sunday 22:35 slot never ran; the Monday 08:10 slot hadn't started by 08:41. **Most urgent fix:** move the timetable to an external free scheduler (cron-job.org or Upstash QStash) calling `/api/refresh` with `Authorization: Bearer $CRON_SECRET`, keep GitHub as backup.
 - Competitor and AI-for-stocks report (private artifact, owner's account): https://claude.ai/artifact/KNXDbKGgFtLiGQ7iBVHw1S. Main takeaways: make the graded track record the front door (with a do-nothing baseline), get a Vietnamese legal read on publishing buy/hold/wait calls (the SSC warned about unlicensed recommendations in 2026), add fundamentals and foreign flows for VN tickers, web push; don't build order books, screeners, community or trading.
+
+## Session summary, Nov 16 2026 (v13 to v17)
+
+One long session; each round has its own section below.
+
+| Round | What it did | Key files |
+|---|---|---|
+| v13 | Scheduled refreshes didn't run (GitHub dropped the schedules; the legacy Vercel cron never fired). Replaced by one timetable in code and a tick endpoint that any poker can call; Vercel Schedules (every 15 min), cron-job.org (every 30 min, emails on a late slot) and GitHub (every 3 h) poke it. Idempotent slots, late-slot 503s, public schedule report. | `timetable.ts`, `scheduler.ts`, `api/cron/tick`, `vercel.json`, `refresh.yml` |
+| v14 | Scheduled interest refreshes only for users seen in the last day, with a catch-up briefing for returning users. Refactor for readers: `pipeline.ts` split into `interests.ts` / `briefings.ts` / `pipeline.ts`, `v3.tsx`/`v4.tsx` into feature files, `i18n.ts` into one file per language, one date helper, dead code removed, `.env.example` rewritten and guarded by a test. | `interests.ts`, `briefings.ts`, `dates.ts`, `i18n/`, `.env.example` |
+| v15 | `page.tsx` (883 lines) split into hooks and frame components, pixel-identical to before; README rewritten with fresh production screenshots; stock-page range tiles fixed. | `components/shell/*`, `README.md` |
+| v16 | Track record that teaches the model: grading on each exchange's own close (hourly in the tick), volatility-scaled flat band, skill vs "always up" with a Wilson range, Brier, results by action, calibrated confidence with the raw number recorded, redesigned sheet. Sidebar and Ask AI dock slide and fold to rails; dark-mode native controls; account menu no longer clipped. | `track.ts`, `components/track.tsx`, `globals.css` |
+| v17 | Up/down moves inside the band are "no result" (also retroactively); actions must agree with directions (prompt rule + `alignAction`). | `track.ts`, `pipeline.ts`, `prompt.ts` |
+
+Production at the end of the session: v17 live; the scheduler ran every slot since the v13 deploy (Vercel ticks every ~15 min, cron-job.org every 30 min); the first real grades came in (7 Vietnam calls for Nov 16: up/down 2/5, "always up" 2/5, flat 1/2).
 
 ## v13 (branch `v13`, Nov 16 2026): a scheduler that runs
 
@@ -187,7 +204,11 @@ From the first real grades (7 Vietnam calls, Nov 16): HPG "up" moved exactly 0.0
 - `/api/status` tells anonymous visitors which AI providers and services are configured (no secrets).
 
 - Translations are covered by tests with a fake AI but haven't been checked with a real AI key; verify output quality on the live site.
-- When Yahoo refuses Vercel, US 10Y and USD/VND have no ETF stand-in and only show their last known value.
-- Track-record grading uses the US trading calendar; Vietnamese holidays (Tet) aren't modeled. The HOSE market clock doesn't model holidays either.
+- Grading uses each exchange's close time but no holiday calendars: a holiday simply has no bar, so its calls wait for the next session's close (a daily call on a holiday is graded against the next day). Tet and US holidays aren't modeled in the market clocks either.
 - Interest sets saved in Vietnamese before v8 get their first English briefing on the next scheduled run.
 - Alert emails to other users need a verified Resend domain or Gmail SMTP (Resend's test sender only reaches the account owner).
+- After v17's deploy: HPG's Nov 16 "up, 0.00%" call should flip to "no result" at the first hourly grading pass (~20:26 UTC Nov 16); check `/api/track?section=vn` (`direction.noResult` >= 1, up/down 2/4). VHM's old "down + Hold" keeps its action (the fix applies to new briefings only).
+- First US grades: the Nov 16 calls need VNDirect's posted official closes (next morning, Asian time), then the next hourly pass.
+- Not verified with real users: a real Google sign-in after the v15 refactor; the Windows native `<select>` popup in dark mode (computed option colors were checked, the OS-drawn popup can't be screenshotted headless).
+- Per-model AI usage is only in `/api/status` (`aiUsage`, admin), not in the Status panel.
+- `docs/PLAN.md`, `PLAN-v3.md`, `PLAN-v4.md` are historical design notes from early versions; some details there are out of date (the README and this file are current).
