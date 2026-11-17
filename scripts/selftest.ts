@@ -93,7 +93,7 @@ async function main() {
   assert.ok(d.news.every((n) => (n.tags?.length ?? 0) > 0), "interest news all tagged");
   assert.ok(!d.news.some((n) => n.title.includes("bakery")), "irrelevant item filtered");
   assert.ok(d.quotes.find((q) => q.symbol === "NVDA"), "quotes fetched");
-  assert.equal(d.analysis.outlook.length, 3, "one outlook per interest");
+  assert.equal(d.analysis.outlook, undefined, "briefings make no calls (v18: predictions do)");
   console.log("Headline:", d.analysis.headline);
   console.log("Events:", d.analysis.events.map((e) => `${e.title} [${e.impacts.map((i) => i.interest + ":" + i.direction).join(", ")}]`));
   const w = (await loadDigest("world"))!;
@@ -142,7 +142,7 @@ async function main() {
   );
   const calls = await loadCalls();
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].date, targetSession(past));
+  assert.equal(calls[0].date, targetSession(past), "made before the open: that session");
   const g = await gradeCalls(new Date(now));
   assert.equal(g, 1, "call graded");
   const graded = (await loadCalls())[0];

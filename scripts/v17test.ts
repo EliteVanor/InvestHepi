@@ -69,12 +69,15 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(P.alignAction("up", "SELL"), "HOLD");
   assert.equal(P.alignAction("up", "AVOID"), "HOLD");
   for (const [d, a] of [["up", "BUY"], ["up", "WAIT"], ["down", "SELL"], ["down", "WAIT"], ["flat", "HOLD"], ["flat", "WAIT"]] as const) assert.equal(P.alignAction(d, a), a, `${d} + ${a} is fine`);
-  const prompt = readFileSync(path.join(__dirname, "../src/lib/llm/prompt.ts"), "utf8");
-  assert.match(prompt, /The action must agree with the direction/, "the prompt asks for it");
+  const prompt = readFileSync(path.join(__dirname, "../src/lib/llm/predict.ts"), "utf8");
+  assert.match(prompt, /The action must agree with the direction/, "the prediction prompt asks for it");
 
-  // End to end: the model says "down" + BUY; readers see WAIT, the model's own action is kept, the record has WAIT.
-  const d = await P.refreshShared("us", "en", new Date("2026-11-16T12:30:00Z"));
-  const o = d.analysis.outlook.find((x) => x.ticker === "^GSPC")!;
+  // End to end (a prediction run since v18): the model says "down" + BUY; readers see WAIT, the model's own action is kept, the record has WAIT.
+  const PR = await import("../src/lib/predictions");
+  const run = await PR.runPrediction({ market: "us", phase: "pre", now: new Date("2026-11-16T12:30:00Z") });
+  assert.equal(run.ok, true, run.note);
+  const set = await getJSON<{ daily: { items: import("../src/lib/types").Outlook[] } }>("pred:us");
+  const o = set!.daily.items.find((x) => x.ticker === "^GSPC")!;
   assert.deepEqual([o.direction, o.action, o.aiAction], ["down", "WAIT", "BUY"]);
   const rec = (await getJSON<Call[]>("calls:us"))!.find((c) => c.ticker === "^GSPC")!;
   assert.equal(rec.action, "WAIT", "graded as shown");

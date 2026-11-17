@@ -6,7 +6,7 @@
  */
 import { langInfo } from "./languages";
 import { complete } from "./llm";
-import type { Analysis, Digest, NewsItem } from "./types";
+import type { Analysis, Digest, NewsItem, Outlook } from "./types";
 
 type Setter = (v: string) => void;
 
@@ -30,7 +30,7 @@ export function textSlots(a: Analysis): { text: string; set: Setter }[] {
       add(an.whatHappenedNext, (v) => (an.whatHappenedNext = v));
     }
   }
-  for (const o of a.outlook) {
+  for (const o of a.outlook ?? []) {
     add(o.actionTrigger, (v) => (o.actionTrigger = v));
     add(o.rationale, (v) => (o.rationale = v));
     add(o.risks, (v) => (o.risks = v));
@@ -123,13 +123,14 @@ export function headlineSlots(news: NewsItem[], a: Analysis, lang: string): { te
     }));
 }
 
-/** A copy of `d` with its text (and its main headlines) in `lang`. Throws if no AI provider can do it. */
-export async function translateDigest(d: Digest, lang: string): Promise<Digest> {
-  const copy: Digest = JSON.parse(JSON.stringify(d));
-  const slots = [...textSlots(copy.analysis), ...headlineSlots(copy.news ?? [], copy.analysis, lang)];
-  if (!slots.length) return { ...copy, language: lang };
+/**
+ * Translate text slots in place, chunk by chunk, through the translate route. Returns the provider id.
+ * Throws if no AI provider can do it.
+ */
+export async function translateSlots(slots: { text: string; set: Setter }[], lang: string, what = "a stock-market briefing and news headlines"): Promise<string> {
+  if (!slots.length) return "";
   const target = langInfo(lang).english;
-  const system = `You translate a stock-market briefing and news headlines into ${target}. You get a JSON array of strings. Return ONLY a JSON array with the same number of strings, in the same order, each translated into natural, concise ${target} as a financial journalist would write it. Keep tickers, numbers, percentages, dates, index and company names, and units exactly as they are. Do not add, merge, drop or explain anything.`;
+  const system = `You translate ${what} into ${target}. You get a JSON array of strings. Return ONLY a JSON array with the same number of strings, in the same order, each translated into natural, concise ${target} as a financial journalist would write it. Keep tickers, numbers, percentages, dates, index and company names, and units exactly as they are. Do not add, merge, drop or explain anything.`;
   // One chunk at a time: Groq counts tokens per minute, and parallel chunks would trip it.
   const results: { chunk: typeof slots; out: string[]; provider: string }[] = [];
   for (const chunk of chunkSlots(slots)) {
@@ -144,5 +145,25 @@ export async function translateDigest(d: Digest, lang: string): Promise<Digest> 
     results.push({ chunk, out: parseTranslations(text, texts.length)!, provider });
   }
   for (const { chunk, out } of results) out.forEach((v, i) => chunk[i].set(v));
-  return { ...copy, language: lang, translatedFrom: d.language, translatedBy: results[0].provider.split(":")[0] };
+  return results[0].provider;
+}
+
+/** The translatable text of prediction calls (trigger, rationale, risks). */
+export function outlookSlots(list: Outlook[]): { text: string; set: Setter }[] {
+  const out: { text: string; set: Setter }[] = [];
+  for (const o of list) {
+    if (o.actionTrigger?.trim()) out.push({ text: o.actionTrigger, set: (v) => (o.actionTrigger = v) });
+    if (o.rationale?.trim()) out.push({ text: o.rationale, set: (v) => (o.rationale = v) });
+    if (o.risks?.trim()) out.push({ text: o.risks, set: (v) => (o.risks = v) });
+  }
+  return out;
+}
+
+/** A copy of `d` with its text (and its main headlines) in `lang`. Throws if no AI provider can do it. */
+export async function translateDigest(d: Digest, lang: string): Promise<Digest> {
+  const copy: Digest = JSON.parse(JSON.stringify(d));
+  const slots = [...textSlots(copy.analysis), ...headlineSlots(copy.news ?? [], copy.analysis, lang)];
+  if (!slots.length) return { ...copy, language: lang };
+  const provider = await translateSlots(slots, lang);
+  return { ...copy, language: lang, translatedFrom: d.language, translatedBy: provider.split(":")[0] };
 }

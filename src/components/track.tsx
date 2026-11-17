@@ -6,7 +6,7 @@
  */
 import { useEffect, useState } from "react";
 import { relTime, type MsgKey } from "@/lib/i18n";
-import { symLabel } from "@/lib/symbols";
+import { exchangeTz, symLabel } from "@/lib/symbols";
 import { type Rate, type TrackStats } from "@/lib/track";
 import { SECTION_IDS, type Call, type SectionId } from "@/lib/types";
 import { lsGet, usePrefs } from "./prefs";
@@ -17,8 +17,14 @@ const pctOf = (x: number | null | undefined) => (x == null ? "–" : `${Math.rou
 /** Fewer graded calls than this and the numbers are labeled early data. */
 const EARLY = 30;
 
+/** When a call was made: "Before market", "Mid-day" or, for weekly calls, "Week from Wed". Calls before v18 count as before market. */
+function madeLabel(t: ReturnType<typeof usePrefs>["t"], lang: string, c: { id: string; phase?: string; date: string }) {
+  if (c.id.endsWith(":w")) return t("track.weekFrom", { day: new Intl.DateTimeFormat(lang, { weekday: "short", timeZone: "UTC" }).format(new Date(c.date + "T12:00:00Z")) });
+  return t((c.phase ?? (c.id.endsWith(":m") ? "mid" : "pre")) === "mid" ? "pred.mid" : "pred.pre");
+}
+
 export function TrackSheet({ onClose, section = "interests" }: { onClose: () => void; section?: SectionId }) {
-  const { t, api, lang } = usePrefs();
+  const { t, api, lang, marketTime } = usePrefs();
   const [sec, setSec] = useState<SectionId>(section);
   const [s, setS] = useState<TrackStats | null>(null);
   const [err, setErr] = useState("");
@@ -61,15 +67,17 @@ export function TrackSheet({ onClose, section = "interests" }: { onClose: () => 
               </h3>
               <div className="tr-list">
                 {s.pending.map((p) => (
-                  <div className="tr-row" key={p.id}>
-                    <span className="num tr-date">
-                      {fmtDate(p.date)}
-                      {p.horizon === "w" ? ` (${t("track.week")})` : ""}
-                    </span>
-                    <b className="tr-sym">{symLabel(p.ticker)}</b>
-                    {callLabel(p as Pick<Call, "direction" | "action">)}
-                    <span className="num muted">{p.confidence}%</span>
-                    <span className="tr-when muted">{t("track.gradesAt", { when: relTime(p.gradesAfter, lang) })}</span>
+                  <div className="tr-item" key={p.id}>
+                    <div className="tr-row">
+                      <span className="num tr-date">{fmtDate(p.date)}</span>
+                      <b className="tr-sym">{symLabel(p.ticker)}</b>
+                      {callLabel(p as Pick<Call, "direction" | "action">)}
+                      <span className="num muted">{p.confidence}%</span>
+                      <span className="tr-when muted">{relTime(p.gradesAfter, lang)}</span>
+                    </div>
+                    <div className="tr-sub">
+                      <span className="tr-made">{madeLabel(t, lang, p)}</span> · {marketTime(p.madeAt, exchangeTz(p.ticker), { day: p.horizon === "w" })} · {t("track.gradedClose", { when: marketTime(p.gradesAfter, exchangeTz(p.ticker), { day: true }) })}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -82,17 +90,27 @@ export function TrackSheet({ onClose, section = "interests" }: { onClose: () => 
             ) : (
               <div className="tr-list">
                 {s.recent.map((c) => (
-                  <div className="tr-row" key={c.id}>
-                    <span className="num tr-date">
-                      {fmtDate(c.date)}
-                      {c.id.endsWith(":w") ? ` (${t("track.week")})` : ""}
-                    </span>
-                    <b className="tr-sym">{symLabel(c.ticker)}</b>
-                    {callLabel(c)}
-                    <span className="num muted">{c.confidence}%</span>
-                    <span className={`num tr-result ${c.noResult ? "muted" : c.correct ? "ok" : "bad"}`} title={c.band != null ? `±${c.band}%` : undefined}>
-                      {c.noResult ? "–" : c.correct ? "✓" : "✗"} {fmtPct(c.returnPct ?? 0)}
-                    </span>
+                  <div className="tr-item" key={c.id}>
+                    <div className="tr-row">
+                      <span className="num tr-date">{fmtDate(c.date)}</span>
+                      <b className="tr-sym">{symLabel(c.ticker)}</b>
+                      {callLabel(c)}
+                      <span className="num muted">{c.confidence}%</span>
+                      {c.closed ? (
+                        <span className="tr-result muted">{t("track.closed")}</span>
+                      ) : (
+                        <span className={`num tr-result ${c.noResult || c.noLiveBase ? "muted" : c.correct ? "ok" : "bad"}`} title={c.band != null ? `±${c.band}%` : undefined}>
+                          {c.noResult ? "–" : c.correct ? "✓" : "✗"} {fmtPct(c.returnPct ?? 0)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="tr-sub">
+                      <span className="tr-made">{madeLabel(t, lang, c)}</span> · {marketTime(c.madeAt, exchangeTz(c.ticker), { day: c.id.endsWith(":w") })}
+                      {!c.closed && <> · {t("track.gradedClose", { when: new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date((c.gradedOn ?? c.endDate ?? c.date) + "T12:00:00Z")) })}</>}
+                      {c.closed && <> · {t("track.closedHint")}</>}
+                      {c.noLiveBase && !c.closed && <> · {t("track.uncountedOne")}</>}
+                      {c.baseChg != null && <> · {t("track.fromNow", { chg: fmtPct(c.baseChg) })}</>}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -115,8 +133,10 @@ function Summary({ s }: { s: TrackStats }) {
       <div className="tr-hero">
         <div className="tr-hero-main">
           <span className="big-stat num">{pctOf(d.rate)}</span>
-          <span className="muted">{d.n ? t("track.dirRate", { n: d.n }) : t("track.none")}</span>
+          <span className="muted">{d.n ? t("track.dirRateDays", { n: d.calls ?? d.n, days: d.n }) : t("track.none")}</span>
           {d.noResult > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.noResult", { n: d.noResult })}</span>}
+          {s.uncounted > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.uncounted", { n: s.uncounted })}</span>}
+          {s.closed > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.closedN", { n: s.closed })}</span>}
         </div>
         <div className="tr-chips">
           {d.low != null && <span className="chip num">{t("track.likely", { lo: Math.round(d.low * 100), hi: Math.round(d.high! * 100) })}</span>}
@@ -133,6 +153,12 @@ function Summary({ s }: { s: TrackStats }) {
           <small>{t("track.horizon")}</small>
           <b className="num">
             {pctOf(s.byHorizon.d.rate)} · {pctOf(s.byHorizon.w.rate)}
+          </b>
+        </div>
+        <div className="stat">
+          <small>{t("track.byPhase")}</small>
+          <b className="num">
+            {pctOf(s.byPhase?.pre.rate)} · {pctOf(s.byPhase?.mid.rate)}
           </b>
         </div>
         <div className="stat" title={t("track.brierHint")}>

@@ -1,5 +1,6 @@
 import { isLang } from "@/lib/languages";
 import { translateLatest } from "@/lib/briefings";
+import { translatePredictions } from "@/lib/predictions";
 import { hit } from "@/lib/ratelimit";
 import { SECTION_IDS, type SectionId } from "@/lib/types";
 import { gate } from "@/lib/users";
@@ -20,6 +21,11 @@ export async function POST(req: Request) {
     if (!SECTION_IDS.includes(section) || !isLang(lang)) return Response.json({ error: "bad request" }, { status: 400 });
     const cap = Number(process.env.TRANSLATE_DAILY_LIMIT) || 80;
     try {
+      // ?kind=predictions → the section's prediction notes (all its markets in one go).
+      if (p.get("kind") === "predictions") {
+        const sets = await translatePredictions(section, lang, async () => (await hit("translate", cap)).ok);
+        return Response.json({ sets, translated: sets.every((s) => s.language === lang) });
+      }
       const variant = p.get("variant") === "rules" ? "rules" : undefined;
       const digest = await translateLatest(section, lang, async () => (await hit("translate", cap)).ok, variant);
       return Response.json({ digest, translated: digest?.language === lang });

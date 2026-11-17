@@ -126,7 +126,7 @@ async function main() {
     section, generatedAt: new Date().toISOString(), provider: "groq:x", news: [], quotes: [], feedErrors: [],
     analysis: { headline: `${section} <headline> & more`, mood: "risk-on", summary: ["one", "two"], events: [], outlook: [o("SOXX", "ADD", 66)], watchNext: [], movers: [] },
   }) as never;
-  const ctx = { interests, digests: { interests: digest("interests"), world: digest("world"), us: digest("us") }, calendar: [], trackSummary: { graded: 10, hitRate: 0.6, weekGraded: 5, weekHits: 3 } };
+  const ctx = { interests, calls: [o("SOXX", "ADD", 66)], digests: { interests: digest("interests"), world: digest("world"), us: digest("us") }, calendar: [], trackSummary: { graded: 10, hitRate: 0.6, weekGraded: 5, weekHits: 3 } };
   const mon0810 = new Date("2026-11-16T13:10:00Z"); // Monday 8:10 ET
   await A.afterRefresh(ctx, mon0810);
   assert.equal(sent.length, 3, "morning briefing sent");
@@ -174,7 +174,7 @@ async function main() {
     ],
     analysis: { headline: "H", mood: "mixed", summary: ["s"], events: [], outlook: [o("SOXX", "WAIT", 60)], watchNext: [], movers: [] },
   } as never;
-  const ctxText = buildAskContext([d], [], "n/a");
+  const ctxText = buildAskContext([d], [], "n/a", undefined, "  - Chip stocks (SOXX), today 2026-11-17: WAIT, flat, 60%");
   assert.ok(ctxText.text.includes("[1] CPI due Thursday") && ctxText.text.includes("SOXX"), "context has numbered headlines and calls");
   const ans = await ask("Should I buy chips?", [{ role: "user", content: "hi" }, { role: "assistant", content: "hello" }], [d], [], "n/a", "vi");
   assert.deepEqual(ans.sources.map((s) => s.n), [1, 2], "only cited headlines returned as sources");

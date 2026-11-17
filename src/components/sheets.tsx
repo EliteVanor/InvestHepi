@@ -6,7 +6,8 @@ import { LANGUAGES, langInfo, type LangCode } from "@/lib/languages";
 import type { AlertSettings } from "@/lib/alerts";
 import type { ChartData } from "@/lib/chart";
 import { tickerMatcher } from "@/lib/tickers";
-import { SECTION_IDS, type Digest, type Holding, type Interest, type Quote, type SectionId } from "@/lib/types";
+import { exchangeTz } from "@/lib/symbols";
+import { SECTION_IDS, type Digest, type Holding, type Interest, type Outlook, type Quote, type SectionId } from "@/lib/types";
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart } from "./LiveChart";
@@ -14,6 +15,7 @@ import { Ring, Sheet, arrow, fmtPct, fmtPrice, symLabel, openOverlay } from "./p
 import { AlertsTab } from "./alerts-tab";
 import { useAccount } from "./account";
 import { VN_PRESET } from "@/lib/config";
+import { QUICK_ZONES, allZones, deviceZone, zoneOffset } from "@/lib/zones";
 import { HoldingsEditor, TickerSearch } from "./portfolio";
 
 /* -------------------------------------------------------------- Settings */
@@ -31,10 +33,10 @@ export function SettingsSheet({
   onHoldingsSaved: (h: Holding[]) => void;
   prefillSymbol?: string;
 }) {
-  const { t, theme, lang } = usePrefs();
+  const { t, theme, lang, tz, zoneName } = usePrefs();
   const [page, setPage] = useState<Tab | null>(initialTab ?? null);
   const allPages: { id: Tab; label: MsgKey; icon: ReactNode; tint: string; value?: string; desktopOnly?: boolean }[] = [
-    { id: "general", label: "set.root.appearance", icon: <IconMoon />, tint: "#5e5ce6", value: `${t(`set.${theme}` as MsgKey)} · ${langInfo(lang).native}` },
+    { id: "general", label: "set.root.appearance", icon: <IconMoon />, tint: "#5e5ce6", value: `${t(`set.${theme}` as MsgKey)} · ${langInfo(lang).native} · ${zoneName(tz)}` },
     { id: "interests", label: "set.interests", icon: <IconStar />, tint: "#ff9f0a" },
     { id: "holdings", label: "pf.title", icon: <IconChart />, tint: "#30b0c7" },
     { id: "alerts", label: "set.alerts", icon: <IconBolt />, tint: "#ff453a" },
@@ -82,7 +84,20 @@ export function SettingsSheet({
 }
 
 function GeneralTab() {
-  const { t, theme, setTheme, lang, setLang, api, forgetPassword } = usePrefs();
+  const { t, theme, setTheme, lang, setLang, api, forgetPassword, tzSetting, tz, setTz, zoneName, timeAt } = usePrefs();
+  const zones = useMemo(() => allZones().filter((z) => !(QUICK_ZONES as readonly string[]).includes(z)), []);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+  // Saved per account (like the language) and on this device; "auto" follows the device.
+  const pickZone = (z: string) => {
+    setTz(z);
+    const canSave = acc.mode === "multi" ? !!acc.user : true;
+    if (canSave) api("/api/settings", { method: "PUT", body: JSON.stringify({ timeZone: z }) }).catch(() => {});
+  };
+  const zoneOption = (z: string) => `${zoneName(z)} (${zoneOffset(z, now)})`;
   const acc = useAccount();
   // One language for everything: the interface, briefing translations and alert emails. Briefings are
   // always written in English and translated, so changing it never re-runs an analysis.
@@ -124,6 +139,36 @@ function GeneralTab() {
           </label>
         </div>
         <p className="hint">{t("set.briefLangHint")}</p>
+      </div>
+      <div className="sheet-section">
+        <h3>{t("set.tz")}</h3>
+        <div className="group">
+          <label className="row">
+            <span className="label">{t("set.tzShow")}</span>
+            <select value={tzSetting} onChange={(e) => pickZone(e.target.value)} aria-label={t("set.tz")}>
+              <option value="auto">{t("set.tzAuto", { zone: zoneOption(deviceZone()) })}</option>
+              <optgroup label={t("set.tzCommon")}>
+                {QUICK_ZONES.map((z) => (
+                  <option key={z} value={z}>
+                    {zoneOption(z)}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label={t("set.tzAll")}>
+                {zones.map((z) => (
+                  <option key={z} value={z}>
+                    {z.replace(/_/g, " ")} ({zoneOffset(z, now)})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+          </label>
+          <div className="row">
+            <span className="label">{t("set.tzNow")}</span>
+            <span className="value num">{timeAt(now, { tz })}</span>
+          </div>
+        </div>
+        <p className="hint">{t("set.tzHint")}</p>
       </div>
       {acc.mode !== "multi" && (
         <div className="sheet-section">
@@ -241,11 +286,11 @@ interface Status {
   cronSecret: boolean;
   email: "resend" | "smtp" | "none";
   lastRefresh: Record<SectionId, { at: string; ok: boolean; provider?: string; error?: string } | null>;
-  schedule?: { lastTick: { at: string; src: string } | null; late: string[] };
+  schedule?: { lastTick: { at: string; src: string } | null; late: string[]; slots?: { slot: string; start: string }[] };
 }
 
 function StatusTab() {
-  const { t, api, lang } = usePrefs();
+  const { t, api, lang, timeAt } = usePrefs();
   const [s, setS] = useState<Status | null>(null);
   const [err, setErr] = useState("");
   useEffect(() => {
@@ -284,7 +329,9 @@ function StatusTab() {
             <div className="row">
               <span className="label">{t("st.sched")}</span>
               {s.schedule.late.length ? (
-                <span className="value bad">{t("st.late")}: {s.schedule.late.map((id) => id.replace(/^\w+-(\d\d)(\d\d)$/, "$1:$2")).join(", ")} UTC</span>
+                <span className="value bad">
+                  {t("st.late")}: {s.schedule.late.map((id) => { const o = s.schedule!.slots?.find((x) => x.slot === id); return o ? timeAt(o.start) : id; }).join(", ")}
+                </span>
               ) : (
                 <span className="value">{s.schedule.lastTick ? `${relTime(s.schedule.lastTick.at, lang)} · ${s.schedule.lastTick.src}` : t("st.never")}</span>
               )}
@@ -353,11 +400,12 @@ function ShortcutsTab() {
 
 /* ---------------------------------------------------------------- Ticker */
 
-export function TickerSheet({ symbol, quote, digests, onClose, onAlert, action }: { symbol: string; quote?: Quote; digests: Digest[]; onClose: () => void; onAlert?: (symbol: string) => void; action?: React.ReactNode }) {
-  const { t, lang, api } = usePrefs();
+export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAlert, action }: { symbol: string; quote?: Quote; digests: Digest[]; calls?: Outlook[]; onClose: () => void; onAlert?: (symbol: string) => void; action?: React.ReactNode }) {
+  const { t, lang, api, marketTime } = usePrefs();
   const [cd, setCd] = useState<ChartData | null>(null);
   const [alertMsg, setAlertMsg] = useState("");
-  const call = digests.flatMap((d) => d.analysis.outlook).find((o) => o.ticker === symbol);
+  // The latest prediction on this ticker (daily first).
+  const call = calls.find((o) => o.ticker === symbol);
   const mover = digests.flatMap((d) => d.analysis.movers ?? []).find((m) => m.ticker === symbol);
   const tech = digests.map((d) => d.technicals?.[symbol]).find(Boolean);
   const related = useMemo(() => {
@@ -460,12 +508,14 @@ export function TickerSheet({ symbol, quote, digests, onClose, onAlert, action }
             <div className="call-head">
               <Ring value={call.confidence} direction={call.direction} />
               <div className="call-sub">
-                <span className={call.direction}>{arrow(call.direction)} {t(`dir.${call.direction}` as MsgKey)}</span> · {call.horizon === "today" ? t("calls.today") : t("calls.thisWeek")}
+                <span className={call.direction}>{arrow(call.direction)} {t(`dir.${call.direction}` as MsgKey)}</span> · {call.horizon === "today" ? t(call.phase === "mid" ? "pred.mid" : "pred.pre") : t("pred.weekly")}
+                {call.madeAt && <> · {marketTime(call.madeAt, exchangeTz(symbol), { day: call.horizon !== "today" })}</>}
               </div>
               <span className={`action ${call.action}`}>{t(`act.${call.action}` as MsgKey)}</span>
             </div>
             <div className="trigger">{call.actionTrigger}</div>
             <div className="muted">{call.rationale}</div>
+            {call.gradesAt && <div className="call-record">{t(new Date(call.gradesAt).getTime() < Date.now() ? "pred.graded" : "pred.gradesAt", { when: marketTime(call.gradesAt, exchangeTz(symbol), { day: true }) })}</div>}
           </div>
         </div>
       )}
@@ -497,12 +547,11 @@ export interface HistoryEntry {
 }
 
 export function HistorySheet({ section, current, onPick, onClose }: { section: SectionId; current: string | null; onPick: (key: string | null) => void; onClose: () => void }) {
-  const { t, api, lang } = usePrefs();
+  const { t, api, timeAt } = usePrefs();
   const [items, setItems] = useState<HistoryEntry[] | null>(null);
   useEffect(() => {
     api<{ history: HistoryEntry[] }>(`/api/history?section=${section}`).then((j) => setItems(j.history)).catch(() => setItems([]));
   }, [api, section]);
-  const fmt = new Intl.DateTimeFormat(lang, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   return (
     <Sheet title={t("brief.history")} onClose={onClose}>
       {!items ? (
@@ -515,7 +564,7 @@ export function HistorySheet({ section, current, onPick, onClose }: { section: S
               <button key={h.key} className="row" style={{ width: "100%", textAlign: "left", alignItems: "flex-start" }} onClick={() => onPick(i === 0 ? null : h.key)}>
                 <span className="label">
                   <span style={{ display: "block", fontSize: 13, color: "var(--label-2)" }}>
-                    {fmt.format(new Date(h.generatedAt))} {i === 0 ? `· ${t("brief.latest")}` : ""} · <span className={`mood ${h.mood}`} style={{ background: "none", padding: 0 }}>{t(`mood.${h.mood}` as MsgKey)}</span>
+                    {timeAt(h.generatedAt, { date: true })} {i === 0 ? `· ${t("brief.latest")}` : ""} · <span className={`mood ${h.mood}`} style={{ background: "none", padding: 0 }}>{t(`mood.${h.mood}` as MsgKey)}</span>
                   </span>
                   <span style={{ fontWeight: 500 }}>{h.headline}</span>
                 </span>

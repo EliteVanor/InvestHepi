@@ -85,8 +85,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const aiCalls = calls.slice(before).filter((c) => /groq|generativelanguage/.test(c.url));
     assert.ok(aiCalls.some((c) => c.url.includes("generativelanguage")), "a cut-off Groq reply falls through to Gemini instead of failing");
     assert.ok(vi.analysis.headline.startsWith("gemini:"));
-    assert.ok(vi.analysis.outlook.every((o: { rationale: string }) => o.rationale.startsWith("gemini:")), "every chunk is written back");
-    assert.equal(vi.analysis.outlook[0].ticker, "VCB.VN", "tickers untouched");
+    assert.ok(vi.analysis.outlook!.every((o: { rationale: string }) => o.rationale.startsWith("gemini:")), "every chunk is written back (old digests with calls still translate)");
+    assert.equal(vi.analysis.outlook![0].ticker, "VCB.VN", "tickers untouched");
     for (const c of aiCalls) {
       const req = JSON.parse(c.body!);
       assert.equal(req.max_tokens, translateBudget(req.messages.at(-1).content.length), "output budget sized to each chunk");

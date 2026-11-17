@@ -5,7 +5,7 @@
  */
 import { EVENT_BIAS, EVENT_KEYWORDS, PLAYBOOK, type EventType } from "../analogs";
 import { tickerMatcher } from "../tickers";
-import type { Analysis, Direction, Interest, KeyEvent, NewsItem, Outlook, Quote } from "../types";
+import type { Analysis, Direction, Interest, KeyEvent, NewsItem, Quote } from "../types";
 
 function biasIndex(it: Interest): 0 | 1 | 2 {
   const s = `${it.name} ${it.query} ${it.tickers.join(" ")}`.toLowerCase();
@@ -53,35 +53,20 @@ export function analyzeWithRules(news: NewsItem[], interests: Interest[], quotes
     };
   });
 
-  const outlook: Outlook[] = interests.map((it) => {
-    let score = 0;
-    for (const [type, ids] of ranked) {
-      const d = EVENT_BIAS[type][biasIndex(it)];
-      score += (d === "up" ? 1 : d === "down" ? -1 : 0) * ids.length;
-    }
-    const q = quotes.find((x) => x.symbol === it.tickers[0]);
-    const direction: Direction = score > 1 ? "up" : score < -1 ? "down" : "flat";
-    return {
-      interest: it.name,
-      ticker: it.tickers[0],
-      direction,
-      confidence: Math.min(55, 45 + Math.abs(score)),
-      horizon: "today",
-      action: direction === "flat" ? "WAIT" : direction === "up" ? "HOLD" : "WAIT",
-      actionTrigger: "Rule-based view only. Add a free GROQ_API_KEY or GEMINI_API_KEY for a real analysis.",
-      rationale: `Net headline score ${score >= 0 ? "+" : ""}${score}${q ? `; ${q.symbol} last session ${q.changePct.toFixed(1)}%` : ""}.`,
-      risks: "Keyword matching misses context, sarcasm, and what's already priced in.",
-    };
-  });
+  // Headline tone per interest, only to set the mood (briefings make no calls).
+  const scores = interests.map((it) => ranked.reduce((sum, [type, ids]) => {
+    const d = EVENT_BIAS[type][biasIndex(it)];
+    return sum + (d === "up" ? 1 : d === "down" ? -1 : 0) * ids.length;
+  }, 0));
+  const dirs: Direction[] = scores.map((sc) => (sc > 1 ? "up" : sc < -1 ? "down" : "flat"));
 
   return {
     headline: ranked.length
       ? `Rule-based read: dominant theme is ${ranked[0][0].replace(/_/g, " ")}.`
       : "No strong market-moving themes detected by the keyword rules.",
-    mood: outlook.filter((o) => o.direction === "down").length > outlook.length / 2 ? "risk-off" : outlook.some((o) => o.direction === "up") ? "risk-on" : "mixed",
+    mood: dirs.filter((d) => d === "down").length > dirs.length / 2 ? "risk-off" : dirs.some((d) => d === "up") ? "risk-on" : "mixed",
     summary: news.slice(0, 5).map((n) => n.title),
     events,
-    outlook,
     watchNext: [],
     movers: rulesMovers(news, interests, quotes),
     scenarios: [],

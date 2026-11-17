@@ -127,24 +127,32 @@ const OWNER_EMAIL = "owner@example.com";
   assert.equal(groups.size, 2, "the default set and Alice's set");
 
   const refresh = await import("../src/app/api/refresh/route");
-  // The tick runs a weekday 12:30 slot (us, world, vn, interest sets), one unit per call.
+  // The tick runs a weekday 12:30 UTC: the US before-market predictions (07:30 New York) and the
+  // 12:30 briefings (us, world, vn, interest sets), one unit per call.
   const S = await import("../src/lib/scheduler");
   const TT = await import("../src/lib/timetable");
-  const slot = TT.occurrences(Date.now() - 8 * 86400_000, Date.now()).filter((o) => o.slot.id === "wd-1230").pop()!;
+  const slot = TT.occurrences(Date.now() - 8 * 86400_000, Date.now()).filter((o) => o.slot.id === "b-1230" && ![0, 6].includes(new Date(o.start).getUTCDay())).pop()!;
   let t = slot.start + 60_000;
   const tickOpts = { now: () => new Date(t), sleep: async (ms: number) => void (t += ms) };
   feedsHit.length = 0;
   quoted.length = 0;
-  const units: { item: string; set?: string; ok: boolean }[] = [];
-  for (let i = 0; i < 10; i++) {
+  const units: { item: string; set?: string; ok: boolean; note?: string }[] = [];
+  for (let i = 0; i < 30; i++) {
     const r = await S.runTick(tickOpts);
     if (!r.unit) break;
     units.push(r.unit);
     t += 30_000;
   }
-  assert.deepEqual(units.map((u) => u.item), ["us", "world", "vn", "interests:all"], "graded US call first, then world, vn, interest sets");
-  assert.equal(units.filter((u) => u.set).length, 1, "2 distinct sets for 4 users; Alice's was just made, so only the default set is due");
-  assert.ok(units.every((u) => u.ok));
+  const briefs = units.filter((u) => !u.item.startsWith("p:"));
+  assert.deepEqual(briefs.map((u) => u.item), ["us", "world", "vn", "interests:all"], "briefings: US first, then world, vn, interest sets");
+  assert.equal(briefs.filter((u) => u.set).length, 1, "2 distinct sets for 4 users; Alice's was just made, so only the default set is due");
+  const preds = units.filter((u) => u.item.startsWith("p:")).map((u) => u.item);
+  for (const p of ["p:us:pre", "p:wus:pre", "p:oil:pre", "p:gold:pre", "p:ius:pre"]) assert.ok(preds.includes(p), `${p} ran (${preds})`);
+  assert.equal(units.filter((u) => u.item === "p:ius:pre").length, 1, "only the default set has a US part (Alice follows Vietnamese stocks)");
+  assert.ok(briefs.every((u) => u.ok), JSON.stringify(briefs.filter((u) => !u.ok)));
+  // The mocked model only ever calls QQQ: markets without it get no usable calls, which is a failed run (no invented calls).
+  assert.ok(units.filter((u) => u.item === "p:ius:pre" || u.item === "p:us:pre").every((u) => u.ok), "QQQ is in these markets");
+  assert.ok(units.filter((u) => u.item === "p:oil:pre").every((u) => !u.ok && /no usable calls/.test(u.note ?? "")), "a reply about other tickers isn't recorded for oil");
   assert.ok(feedsHit.some((u) => u.includes("vnexpress.net")) && feedsHit.some((u) => u.includes("cafef.vn")), "Vietnamese news feeds used");
   assert.ok(feedsHit.some((u) => u.includes("hl=vi&gl=VN")), "Google News searched in Vietnamese");
   assert.ok(feedsHit.some((u) => u.includes("vndirect") && u.includes("FPT") && u.includes("VCB")), "Vietnam market symbols priced in one VNDirect batch");

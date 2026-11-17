@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { Feed } from "./config";
+import { getJSON, setJSON } from "./store";
 import type { Interest, NewsItem } from "./types";
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", textNodeName: "#text" });
@@ -116,12 +117,35 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
   return out;
 }
 
+/** Hosts that answered 429/503 rest this long (Google News and some Vietnamese sites rate-limit). */
+const COOL_KEY = "news:cool";
+const COOL_MS = 30 * 60_000;
+const hostOf = (url: string) => {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "";
+  }
+};
+
 export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; errors: string[] }> {
   const errors: string[] = [];
+  const now = Date.now();
+  const cool = (await getJSON<Record<string, number>>(COOL_KEY).catch(() => null)) ?? {};
+  const backoff: Record<string, number> = {};
   const results = await Promise.all(
     feeds.map(async (f) => {
+      const host = hostOf(f.url);
+      if ((cool[host] ?? 0) > now) {
+        errors.push(`${f.name}: ${host} is rate-limiting us, resting until ${new Date(cool[host]).toISOString().slice(11, 16)} UTC`);
+        return [];
+      }
       try {
         const res = await fetchWithTimeout(f.url);
+        if (res.status === 429 || res.status === 503) {
+          const ra = Number(res.headers.get("retry-after"));
+          backoff[host] = now + Math.max(COOL_MS, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 0);
+        }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return fixFeedTimes(parseFeed(await res.text(), f.name), f.url);
       } catch (e) {
@@ -130,6 +154,10 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
       }
     }),
   );
+  if (Object.keys(backoff).length) {
+    const kept = Object.fromEntries(Object.entries({ ...cool, ...backoff }).filter(([, until]) => until > now));
+    await setJSON(COOL_KEY, kept).catch(() => {});
+  }
   return { items: results.flat(), errors };
 }
 

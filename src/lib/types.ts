@@ -94,6 +94,11 @@ export interface Outlook {
   aiAction?: Action;
   /** Graded calls at this confidence level for this section or set: how many, how many right. */
   record?: { n: number; hits: number };
+  /** Predictions (v18): which run made it, when, and the session it's graded on (UTC time it can be graded). */
+  phase?: "pre" | "mid";
+  madeAt?: string;
+  gradeDate?: string;
+  gradesAt?: string;
 }
 
 export interface Analysis {
@@ -101,7 +106,8 @@ export interface Analysis {
   mood: "risk-on" | "risk-off" | "mixed";
   summary: string[];
   events: KeyEvent[];
-  outlook: Outlook[];
+  /** Calls inside briefings before v18; predictions are a separate job now (predictions.ts). Read nothing from it. */
+  outlook?: Outlook[];
   watchNext: string[];
   /** sourceIds: the headlines (indexes into Digest.news) that explain the move; empty = no clear news. */
   movers: { ticker: string; changePct: number; why: string; sourceIds?: number[] }[];
@@ -174,12 +180,14 @@ export interface CalendarEvent {
 export interface Settings {
   /** Language code for AI-written briefings (en, vi, zh, ja, ko, es, fr, de). */
   briefingLanguage: string;
+  /** IANA time zone the person reads times in; "auto" (or missing) = the device's. */
+  timeZone?: string;
 }
 
-/** A logged call, graded later against real prices. */
+/** A logged call, graded later against real prices (track.ts). */
 export interface Call {
-  id: string; // `${date}:${ticker}`
-  date: string; // US/Eastern trading date the call is for (YYYY-MM-DD)
+  id: string; // `${date}:${ticker}:d|m|w` (before market, mid-day, weekly)
+  date: string; // exchange-local session the call starts in (YYYY-MM-DD)
   madeAt: string; // ISO
   interest: string;
   ticker: string;
@@ -196,4 +204,16 @@ export interface Call {
   /** An up/down call whose move stayed inside `band`: graded, counted neither right nor wrong. */
   noResult?: boolean;
   gradedAt?: string;
+  /** Which run made it (missing on calls before v18: before market). */
+  phase?: "pre" | "mid";
+  /** Weekly calls: the 5th weekday counting `date`, whose close grades it. */
+  endDate?: string;
+  /** Made during the session: the move since the previous close at that moment (%), so it's measured from there. */
+  baseChg?: number;
+  /** Made during the session with no live price that day: graded from the previous close, not counted. */
+  noLiveBase?: boolean;
+  /** No session on the graded day (a holiday): not graded. */
+  closed?: boolean;
+  /** Weekly calls whose 5th day was a holiday: the session actually used. */
+  gradedOn?: string;
 }

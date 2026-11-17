@@ -7,7 +7,8 @@ import { isLang } from "@/lib/languages";
 import { hit, limits } from "@/lib/ratelimit";
 import { loadDigest } from "@/lib/briefings";
 import { currentCallsKey, loadInterests } from "@/lib/interests";
-import { SECTION_IDS } from "@/lib/types";
+import { SECTION_IDS, type SectionId } from "@/lib/types";
+import { loadPredictions, predictionsAsText } from "@/lib/predictions";
 import { loadHoldings, positionsAsText } from "@/lib/portfolio";
 import { computeStats, loadCalls, trackRecordText } from "@/lib/track";
 import type { Digest } from "@/lib/types";
@@ -31,10 +32,12 @@ export async function POST(req: Request) {
     const { question, history, lang, chatId, section } = parsed.data;
     const rl = await hit("ask", limits.ask());
     if (!rl.ok) return Response.json({ error: `Daily Ask AI limit reached (${rl.limit}). It resets at midnight ET.` }, { status: 429 });
-    const [digests, interests, calls] = await Promise.all([
+    const [digests, interests, calls, preds] = await Promise.all([
       Promise.all(SECTION_IDS.map((s) => loadDigest(s))),
       loadInterests(),
       currentCallsKey().then((k) => loadCalls(k)),
+      // The section being read first, then the others.
+      Promise.all([...new Set([section ?? "interests", ...SECTION_IDS])].map((s) => loadPredictions(s as SectionId).catch(() => []))),
     ]);
     const ds = digests.filter((d): d is Digest => !!d);
     if (!ds.length) return Response.json({ error: "No briefings yet. Refresh a section first." }, { status: 409 });
@@ -42,7 +45,7 @@ export async function POST(req: Request) {
     try {
       const main = ds.find((d) => d.section === "interests") ?? ds[0];
       const positions = positionsAsText(await loadHoldings().catch(() => []), main.quotes);
-      const r = await ask(question, history, ds, cal.events, trackRecordText(computeStats(calls)), isLang(lang) ? lang : "en", positions);
+      const r = await ask(question, history, ds, cal.events, trackRecordText(computeStats(calls)), isLang(lang) ? lang : "en", positions, predictionsAsText(preds.flat()));
       // Saved to the account so the conversation can be reopened later (a failed save doesn't lose the answer).
       const id = await appendToChat(chatId, question, { role: "assistant", content: r.answer, sources: r.sources, provider: r.provider }, section).catch(() => chatId);
       return Response.json({ ...r, chatId: id });

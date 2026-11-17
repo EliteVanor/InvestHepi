@@ -45,21 +45,6 @@ export const AnalysisSchema = z.object({
       }),
     )
     .describe("3-6 key events, most important first"),
-  outlook: z
-    .array(
-      z.object({
-        interest: z.string(),
-        ticker: z.string(),
-        direction: Direction,
-        confidence: z.number().describe("0-100, calibrated probability the direction call is right"),
-        horizon: z.enum(["today", "this week"]),
-        action: z.enum(["BUY", "ADD", "HOLD", "WAIT", "TRIM", "SELL", "AVOID"]),
-        action_trigger: z.string().describe("Concrete condition, e.g. 'Add if SOXX holds above yesterday's low after CPI'"),
-        rationale: z.string(),
-        risks: z.string(),
-      }),
-    )
-    .describe("One entry per interest (benchmark ticker), plus entries for individual tickers with direct news"),
   watch_next: z.array(z.string()).describe("Upcoming catalysts with dates if known"),
   movers: z
     .array(
@@ -108,17 +93,6 @@ export function toAnalysis(r: RawAnalysis): Analysis {
       analog: e.analog ? { event: analogEventName(e.analog.event, e.analog.date), date: e.analog.date, whatHappenedNext: e.analog.what_happened_next } : null,
       whatCouldGoWrong: e.what_could_go_wrong,
     })),
-    outlook: (r.outlook ?? []).map((o) => ({
-      interest: o.interest,
-      ticker: o.ticker.toUpperCase(),
-      direction: o.direction,
-      confidence: clamp(o.confidence, 0, 100),
-      horizon: o.horizon,
-      action: o.action,
-      actionTrigger: o.action_trigger,
-      rationale: o.rationale,
-      risks: o.risks,
-    })),
     watchNext: r.watch_next ?? [],
     movers: (r.movers ?? []).map((m) => ({ ticker: m.ticker.toUpperCase(), changePct: Number(m.change_pct) || 0, why: m.why, sourceIds: m.source_ids ?? [] })),
     scenarios: (r.scenarios ?? [])
@@ -156,7 +130,6 @@ export const SCHEMA_HINT = `Return ONLY a JSON object with exactly this shape:
     "analog": { "event": string, "date": string, "what_happened_next": string } | null,
     "what_could_go_wrong": string
   }],
-  "outlook": [{ "interest": string, "ticker": string, "direction": "up"|"down"|"flat", "confidence": 0-100, "horizon": "today"|"this week", "action": "BUY"|"ADD"|"HOLD"|"WAIT"|"TRIM"|"SELL"|"AVOID", "action_trigger": string, "rationale": string, "risks": string }],
   "watch_next": string[],
   "movers": [{ "ticker": string, "change_pct": number, "why": string, "source_ids": number[] }],
   "scenarios": [{ "catalyst": string, "when": string, "cases": [{ "label": string, "probability": 0-100, "reaction": string, "action": string }] }]
@@ -172,7 +145,6 @@ export function normalizeRaw(input: unknown): unknown {
     const s = str(v).toLowerCase();
     return s.startsWith("up") || s === "bullish" ? "up" : s.startsWith("down") || s === "bearish" ? "down" : "flat";
   };
-  const actions = ["BUY", "ADD", "HOLD", "WAIT", "TRIM", "SELL", "AVOID"];
   const mood = str(o.mood).toLowerCase().replace(/\s+/g, "-");
   return {
     headline: str(o.headline),
@@ -195,17 +167,6 @@ export function normalizeRaw(input: unknown): unknown {
         ? { event: str(e.analog.event), date: str(e.analog.date), what_happened_next: str(e.analog.what_happened_next) }
         : null,
       what_could_go_wrong: str(e?.what_could_go_wrong),
-    })),
-    outlook: arr(o.outlook).map((x: any) => ({
-      interest: str(x?.interest),
-      ticker: str(x?.ticker),
-      direction: dir(x?.direction),
-      confidence: num(x?.confidence),
-      horizon: str(x?.horizon).toLowerCase().includes("week") ? "this week" : "today",
-      action: actions.includes(str(x?.action).toUpperCase()) ? str(x?.action).toUpperCase() : "WAIT",
-      action_trigger: str(x?.action_trigger),
-      rationale: str(x?.rationale),
-      risks: str(x?.risks),
     })),
     watch_next: arr(o.watch_next).map(str),
     movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why), source_ids: arr(m?.source_ids).map((x: unknown) => Number(x)).filter((x: number) => Number.isInteger(x) && x >= 0) })),

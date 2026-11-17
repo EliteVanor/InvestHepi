@@ -175,7 +175,8 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const dg: any = { analysis: { outlook: [{ interest: "Banks", action: "TRIM" }], events: [{ title: "SBV buys USD", importance: 4, impacts: [{ interest: "Banks" }] }], movers: [{ ticker: "VCB.VN", changePct: -0.37 }] } };
   const cal = [{ date: "2026-11-17", kind: "earnings" as const, title: "NVDA earnings (EPS est. 2.52)", importance: 2 as const }, { date: "2026-11-19", kind: "macro" as const, title: "VN30 futures expiry", importance: 2 as const }];
-  const sug = A.suggestionsFor(tv, dg, cal, "vn");
+  const predCalls = [{ interest: "Banks", ticker: "VCB.VN", action: "TRIM", horizon: "today" }] as never[];
+  const sug = A.suggestionsFor(tv, dg, cal, "vn", predCalls);
   assert.ok(sug[0].includes("Ngân hàng") && sug[0].includes(tv("act.TRIM")), `the call, in Vietnamese: ${sug[0]}`);
   assert.ok(sug.some((x) => x.includes("SBV buys USD")), "the top event");
   assert.ok(sug.some((x) => x.includes("VCB") && x.includes("-0.37%")), "the biggest mover with its real change");

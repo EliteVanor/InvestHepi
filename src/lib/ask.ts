@@ -18,7 +18,7 @@ export interface AskSource {
   source: string;
 }
 
-export function buildAskContext(digests: Digest[], calendar: CalendarEvent[], trackRecord: string, positions?: string) {
+export function buildAskContext(digests: Digest[], calendar: CalendarEvent[], trackRecord: string, positions?: string, predictions = "") {
   const seen = new Set<string>();
   const headlines: NewsItem[] = [];
   for (const d of digests) for (const n of d.news.slice(0, 25)) if (!seen.has(n.id) && (seen.add(n.id), true)) headlines.push(n);
@@ -27,12 +27,11 @@ export function buildAskContext(digests: Digest[], calendar: CalendarEvent[], tr
   const briefs = digests
     .map((d) => {
       const a = d.analysis;
-      const calls = a.outlook.map((o) => `  - ${o.interest} (${o.ticker}): ${o.action}, ${o.direction}, ${o.confidence}% · trigger: ${o.actionTrigger} · risks: ${o.risks}`).join("\n");
-      return `## ${d.section.toUpperCase()} briefing (${d.generatedAt.slice(0, 16).replace("T", " ")} UTC)\n${a.headline}\n${a.summary.map((s) => `- ${s}`).join("\n")}${calls ? `\nCalls:\n${calls}` : ""}${a.movers?.length ? `\nMovers: ${a.movers.map((m) => `${m.ticker} ${m.changePct.toFixed(1)}% (${m.why})`).join("; ")}` : ""}`;
+      return `## ${d.section.toUpperCase()} briefing (${d.generatedAt.slice(0, 16).replace("T", " ")} UTC)\n${a.headline}\n${a.summary.map((s) => `- ${s}`).join("\n")}${a.movers?.length ? `\nMovers: ${a.movers.map((m) => `${m.ticker} ${m.changePct.toFixed(1)}% (${m.why})`).join("; ")}` : ""}`;
     })
     .join("\n\n");
   const text = `${briefs}
-
+${predictions ? `\n## Predictions (the graded calls; daily = by that day's close, weekly = by the 5th session's close)\n${predictions}\n` : ""}
 ## Prices
 ${main ? quotesAsText(main.quotes) : "(n/a)"}
 
@@ -64,6 +63,7 @@ export function askSystemPrompt(lang: string): string {
   return `You are the analyst inside "InvestHepi", answering one investor's follow-up questions about today's market news.
 Rules:
 - If the user's positions are listed, answer for someone who holds them (hold/add/trim), and for tickers they don't hold answer as a potential buyer.
+- For buy/hold/wait questions, start from the Predictions (they are graded; say when a call was made and when it's graded) rather than inventing a new call.
 - Use ONLY the context below plus well-known general market knowledge. If the context doesn't cover it, say so plainly.
 - Lead with a direct answer and a stance (e.g. "Lean: wait until after Thursday's CPI"), then 2-4 short supporting points citing headlines as [n].
 - Give a confidence % and one specific thing that would change your view.
@@ -71,8 +71,8 @@ Rules:
 - Reply in ${langInfo(lang).english}.`;
 }
 
-export async function ask(question: string, history: ChatMessage[], digests: Digest[], calendar: CalendarEvent[], trackRecord: string, lang: string, positions?: string) {
-  const ctx = buildAskContext(digests, calendar, trackRecord, positions);
+export async function ask(question: string, history: ChatMessage[], digests: Digest[], calendar: CalendarEvent[], trackRecord: string, lang: string, positions?: string, predictions = "") {
+  const ctx = buildAskContext(digests, calendar, trackRecord, positions, predictions);
   const system = `${askSystemPrompt(lang)}\n\n# CONTEXT\n${ctx.text}`;
   const messages: ChatMessage[] = [...history.slice(-6), { role: "user", content: question }];
   const { text, provider } = await complete(system, messages, { route: "ask" });
