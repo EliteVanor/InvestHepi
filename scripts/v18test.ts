@@ -164,7 +164,7 @@ const T = (iso: string) => Date.parse(iso);
   const LP = await import("../src/lib/llm/predict");
   const quote = (symbol: string) => ({ symbol, price: 101, prevClose: 100, changePct: 1, history: [["2026-11-17", 100], ["2026-11-18", 101]] as [string, number][], source: "yahoo" as const });
   const snap = LP.predictionSnapshot({ quotes: [quote("^GSPC"), quote("^DJI"), quote("^NDX")], live: new Map([["^GSPC", { price: 6810.5, chg: 0.42, at: T("2026-11-18T17:00:00Z") }]]), opened: new Set(["^GSPC", "^DJI"]), tz: "America/New_York" });
-  assert.match(snap, /\^GSPC.*NOW 6810\.50 \(\+0\.4% today, at 12:00\); today's call starts from this price/);
+  assert.match(snap, /\^GSPC.*NOW 6810\.50 \(\+0\.4% today, at 12:00\); today's call starts from this point/);
   assert.match(snap, /\^DJI.*session open but no live price/);
   assert.match(snap, /\^NDX.*starts from the previous close/);
   const lagged = LP.predictionSnapshot({ quotes: [quote("^GSPC")], live: new Map(), opened: new Set(), tz: "America/New_York", now: at("2026-11-20T12:30:00Z") });
@@ -268,6 +268,38 @@ const T = (iso: string) => Date.parse(iso);
   assert.match(un.note, /^unavailable: \^HSI no (live price|price|2026-11-16 close)/, un.note);
   const cnSet = await getJSON<import("../src/lib/predictions-view").PredictionSet>("pred:world:cn");
   assert.ok(cnSet?.unavailable && cnSet.unavailable.phase === "mid" && cnSet.unavailable.gaps[0].symbol === "^HSI", "stored for the card");
+
+  /* ---------------- stress-test fixes: futures sessions, provisional grades, ETF moves for live */
+  // A CME session opens at 18:00 New York the evening before: 07:00 Beijing Tuesday is Tuesday's oil session.
+  assert.equal(EM.parseTrends({ data: { preClose: 85.72, trends: ["2026-11-17 07:00,85.25"] } }, "CL=F")!.session, "2026-11-17");
+  assert.equal(EM.parseTrends({ data: { preClose: 1, trends: ["2026-11-17 07:00,2"] } }, "^GSPC")!.session, "2026-11-16", "an index session stays on its own date");
+  // Provisional grade from an intraday close, then re-graded from the official one.
+  await TR.recordCalls([o("BBB", "today", "up")], [{ id: "b", name: "B", query: "", tickers: ["BBB"] }], "groq", at("2026-11-16T12:30:00Z"), "calls:prov", { phase: "pre" });
+  closes.BBB = [["2026-11-12", 100], ["2026-11-13", 100]]; // Nasdaq's daily history hasn't posted Monday yet
+  const nasdaqDay = (close: number) => async (input: string | URL | Request) => {
+    const url = String(input instanceof Request ? input.url : input);
+    if (url.includes("/v8/finance/chart/BBB")) {
+      const ts = Array.from({ length: 40 }, (_, i) => Date.parse("2026-11-16T14:30:00Z") / 1000 + i * 600);
+      return new Response(JSON.stringify({ chart: { result: [{ meta: { regularMarketPrice: close, chartPreviousClose: 100, regularMarketTime: ts.at(-1) }, timestamp: ts, indicators: { quote: [{ close: ts.map(() => close) }] } }] } }), { status: 200 });
+    }
+    return baseFetch(input);
+  };
+  const baseFetch = globalThis.fetch;
+  globalThis.fetch = nasdaqDay(101) as typeof fetch;
+  (await import("../src/lib/chart")).clearPriceCaches();
+  assert.equal(await TR.gradeCalls(at("2026-11-16T22:00:00Z"), "calls:prov"), 1, "graded within the hour of the close");
+  let pc = (await getJSON<Call[]>("calls:prov"))![0];
+  assert.deepEqual([pc.correct, pc.provisional, pc.outcomeClose], [true, "yahoo", 101], "from the 1-day chart's regular-session close, marked provisional");
+  assert.equal(TR.computeStats([pc]).direction.n, 1, "and counted");
+  globalThis.fetch = baseFetch;
+  closes.BBB.push(["2026-11-16", 99.5]); // the official close posts the next morning, and differs
+  assert.equal(await TR.gradeCalls(at("2026-11-17T09:00:00Z"), "calls:prov"), 1, "re-graded once the official close is in");
+  pc = (await getJSON<Call[]>("calls:prov"))![0];
+  assert.deepEqual([pc.correct, pc.provisional, pc.outcomeClose], [false, undefined, 99.5], "the official close decides");
+  assert.equal(await TR.gradeCalls(at("2026-11-17T10:00:00Z"), "calls:prov"), 0, "and it's final");
+  // Mid-day with no live level of its own: the same-hours ETF's move.
+  const viaEtf = LP.predictionSnapshot({ quotes: [quote("GC=F")], live: new Map([["GC=F", { chg: 0.6, at: T("2026-11-18T17:00:00Z"), via: "GLD" }]]), opened: new Set(["GC=F"]), tz: "America/New_York" });
+  assert.match(viaEtf, /NOW \(\+0\.6% today, from the GLD ETF's move, at 12:00\); today's call starts from this point/);
 
   /* ---------------- time zones */
   const Z = await import("../src/lib/zones");

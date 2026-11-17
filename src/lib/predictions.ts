@@ -29,7 +29,7 @@ import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, lastFinis
 import { alignAction, coverage, marketData, SHARED_CALLS } from "./pipeline";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
-import { exchangeTz } from "./symbols";
+import { PROXIES, exchangeTz } from "./symbols";
 import { calibrate, computeStats, gradeCalls, loadCalls, recordCalls, trackRecordText } from "./track";
 import { outlookSlots, translateSlots } from "./translate";
 import { multiUser } from "./users";
@@ -134,11 +134,23 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   // Daily calls made after a ticker's session opened start from the price at that moment.
   const targets = new Map(symbols.map((s) => [s, dailyTarget(now, s)]));
   const opened = new Set(symbols.filter((s) => targets.get(s)!.opened));
-  const live = new Map<string, { price: number; chg: number; at: number }>();
+  const live = new Map<string, { price?: number; chg: number; at: number; via?: string }>();
   if (opened.size) {
+    const sessionOk = (q: { symbol: string; session?: string; intraday?: boolean; dailyOnly?: boolean; changePct: number }, sym: string) =>
+      q.session === targets.get(sym)?.date && q.intraday !== false && !q.dailyOnly && Number.isFinite(q.changePct);
     for (const q of await getLiveQuotes([...opened]).catch(() => [])) {
       // Only a price from the graded session itself; a last close or an ETF on another day won't do.
-      if (q.session === targets.get(q.symbol)?.date && q.intraday !== false && !q.dailyOnly && Number.isFinite(q.changePct)) live.set(q.symbol, { price: q.price, chg: q.changePct, at: q.asOf * 1000 });
+      if (sessionOk(q, q.symbol)) live.set(q.symbol, { price: q.proxy ? undefined : q.price, chg: q.changePct, at: q.asOf * 1000, ...(q.proxy ? { via: q.proxy } : {}) });
+    }
+    // A US-hours index or future with no live level of its own: its same-hours ETF's move today is the
+    // same % move (calls made during the session are measured as a % from the previous close).
+    const viaEtf = [...opened].filter((sym) => !live.has(sym) && PROXIES[sym] && exchangeTz(sym) === "America/New_York");
+    if (viaEtf.length) {
+      const etfs = new Map((await getLiveQuotes(viaEtf.map((sym) => PROXIES[sym])).catch(() => [])).map((q) => [q.symbol, q]));
+      for (const sym of viaEtf) {
+        const q = etfs.get(PROXIES[sym]);
+        if (q && sessionOk(q, sym)) live.set(sym, { chg: q.changePct, at: q.asOf * 1000, via: q.symbol });
+      }
     }
   }
   // Every prediction works from the latest data: each market's benchmark needs the latest finished

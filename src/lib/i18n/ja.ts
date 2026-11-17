@@ -556,4 +556,5 @@ export const ja: Dict = {
   "pred.noLive": "{sym} のリアルタイム価格なし",
   "pred.noClose": "{sym} の {day} 終値がまだ出ていません",
   "pred.noPrice": "{sym} の価格なし",
+  "track.provisional": "公式終値待ち：発表後に再確認",
 };

@@ -556,4 +556,5 @@ export const de: Dict = {
   "pred.noLive": "kein Live-Kurs für {sym}",
   "pred.noClose": "Schlusskurs von {sym} für {day} noch nicht da",
   "pred.noPrice": "kein Kurs für {sym}",
+  "track.provisional": "offizieller Schluss ausstehend: wird dann neu geprüft",
 };

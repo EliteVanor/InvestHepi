@@ -556,4 +556,5 @@ export const zh: Dict = {
   "pred.noLive": "{sym} 无实时价格",
   "pred.noClose": "{sym} {day} 的收盘价尚未发布",
   "pred.noPrice": "{sym} 无价格",
+  "track.provisional": "等待官方收盘价：发布后重新核对",
 };

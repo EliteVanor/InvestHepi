@@ -554,6 +554,7 @@ export const en = {
   "pred.noLive": "no live price for {sym}",
   "pred.noClose": "{sym}'s close for {day} isn't out yet",
   "pred.noPrice": "no price for {sym}",
+  "track.provisional": "official close pending: re-checked when it's posted",
 };
 
 export type MsgKey = keyof typeof en;

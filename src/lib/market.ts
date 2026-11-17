@@ -110,7 +110,7 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
   // which the per-symbol fallbacks below then read from cache.
   if (missing.some(hasWorldDaily)) await worldDaily(missing.filter(hasWorldDaily)).catch(() => null);
   // Per-symbol fallbacks, bounded: a rate-limited minute shouldn't fan out into dozens of requests.
-  const filled = await pool(missing.slice(0, 30), 4, singleQuote);
+  const filled = await pool(missing.slice(0, 40), 4, singleQuote);
   filled.forEach((q) => q && got.set(q.symbol, q));
   // Yahoo-only symbols (indexes, futures, FX): a tracking ETF priced by Nasdaq beats a stale price.
   const proxied = uniq.filter((s) => !got.has(s) && PROXIES[s]);
@@ -134,13 +134,15 @@ export async function freshenQuotes(quotes: Quote[], now = new Date()): Promise<
   const lagging = quotes.filter((q) => !q.stale && !isVnSymbol(q.symbol) && (q.history.at(-1)?.[0] ?? "") < lastFinishedSession(q.symbol, now, q.proxy));
   if (!lagging.length) return quotes;
   const fixed = new Map<string, Quote>();
-  await pool(lagging.slice(0, 24), 4, async (q) => {
+  await pool(lagging.slice(0, 48), 4, async (q) => {
     const want = lastFinishedSession(q.symbol, now, q.proxy);
     const last = q.history.at(-1)!;
     const close = await latestClose(q.proxy ?? q.symbol, want).catch(() => null);
     if (!close) return;
-    // The source's previous close must match ours when both are for the same day (a mislabeled series is caught here).
+    // Eastmoney's previous close must match ours when both are for the same day (a mislabeled series is caught here),
+    // and no fill may move more than 25% from our last close (a broken print, not a market move).
     if (close.prev != null && last[0] === prevWeekday(want) && Math.abs(close.prev / last[1] - 1) > 0.003) return;
+    if (Math.abs(close.value / last[1] - 1) > 0.25) return;
     const prevClose = last[0] === prevWeekday(want) ? last[1] : (close.prev ?? last[1]);
     fixed.set(q.symbol, { ...q, price: close.value, prevClose, changePct: ((close.value - prevClose) / prevClose) * 100, history: [...q.history, [want, close.value] as [string, number]].slice(-25), closeVia: close.via });
   });
@@ -157,14 +159,18 @@ async function latestClose(symbol: string, want: string): Promise<{ value: numbe
     if (em && em.session > want && prevWeekday(em.session) === want) return { value: em.preClose, via: "eastmoney" };
   }
   if (hasWorldDaily(symbol)) return null; // index levels: only Eastmoney is trusted for these
+  // US stocks and ETFs: the same provider's 1-day bars, so the series matches the daily history by
+  // construction (Nasdaq's intraday "previous close" field isn't reliable enough to check against).
+  // Only bars inside the wanted session's regular hours count: no after-hours print, no guessing.
   const d = await getChart(symbol, "1d");
   if (d.dailyOnly || d.proxy || d.estimatedVia) return null;
   const close = SESSIONS[tz]?.close ?? 960;
-  const inSession = d.bars.filter((b) => dayIn(tz, b.t * 1000) === want && localNow(b.t * 1000, tz).mins <= close);
-  if (inSession.length) return { value: inSession.at(-1)!.c, prev: d.prevClose, via: d.source };
-  const sessionOf = d.bars.length ? dayIn(tz, d.bars.at(-1)!.t * 1000) : "";
-  if (sessionOf > want && prevWeekday(sessionOf) === want && d.prevClose) return { value: d.prevClose, via: d.source };
-  return null;
+  const open = SESSIONS[tz]?.open ?? 570;
+  const inSession = d.bars.filter((b) => {
+    const l = localNow(b.t * 1000, tz);
+    return l.date === want && l.mins >= open && l.mins <= close;
+  });
+  return inSession.length ? { value: inSession.at(-1)!.c, via: d.source } : null;
 }
 
 export function quotesAsText(quotes: Quote[]): string {

@@ -347,7 +347,9 @@ async function eastmoneyChart(symbol: string, range: ChartRange): Promise<ChartD
   if (!em) throw new Error("eastmoney: no data");
   const bars: Bar[] = em.points.map(([t, c]) => ({ t, o: c, h: c, l: c, c, v: 0 }));
   const ps = em.points.map(([, p]) => p);
-  return { symbol, range, bars, price: em.last, prevClose: em.preClose, changePct: pct(em.last, em.preClose), dayHigh: Math.max(...ps), dayLow: Math.min(...ps), asOf: em.asOf, source: "eastmoney", name: symLabel(symbol) };
+  // A saved answer more than 10 minutes old isn't live any more: shown, but flagged stale (not intraday).
+  const stale = em.savedAt != null && Date.now() - em.savedAt > 10 * 60_000;
+  return { symbol, range, bars, price: em.last, prevClose: em.preClose, changePct: pct(em.last, em.preClose), dayHigh: Math.max(...ps), dayLow: Math.min(...ps), asOf: em.asOf, source: "eastmoney", name: symLabel(symbol), ...(stale ? { stale: true } : {}) };
 }
 
 /* ---------------------------------------------------------------- public */

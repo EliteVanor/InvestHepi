@@ -556,4 +556,5 @@ export const es: Dict = {
   "pred.noLive": "sin precio en vivo de {sym}",
   "pred.noClose": "aún no hay cierre de {sym} del {day}",
   "pred.noPrice": "sin precio de {sym}",
+  "track.provisional": "cierre oficial pendiente: se revisa cuando se publique",
 };

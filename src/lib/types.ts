@@ -218,4 +218,6 @@ export interface Call {
   closed?: boolean;
   /** Weekly calls whose 5th day was a holiday: the session actually used. */
   gradedOn?: string;
+  /** Graded from an intraday close (this source) before the official one was posted; re-graded when it is. */
+  provisional?: string;
 }

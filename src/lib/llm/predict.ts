@@ -95,7 +95,7 @@ export interface PredictInput {
   vn: boolean;
   quotes: Quote[];
   /** Per ticker: the live price and its move since the previous close, when the session is open. */
-  live: Map<string, { price: number; chg: number; at: number }>;
+  live: Map<string, { price?: number; chg: number; at: number; via?: string }>;
   /** Tickers whose graded session has already opened (their daily call starts from "now"). */
   opened: Set<string>;
   macro: Quote[];
@@ -129,7 +129,7 @@ export function predictionSnapshot(p: Pick<PredictInput, "quotes" | "live" | "op
       const live = p.live.get(q.symbol);
       let start: string;
       if (!p.opened.has(q.symbol)) start = `today's call starts from the previous close`;
-      else if (live) start = `NOW ${live.price.toFixed(2)} (${f(live.chg)} today, at ${hhmm(localNow(live.at, p.tz).mins)}); today's call starts from this price`;
+      else if (live) start = `NOW ${live.price != null ? `${live.price.toFixed(2)} ` : ""}(${f(live.chg)} today${live.via ? `, from the ${live.via} ETF's move` : ""}, at ${hhmm(localNow(live.at, p.tz).mins)}); today's call starts from this point`;
       else start = `session open but no live price: make no call on it`;
       // Daily closes are posted hours later by some sources: say so instead of passing an older close off as the latest.
       const want = p.now ? lastFinishedSession(q.symbol, p.now, q.proxy) : undefined;

@@ -556,4 +556,5 @@ export const ko: Dict = {
   "pred.noLive": "{sym} 실시간 가격 없음",
   "pred.noClose": "{sym}의 {day} 종가가 아직 없습니다",
   "pred.noPrice": "{sym} 가격 없음",
+  "track.provisional": "공식 종가 대기: 발표되면 다시 확인",
 };

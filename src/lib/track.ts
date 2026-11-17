@@ -9,12 +9,14 @@
  *    of the call (`baseChg`, its move since the previous close, so it works with any price series).
  *    Without a live price that day it's graded from the previous close but not counted in the
  *    headline (`noLiveBase`): headlines could already say how the morning went.
- * A weekday with no session (a holiday) gets "market closed, not graded" (`closed`).
+ * A weekday with no session (a holiday) gets "market closed, not graded" (`closed`). A close the daily
+ * source hasn't posted yet comes from an intraday series: graded within the hour as `provisional`,
+ * re-graded from the official close when it's posted.
  *
  * Ids: <session>:<ticker>:d (before market), :m (mid-day), :w (weekly). Calls from before v18 have
  * no phase and count as before market (they came from the 08:15 Hanoi run).
  */
-import { getQuotes } from "./market";
+import { freshenQuotes, getQuotes } from "./market";
 import { SETTLE_MINS, addDays, closeUtc, dailyTarget, localNow, nthWeekday, sessionClosed, type Phase } from "./markets";
 import { exchangeTz } from "./symbols";
 import { getJSON, setJSON } from "./store";
@@ -127,20 +129,27 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     c.noResult = true;
     fixed++;
   }
-  const pending = calls.filter((c) => c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker), now));
+  // Due: ungraded calls whose graded session has closed, and provisional grades waiting for the official close.
+  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker), now)));
   if (!pending.length) {
     if (fixed) await setJSON(key, calls);
     return 0;
   }
   const tickers = [...new Set(pending.map((c) => c.ticker))];
-  // Fresh prices only (never the stale fallback), fetched in one batch.
-  const quotes = new Map((await getQuotes(tickers, { allowStale: false })).map((q) => [q.symbol, q]));
+  // Fresh prices only (never the stale fallback), fetched in one batch. Daily sources post a close hours
+  // later (Nasdaq's history in the evening, VNDirect's world closes the next morning), so a close they
+  // haven't posted yet is taken from an intraday series (freshenQuotes): graded within the hour,
+  // marked provisional, and re-graded from the official close once it's posted.
+  const official = await getQuotes(tickers, { allowStale: false });
+  const officialBy = new Map(official.map((q) => [q.symbol, q]));
+  const quotes = new Map((await freshenQuotes(official, now)).map((q) => [q.symbol, q]));
   let graded = 0;
   for (const c of pending) {
     const q = quotes.get(c.ticker);
     if (!q) continue;
     const tz = gradeTz(c.ticker, q.proxy);
     const end = gradeDateOf(c);
+    const officialDates = new Set(officialBy.get(c.ticker)?.history.map(([d]) => d) ?? []);
     // Only finished sessions: today's bar is a live price until the exchange has closed.
     const hist = q.history.filter(([d]) => sessionClosed(d, tz, now));
     const before = hist.filter(([d]) => d < c.date);
@@ -149,6 +158,7 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     const weekly = horizonOf(c) === "w";
     let out = hist.find(([d]) => d === end);
     if (!out) {
+      if (c.provisional) continue;
       // No bar for the graded session yet: still being posted, or the market was closed that day.
       const later = hist.some(([d]) => d > end);
       const overdue = now.getTime() - closeUtc(end, tz).getTime() > CLOSED_AFTER_MS;
@@ -163,6 +173,9 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
       }
       out = inside; // weekly: the previous full session
     }
+    const viaIntraday = !officialDates.has(out[0]) || !officialDates.has(base[0]) ? q.closeVia : undefined;
+    // A provisional grade is only redone once the official close is in.
+    if (c.provisional && viaIntraday) continue;
     const fromPrev = out[1] / base[1];
     // Calls made during the session are measured from the price at that moment.
     const r = (c.baseChg != null ? fromPrev / (1 + c.baseChg / 100) - 1 : fromPrev - 1) * 100;
@@ -173,9 +186,13 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     c.returnPct = r;
     c.band = band;
     if (out[0] !== end) c.gradedOn = out[0];
+    c.correct = undefined;
+    c.noResult = undefined;
     // A move inside the band says nothing about an up/down call: graded, but "no result" (not a miss).
     if (c.direction !== "flat" && Math.abs(r) < band) c.noResult = true;
     else c.correct = c.direction === "up" ? r > 0 : c.direction === "down" ? r < 0 : Math.abs(r) < band;
+    if (viaIntraday) c.provisional = viaIntraday;
+    else delete c.provisional;
     c.gradedAt = now.toISOString();
     graded++;
   }

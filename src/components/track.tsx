@@ -109,6 +109,7 @@ export function TrackSheet({ onClose, section = "interests" }: { onClose: () => 
                       {!c.closed && <> · {t("track.gradedClose", { when: new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date((c.gradedOn ?? c.endDate ?? c.date) + "T12:00:00Z")) })}</>}
                       {c.closed && <> · {t("track.closedHint")}</>}
                       {c.noLiveBase && !c.closed && <> · {t("track.uncountedOne")}</>}
+                      {c.provisional && <> · {t("track.provisional")}</>}
                       {c.baseChg != null && <> · {t("track.fromNow", { chg: fmtPct(c.baseChg) })}</>}
                     </div>
                   </div>

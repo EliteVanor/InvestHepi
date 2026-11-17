@@ -556,4 +556,5 @@ export const vi: Dict = {
   "pred.noLive": "không có giá trực tiếp của {sym}",
   "pred.noClose": "chưa có giá đóng cửa {day} của {sym}",
   "pred.noPrice": "không có giá của {sym}",
+  "track.provisional": "chờ giá đóng cửa chính thức: sẽ kiểm tra lại khi có",
 };
