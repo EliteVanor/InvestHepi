@@ -419,17 +419,23 @@ export function usePredictions(o: { ready: boolean; api: Api; lang: string; tab:
 export type LiveNewsMap = Partial<Record<SectionId, { at: string; items: NewsItem[] }>>;
 
 /**
- * The live headline lists (refreshed by the scheduler every 15 minutes; interest sets every 30),
- * polled every 5 minutes while the page is visible. A briefing keeps the headlines it cited.
+ * The live headline lists, polled every 5 minutes while the page is visible. Shared sections are
+ * refreshed by the scheduler every 15 minutes; My Interests every 30 while someone reads it (these
+ * polls are what says so), and at once when a reader comes back to a stale list.
  */
 export function useLiveNews(o: { ready: boolean; api: Api }) {
   const { ready, api } = o;
   const [news, setNews] = useState<LiveNewsMap>({});
   const load = useCallback(
-    (s: SectionId) =>
-      api<{ at: string | null; items: NewsItem[] }>(`/api/news?section=${s}`)
-        .then((j) => j.at && j.items.length && setNews((n) => (n[s]?.at === j.at ? n : { ...n, [s]: { at: j.at!, items: j.items } })))
-        .catch(() => {}),
+    function load(s: SectionId, retry = 0): Promise<void> {
+      return api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`)
+        .then((j) => {
+          if (j.at && j.items.length) setNews((n) => (n[s]?.at === j.at ? n : { ...n, [s]: { at: j.at!, items: j.items } }));
+          // My Interests' list was stale (back after a while): the server is fetching it now, ask again soon.
+          if (j.refreshing && retry < 3) setTimeout(() => void load(s, retry + 1), 12_000);
+        })
+        .catch(() => {});
+    },
     [api],
   );
   useEffect(() => {

@@ -24,6 +24,8 @@ export interface PredictionSet {
   tz: string;
   daily?: PredRun;
   weekly?: PredRun;
+  /** The latest run couldn't work from the latest data (no AI call): when, and what was missing. */
+  unavailable?: { phase: Phase; at: string; gaps: { symbol: string; kind: "close" | "live" | "price"; date?: string }[] };
   /** Set on translated copies. */
   language?: string;
   translatedFrom?: string;

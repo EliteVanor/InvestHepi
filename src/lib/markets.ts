@@ -90,6 +90,21 @@ export function dailyTarget(now: Date | number, ticker: string): { date: string;
   return { date: d, opened: false, tz };
 }
 
+/** The weekday before `date`. */
+export function prevWeekday(date: string): string {
+  let d = addDays(date, -1);
+  while (isWeekend(d)) d = addDays(d, -1);
+  return d;
+}
+
+/** The latest session on a ticker's exchange that has closed by `now` (weekdays; holidays unknown). */
+export function lastFinishedSession(symbol: string, now: Date | number, proxy?: string): string {
+  const tz = proxy ? "America/New_York" : exchangeTz(symbol);
+  let d = localNow(now, tz).date;
+  while (isWeekend(d) || !sessionClosed(d, tz, now)) d = addDays(d, -1);
+  return d;
+}
+
 /* --------------------------------------------------------- prediction markets */
 
 export type Phase = "pre" | "mid";

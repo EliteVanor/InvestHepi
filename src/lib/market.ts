@@ -12,6 +12,10 @@ import { getJSON, setJSON } from "./store";
 import { isVnSymbol, pool, vnDaily, vndirectDaily } from "./vnmarket";
 import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
+import { emSession, hasEastmoney } from "./eastmoney";
+import { SESSIONS, lastFinishedSession, localNow, prevWeekday } from "./markets";
+import { exchangeTz } from "./symbols";
+import { dayIn } from "./dates";
 
 const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
 
@@ -118,6 +122,51 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
   return uniq.map((s) => got.get(s)).filter((q): q is Quote => q != null);
 }
 
+/**
+ * Daily sources post a session's close hours later (Nasdaq's history in the evening, VNDirect's world
+ * closes the next morning), so briefings and predictions would describe Friday when Monday has closed.
+ * For each quote whose latest bar is older than the latest finished session on its exchange, take that
+ * close from an intraday series: Eastmoney (indexes, WTI) or the 1-day chart's last regular-session bar
+ * (US stocks and ETFs). Grading doesn't use this: it waits for the official daily close.
+ */
+export async function freshenQuotes(quotes: Quote[], now = new Date()): Promise<Quote[]> {
+  // An ETF stand-in's history is the ETF's, so its latest close comes from the ETF's own series.
+  const lagging = quotes.filter((q) => !q.stale && !isVnSymbol(q.symbol) && (q.history.at(-1)?.[0] ?? "") < lastFinishedSession(q.symbol, now, q.proxy));
+  if (!lagging.length) return quotes;
+  const fixed = new Map<string, Quote>();
+  await pool(lagging.slice(0, 24), 4, async (q) => {
+    const want = lastFinishedSession(q.symbol, now, q.proxy);
+    const last = q.history.at(-1)!;
+    const close = await latestClose(q.proxy ?? q.symbol, want).catch(() => null);
+    if (!close) return;
+    // The source's previous close must match ours when both are for the same day (a mislabeled series is caught here).
+    if (close.prev != null && last[0] === prevWeekday(want) && Math.abs(close.prev / last[1] - 1) > 0.003) return;
+    const prevClose = last[0] === prevWeekday(want) ? last[1] : (close.prev ?? last[1]);
+    fixed.set(q.symbol, { ...q, price: close.value, prevClose, changePct: ((close.value - prevClose) / prevClose) * 100, history: [...q.history, [want, close.value] as [string, number]].slice(-25), closeVia: close.via });
+  });
+  return quotes.map((q) => fixed.get(q.symbol) ?? q);
+}
+
+/** A finished session's close from an intraday series: { value, prev (that series' previous close), via }. */
+async function latestClose(symbol: string, want: string): Promise<{ value: number; prev?: number; via: string } | null> {
+  const tz = exchangeTz(symbol);
+  if (hasEastmoney(symbol)) {
+    const em = await emSession(symbol);
+    if (em?.session === want) return { value: em.last, prev: em.preClose, via: "eastmoney" };
+    // A newer session is under way: its previous close is the one we want.
+    if (em && em.session > want && prevWeekday(em.session) === want) return { value: em.preClose, via: "eastmoney" };
+  }
+  if (hasWorldDaily(symbol)) return null; // index levels: only Eastmoney is trusted for these
+  const d = await getChart(symbol, "1d");
+  if (d.dailyOnly || d.proxy || d.estimatedVia) return null;
+  const close = SESSIONS[tz]?.close ?? 960;
+  const inSession = d.bars.filter((b) => dayIn(tz, b.t * 1000) === want && localNow(b.t * 1000, tz).mins <= close);
+  if (inSession.length) return { value: inSession.at(-1)!.c, prev: d.prevClose, via: d.source };
+  const sessionOf = d.bars.length ? dayIn(tz, d.bars.at(-1)!.t * 1000) : "";
+  if (sessionOf > want && prevWeekday(sessionOf) === want && d.prevClose) return { value: d.prevClose, via: d.source };
+  return null;
+}
+
 export function quotesAsText(quotes: Quote[]): string {
   if (!quotes.length) return "(price data unavailable)";
   return quotes
@@ -145,7 +194,7 @@ export function levelText(q: Quote): string {
   const prevDate = q.history.at(-2)?.[0];
   if (q.proxy) return `level unknown [tracked by the ${q.proxy} ETF: use % moves only, never quote a price level]`;
   if (q.estimatedVia) return `≈${px(q.price)} [estimate for the ${date} session: the ${prevDate} official close ${px(q.prevClose)} moved with the ${q.estimatedVia} ETF; say "about"]`;
-  return `${px(q.price)}${date ? ` [${q.dailyOnly ? "close of " : "as of "}${date}]` : ""}`;
+  return `${px(q.price)}${date ? ` [${q.dailyOnly || q.closeVia ? "close of " : "as of "}${date}]` : ""}`;
 }
 /** Names for the AI, where the short UI label is ambiguous ("Dollar" was read as USD/VND). */
 const PROMPT_NAMES: Record<string, string> = { "DX-Y.NYB": "US dollar index (DXY, vs euro, yen etc.; not USD/VND)", "^TNX": "US 10-year Treasury yield (%)" };

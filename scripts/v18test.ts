@@ -19,6 +19,8 @@ const R = (url: string, init: RequestInit = {}) => new Request(url, { ...init, h
 /** Daily closes per symbol (date → close), served as a Yahoo spark batch. */
 const closes: Record<string, [string, number][]> = {};
 const feedHits: string[] = [];
+/** Eastmoney trends2 replies by secid (missing = 502). */
+const emReplies: Record<string, { preClose: number; trends: string[] }> = {};
 let googleDown = false;
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = String(input instanceof Request ? input.url : input);
@@ -30,6 +32,17 @@ globalThis.fetch = (async (input: string | URL | Request) => {
       if (h) out[s] = { timestamp: h.map(([d]) => Date.parse(`${d}T15:00:00Z`) / 1000), close: h.map(([, c]) => c), chartPreviousClose: h[0][1] };
     }
     return new Response(JSON.stringify(out), { status: 200 });
+  }
+  if (url.includes("/v8/finance/chart/AAA")) {
+    // Monday Nov 16 2026 minute bars for a US stock, 09:30 New York to 20:00 (after hours included, as Nasdaq does).
+    const ts = Array.from({ length: 63 }, (_, i) => Date.parse("2026-11-16T14:30:00Z") / 1000 + i * 600);
+    const c = ts.map((t) => (t <= Date.parse("2026-11-16T21:00:00Z") / 1000 ? 102 : 99)); // 102 at the close, 99 after hours
+    return new Response(JSON.stringify({ chart: { result: [{ meta: { regularMarketPrice: c.at(-1), chartPreviousClose: 100, regularMarketTime: ts.at(-1) }, timestamp: ts, indicators: { quote: [{ close: c }] } }] } }), { status: 200 });
+  }
+  if (url.includes("eastmoney.com")) {
+    const secid = url.match(/secid=([^&]+)/)![1];
+    const em = emReplies[secid];
+    return em ? new Response(JSON.stringify({ data: em }), { status: 200 }) : new Response("bad gateway", { status: 502 });
   }
   if (/rss|news\.google|feeds|\.xml/.test(url)) {
     feedHits.push(url);
@@ -70,7 +83,7 @@ const T = (iso: string) => Date.parse(iso);
   assert.equal(MK.preDeadline("eu", T("2026-07-15T06:30:00Z")).toISOString(), "2026-07-15T07:00:00.000Z", "Europe's summer open: 07:00 UTC");
   assert.equal(MK.zonedToUtc("2026-03-08", 570, "America/New_York").toISOString(), "2026-03-08T13:30:00.000Z", "the day New York changes clocks");
   const nxt = TT.nextPredictionRuns("vn", T("2026-11-21T10:00:00Z"), 2);
-  assert.deepEqual(nxt.map((n) => [new Date(n.at).toISOString(), n.phase]), [["2026-11-23T01:15:00.000Z", "pre"], ["2026-11-23T04:35:00.000Z", "mid"]], "from Saturday: Monday's runs");
+  assert.deepEqual(nxt.map((n) => [new Date(n.at).toISOString(), n.phase]), [["2026-11-23T00:45:00.000Z", "pre"], ["2026-11-23T04:35:00.000Z", "mid"]], "from Saturday: Monday's runs (07:45 and 11:35 Hanoi)");
   assert.deepEqual(MK.interestPart([{ id: "a", name: "A", query: "", tickers: ["FPT.VN"] }, { id: "b", name: "B", query: "", tickers: ["NVDA", "AMD"] }], "vn").map((i) => i.id), ["a"], "an interest set splits by its interests' first tickers");
 
   /* ---------------- recording: phases, ids, weekly end, the price at the time */
@@ -155,7 +168,7 @@ const T = (iso: string) => Date.parse(iso);
   assert.match(snap, /\^DJI.*session open but no live price/);
   assert.match(snap, /\^NDX.*starts from the previous close/);
   const lagged = LP.predictionSnapshot({ quotes: [quote("^GSPC")], live: new Map(), opened: new Set(), tz: "America/New_York", now: at("2026-11-20T12:30:00Z") });
-  assert.match(lagged, /the 2026-11-19 session's close isn't in the data yet/, "a close posted late isn't passed off as the latest (Nasdaq's daily history lags by hours)");
+  assert.match(lagged, /the 2026-11-19 session's close isn't available yet: make no call on it/, "a close posted late isn't passed off as the latest, and no call is made on it");
   assert.equal(LP.lastFinishedSession("^N225", at("2026-11-16T02:00:00Z")), "2026-11-13", "Monday morning in Tokyo: Friday");
   assert.equal(LP.lastFinishedSession("VCB.VN", at("2026-11-17T08:00:00Z")), "2026-11-17", "after HOSE settles: today");
   const input = { interests: [{ id: "u", name: "S&P 500", query: "", tickers: ["^GSPC"] }], phase: "mid" as const, tz: "America/New_York", vn: false, quotes: [quote("^GSPC")], live: new Map(), opened: new Set<string>(), macro: [], macroWanted: [], technicals: {}, calendar: [], news: [], trackRecord: "n/a", today: "2026-11-18", weekEnd: "2026-11-24", now: at("2026-11-18T17:00:00Z") };
@@ -176,26 +189,85 @@ const T = (iso: string) => Date.parse(iso);
   const lateCall = (await getJSON<Call[]>("calls:late"))![0];
   assert.deepEqual([lateCall.date, lateCall.noLiveBase], ["2026-11-19", true], "10:00 New York: opened, no live price → not counted");
 
-  /* ---------------- headlines: shared every 15 min, interest sets every 30, back off on 429 */
+  /* ---------------- headlines: shared every 15 min; an interest set only while someone reads it; back off on 429 */
   const H = await import("../src/lib/headlines");
-  const t0 = at("2026-11-18T10:00:00Z");
+  const { currentInterestSet } = await import("../src/lib/interests");
+  const own = await currentInterestSet();
+  const min = (m: number) => new Date(at("2026-11-18T10:00:00Z").getTime() + m * 60_000);
+  const t0 = min(0);
   const n1 = await H.refreshHeadlines(t0);
-  assert.equal(n1, 4, "World, US, Vietnam and the owner's interest set");
+  assert.equal(n1, 3, "World, US and Vietnam; nobody is reading the interest set, so it isn't fetched");
+  assert.equal(await H.loadHeadlines("interests", own.hash), null);
   assert.ok((await H.loadHeadlines("world"))!.items.length > 0);
   const hits = feedHits.length;
-  assert.equal(await H.refreshHeadlines(new Date(t0.getTime() + 10 * 60_000)), 0, "10 minutes later: nothing due");
+  assert.equal(await H.refreshHeadlines(min(10)), 0, "10 minutes later: nothing due");
   assert.equal(feedHits.length, hits, "and no feed requests");
-  assert.equal(await H.refreshHeadlines(new Date(t0.getTime() + 14 * 60_000)), 3, "~15 minutes: the shared sections (ticks come with jitter)");
-  assert.equal(await H.refreshHeadlines(new Date(t0.getTime() + 29 * 60_000)), 4, "~30 minutes: the shared sections again, and now the interest set");
+  // The owner opens the page: their set counts as being read, and the tick picks it up.
+  await H.noteReading(own.hash, own.interests, min(12));
+  assert.equal(await H.refreshHeadlines(min(14)), 4, "~15 minutes: the shared sections, plus the set someone is reading");
+  await H.noteReading(own.hash, own.interests, min(40)); // still on the page (polls every 5 min)
+  assert.equal(await H.refreshHeadlines(min(44)), 4, "~30 minutes later: shared again, and the set (still being read)");
+  assert.equal(await H.refreshHeadlines(min(74)), 4, "last read 34 min ago: still counts (a backgrounded tab is back within the half hour)");
+  assert.equal(await H.refreshHeadlines(min(104)), 3, "nobody has read it for an hour: shared sections only, the set is left alone");
+  assert.equal((await H.readingNow(min(104))).length, 0);
+  // Coming back (or signing in) to a stale list: /api/news fetches it right away and tells the page to ask again.
+  const newsRoute = await import("../src/app/api/news/route");
+  await setJSON(`news:ib:${own.hash}`, { at: new Date(Date.now() - 3 * 3600_000).toISOString(), items: [], errors: [] });
+  const back = await (await newsRoute.GET(R("http://x/api/news?section=interests"))).json();
+  assert.equal(back.refreshing, true, "stale on return: refreshing");
+  for (let i = 0; i < 40 && !((await H.loadHeadlines("interests", own.hash))?.items.length); i++) await new Promise((r) => setTimeout(r, 50));
+  assert.ok((await H.loadHeadlines("interests", own.hash))!.items.length > 0, "and the fresh list is there when the page asks again");
+  const again = await (await newsRoute.GET(R("http://x/api/news?section=interests"))).json();
+  assert.equal(again.refreshing, undefined, "fresh now: nothing to do");
+  assert.ok((await H.readingNow()).some(([h]) => h === own.hash), "the request marked the set as being read");
   googleDown = true;
-  await H.refreshHeadlines(new Date(t0.getTime() + 45 * 60_000));
+  await H.refreshHeadlines(min(120));
   const cool = await getJSON<Record<string, number>>("news:cool");
   assert.ok((cool?.["news.google.com"] ?? 0) > Date.now() + 25 * 60_000, "Google News is rested for 30 minutes after a 429");
   const before = feedHits.filter((u) => u.includes("news.google.com")).length;
-  await H.refreshHeadlines(new Date(t0.getTime() + 60 * 60_000));
+  await H.refreshHeadlines(min(135));
   assert.equal(feedHits.filter((u) => u.includes("news.google.com")).length, before, "and not asked again while it rests");
   assert.ok((await H.loadHeadlines("world"))!.errors.some((e) => /rate-limiting/.test(e)), "the reason is kept");
   googleDown = false;
+
+  /* ---------------- latest data: Eastmoney intraday, the latest close filled from intraday series */
+  const EM = await import("../src/lib/eastmoney");
+  assert.equal(new Date(EM.beijingToUnix("2026-11-17 09:30") * 1000).toISOString(), "2026-11-17T01:30:00.000Z", "Eastmoney times are Beijing time");
+  const hsi = EM.parseTrends({ data: { preClose: 23753.84, trends: ["2026-11-17 09:30,23521.16", "2026-11-17 09:31,23530.00"] } }, "^HSI")!;
+  assert.deepEqual([hsi.session, hsi.last, hsi.preClose], ["2026-11-17", 23530, 23753.84]);
+  assert.equal(EM.parseTrends({ data: null }, "^HSI"), null);
+  assert.ok(!EM.hasEastmoney("^NDX") && !EM.hasEastmoney("000001.SS"), "its NDX is the Composite; Shanghai timed out: not used");
+  const MKT = await import("../src/lib/market");
+  const q0 = (symbol: string, last: number, extra: object = {}) => ({ symbol, price: last, prevClose: last, changePct: 0, history: [["2026-11-12", last - 1], ["2026-11-13", last]] as [string, number][], source: "vndirect-world" as const, dailyOnly: true, ...extra });
+  // Tuesday 01:30 UTC: Monday has closed in Europe and New York, but the daily sources still end Friday.
+  const bjDay = (d: string, hhmm: string[], v: number[]) => hhmm.map((h, i) => `${d} ${h},${v[i]}`);
+  emReplies["100.GDAXI"] = { preClose: 26749.95, trends: bjDay("2026-11-17", ["00:29", "00:30"], [26600, 26610.5]) }; // Monday 16:29-16:30 London
+  emReplies["100.DJIA"] = { preClose: 49000, trends: bjDay("2026-11-17", ["04:59", "05:00"], [52000, 52100]) }; // wrong previous close
+  const fr = await MKT.freshenQuotes([q0("^GDAXI", 26749.95), q0("^DJI", 52347.55), { ...q0("AAA", 100), source: "nasdaq" as const, dailyOnly: undefined }], at("2026-11-17T01:30:00Z"));
+  const g = fr.find((q) => q.symbol === "^GDAXI")!;
+  assert.deepEqual([g.history.at(-1), g.prevClose, g.closeVia], [["2026-11-16", 26610.5], 26749.95, "eastmoney"], "DAX: Monday's close from Eastmoney (VNDirect posts it tomorrow)");
+  assert.equal(fr.find((q) => q.symbol === "^DJI")!.history.at(-1)![0], "2026-11-13", "a series whose previous close doesn't match ours is ignored");
+  const aaa = fr.find((q) => q.symbol === "AAA")!;
+  assert.deepEqual([aaa.history.at(-1), aaa.changePct.toFixed(1)], [["2026-11-16", 102], "2.0"], "US stock: Monday's regular-session close (16:00), not the after-hours print");
+  assert.match(MKT.levelText(g), /close of 2026-11-16/);
+  // A newer session under way: its previous close is the one we want.
+  emReplies["100.N225"] = { preClose: 59662.02, trends: bjDay("2026-11-17", ["08:00", "08:01"], [59295.8, 59292.89]) };
+  const nk = (await MKT.freshenQuotes([q0("^N225", 61142.35)], at("2026-11-17T00:05:00Z")))[0];
+  assert.deepEqual(nk.history.at(-1), ["2026-11-16", 59662.02], "Tuesday morning in Tokyo: Monday's close is Eastmoney's previous close");
+  // Live: the 1-day chart (and so the strip and live quotes) gets Eastmoney's real minute prices.
+  const CH = await import("../src/lib/chart");
+  const nk1d = await CH.getChart("^N225", "1d");
+  assert.deepEqual([nk1d.source, nk1d.price, nk1d.prevClose], ["eastmoney", 59292.89, 59662.02]);
+
+  /* ---------------- predictions need the latest data, or they're unavailable */
+  const PRD = await import("../src/lib/predictions");
+  assert.equal(await getJSON("pred:world:cn"), null);
+  // China & HK at 12:16 HK (mid-day): no live price for the Hang Seng anywhere → no AI call, the card says why.
+  const un = await PRD.runPrediction({ market: "cn", phase: "mid", now: at("2026-11-17T04:16:00Z") });
+  assert.equal(un.ok, false);
+  assert.match(un.note, /^unavailable: \^HSI no (live price|price|2026-11-16 close)/, un.note);
+  const cnSet = await getJSON<import("../src/lib/predictions-view").PredictionSet>("pred:world:cn");
+  assert.ok(cnSet?.unavailable && cnSet.unavailable.phase === "mid" && cnSet.unavailable.gaps[0].symbol === "^HSI", "stored for the card");
 
   /* ---------------- time zones */
   const Z = await import("../src/lib/zones");

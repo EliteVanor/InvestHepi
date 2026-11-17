@@ -35,7 +35,7 @@ export interface Quote {
   changePct: number;
   /** Daily closes, oldest first: [isoDate, close] */
   history: [string, number][];
-  source: "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "vndirect-world" | "stooq";
+  source: "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "vndirect-world" | "stooq" | "eastmoney";
   /** Filled from the last good copy because every source failed this time. */
   stale?: boolean;
   /** Priced from this US-listed ETF because the symbol's own source refused (see PROXIES). */
@@ -48,6 +48,8 @@ export interface Quote {
   dailyOnly?: boolean;
   /** Exchange-local date of the session the price belongs to (live overlay). */
   session?: string;
+  /** The latest close came from an intraday series because the daily source hadn't posted it yet (freshenQuotes). */
+  closeVia?: string;
 }
 
 export type Direction = "up" | "down" | "flat";

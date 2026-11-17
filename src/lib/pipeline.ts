@@ -16,7 +16,7 @@ import { BENCHMARKS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTIO
 import { OWNER, currentUid, withUser } from "./context";
 import { analyze, type Route } from "./llm";
 import { analyzeWithRules } from "./llm/rules";
-import { getQuotes } from "./market";
+import { freshenQuotes, getQuotes } from "./market";
 import { computeMood } from "./mood";
 import { fetchSectionNews, newsKey, saveHeadlines } from "./headlines";
 import { loadHoldings, positionsAsText } from "./portfolio";
@@ -119,9 +119,10 @@ export async function marketData(cov: Coverage): Promise<MarketData> {
   const slot = `market:${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
   const cached = await getJSON<MarketData>(slot).catch(() => null);
   if (cached && cached.key === key && Date.now() - cached.at < MARKET_TTL_MS && cached.quotes.length) return cached;
+  // Freshened: a close the daily source hasn't posted yet is taken from an intraday series.
   const [quotes, macro, sectors, technicals] = await Promise.all([
-    getQuotes(cov.symbols),
-    getQuotes(cov.macro),
+    getQuotes(cov.symbols).then((q) => freshenQuotes(q)),
+    getQuotes(cov.macro).then((q) => freshenQuotes(q)),
     cov.sectors ? getQuotes(SECTORS.map((x) => x.symbol)) : Promise.resolve([] as Quote[]),
     getTechnicals(cov.tech).catch(() => ({}) as Record<string, Technicals>),
   ]);

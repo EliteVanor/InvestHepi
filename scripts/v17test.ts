@@ -22,7 +22,11 @@ closes[closes.length - 1] = closes[closes.length - 2]; // 0.00% on Nov 16
 const outlook = { interest: "S&P 500", ticker: "^GSPC", direction: "down", confidence: 60, horizon: "today", action: "BUY", action_trigger: "t", rationale: "r", risks: "k" };
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = String(input instanceof Request ? input.url : input);
-  if (url.includes("/spark?")) return new Response(JSON.stringify({ AAA: { timestamp: days.map((d) => Date.parse(`${d}T15:00:00Z`) / 1000), close: closes } }), { status: 200 });
+  if (url.includes("/spark?")) {
+    // The same series for every symbol asked (the US prediction run needs prices for its indexes too).
+    const syms = decodeURIComponent(url.match(/symbols=([^&]+)/)![1]).split(",");
+    return new Response(JSON.stringify(Object.fromEntries(syms.map((s) => [s, { timestamp: days.map((d) => Date.parse(`${d}T15:00:00Z`) / 1000), close: closes }]))), { status: 200 });
+  }
   if (url.includes("api.groq.com")) {
     const content = JSON.stringify({ headline: "h", mood: "mixed", summary: ["s"], events: [], watch_next: [], movers: [], scenarios: [], outlook: [outlook] });
     return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 3000 } }), { status: 200 });

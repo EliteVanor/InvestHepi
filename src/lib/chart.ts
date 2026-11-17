@@ -10,6 +10,7 @@ import { PROXIES, exchangeTz, symLabel } from "./symbols";
 import { SAME_HOURS_ETF, estimateFromEtf, hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooCooling, yahooJson, yahooSpark } from "./yahoo";
 import { dayIn } from "./dates";
+import { emSession, hasEastmoney } from "./eastmoney";
 
 export type ChartRange = "1d" | "5d" | "1mo" | "6mo" | "1y";
 export const CHART_RANGES: ChartRange[] = ["1d", "5d", "1mo", "6mo", "1y"];
@@ -23,7 +24,7 @@ export interface Bar {
   v: number;
 }
 
-export type PriceSource = "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "vndirect-world";
+export type PriceSource = "yahoo" | "nasdaq" | "dnse" | "vietcap" | "vndirect" | "vndirect-world" | "eastmoney";
 
 export interface ChartData {
   symbol: string;
@@ -339,6 +340,16 @@ function collapseDaily(symbol: string, bars: Bar[]): [string, number][] {
   return [...m.entries()];
 }
 
+/** A 1-day chart from Eastmoney's intraday series (indexes and WTI that have no other intraday source). */
+async function eastmoneyChart(symbol: string, range: ChartRange): Promise<ChartData> {
+  if (range !== "1d") throw new Error("eastmoney: 1-day only");
+  const em = await emSession(symbol);
+  if (!em) throw new Error("eastmoney: no data");
+  const bars: Bar[] = em.points.map(([t, c]) => ({ t, o: c, h: c, l: c, c, v: 0 }));
+  const ps = em.points.map(([, p]) => p);
+  return { symbol, range, bars, price: em.last, prevClose: em.preClose, changePct: pct(em.last, em.preClose), dayHigh: Math.max(...ps), dayLow: Math.min(...ps), asOf: em.asOf, source: "eastmoney", name: symLabel(symbol) };
+}
+
 /* ---------------------------------------------------------------- public */
 
 export async function getChart(symbol: string, range: ChartRange): Promise<ChartData> {
@@ -357,6 +368,8 @@ export async function getChart(symbol: string, range: ChartRange): Promise<Chart
     : [
         ["yahoo", () => yahooChart(symbol, range)],
         ["nasdaq", () => nasdaqChart(symbol, range)],
+        // Real intraday levels for indexes Yahoo would have served (Nikkei, Hang Seng, DAX, FTSE, ...).
+        ...(range === "1d" && hasEastmoney(symbol) ? ([["eastmoney", () => eastmoneyChart(symbol, range)]] as [string, () => Promise<ChartData>][]) : []),
         // Real levels (daily, or estimated from a same-hours ETF) before falling back to an ETF's price.
         ...(hasWorldDaily(symbol) ? ([["vndirect-world", () => worldChart(symbol, range)]] as [string, () => Promise<ChartData>][]) : []),
       ];

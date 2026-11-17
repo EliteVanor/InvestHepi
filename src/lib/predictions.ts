@@ -25,7 +25,7 @@ import type { Route } from "./llm/models";
 import { buildPredictSystem, buildPredictUser, parsePrediction, PREDICT_HINT, predictOutputTokens } from "./llm/predict";
 import { loadHeadlines } from "./headlines";
 import { isLang } from "./languages";
-import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, nthWeekday, sectionOfMarket, type Phase, type SlotMarket } from "./markets";
+import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, lastFinishedSession, nthWeekday, sectionOfMarket, type Phase, type SlotMarket } from "./markets";
 import { alignAction, coverage, marketData, SHARED_CALLS } from "./pipeline";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
@@ -141,6 +141,23 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
       if (q.session === targets.get(q.symbol)?.date && q.intraday !== false && !q.dailyOnly && Number.isFinite(q.changePct)) live.set(q.symbol, { price: q.price, chg: q.changePct, at: q.asOf * 1000 });
     }
   }
+  // Every prediction works from the latest data: each market's benchmark needs the latest finished
+  // session's close, and during its session a live price. Otherwise the run is unavailable (no AI call).
+  const fresh = (sym: string) => {
+    const q = data.quotes.find((x) => x.symbol === sym);
+    if (!q) return { symbol: sym, kind: "price" as const };
+    const want = lastFinishedSession(sym, now, q.proxy);
+    if ((q.history.at(-1)?.[0] ?? "") < want) return { symbol: sym, kind: "close" as const, date: want };
+    if (opened.has(sym) && !live.has(sym)) return { symbol: sym, kind: "live" as const };
+    return null;
+  };
+  const gaps = firsts.map(fresh).filter((g): g is NonNullable<typeof g> => !!g);
+  if (gaps.length) {
+    const prevSet = await getJSON<PredictionSet>(predKey(scope));
+    await setJSON(predKey(scope), { ...(prevSet ?? { scope, section, market, tz }), unavailable: { phase, at: now.toISOString(), gaps } } satisfies PredictionSet);
+    return { ok: false, note: `unavailable: ${gaps.map((g) => `${g.symbol} ${g.kind === "close" ? `no ${g.date} close` : g.kind === "live" ? "no live price" : "no price"}`).join("; ")}` };
+  }
+  const stale = new Set(symbols.filter((sym) => fresh(sym)));
   const today = dailyTarget(now, firsts[0]).date;
   const weekEnd = nthWeekday(today, 5);
   const input = {
@@ -165,6 +182,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   for (const c of value.calls) {
     const it = allowed.get(c.ticker.toUpperCase());
     if (!it) continue;
+    if (stale.has(c.ticker.toUpperCase())) continue; // no latest data for this ticker: no call on it
     if (phase === "mid" && c.horizon === "this week") continue;
     const k = `${c.ticker}|${c.horizon}`;
     if (seen.has(k)) continue;
@@ -194,7 +212,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   const daily = items.filter((o) => o.horizon === "today");
   const weekly = items.filter((o) => o.horizon === "this week");
   const next: PredictionSet = {
-    scope, section, market, tz,
+    scope, section, market, tz, // a successful run clears any "unavailable" note
     daily: daily.length ? { phase, at: now.toISOString(), provider, date: today, items: daily } : prev?.daily,
     weekly: weekly.length ? { phase, at: now.toISOString(), provider, date: today, endDate: weekEnd, items: weekly } : prev?.weekly,
   };

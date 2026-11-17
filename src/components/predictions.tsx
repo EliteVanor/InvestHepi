@@ -79,6 +79,7 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
               <p className="hint pred-note">{t("pred.first", { when: nextLabel(n) })}</p>
             ) : (
               <>
+                {set.unavailable && (!set.daily || set.unavailable.at > set.daily.at) && <Unavailable u={set.unavailable} tz={tz} />}
                 {set.daily && <Run run={set.daily} tz={tz} today={local.date} onTicker={onTicker} />}
                 {set.weekly && <Run run={set.weekly} tz={tz} today={local.date} weekly onTicker={onTicker} />}
                 {(weekend || (set.daily && set.daily.date < local.date)) && n && (
@@ -97,6 +98,23 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
     if (!n) return "–";
     return `${t(n.phase === "pre" ? "pred.pre" : "pred.mid")} · ${marketTime(n.at, n.tz, { day: true })}`;
   }
+}
+
+/** The latest run had no up-to-date price for a benchmark, so no prediction was made: say which and why. */
+function Unavailable({ u, tz }: { u: NonNullable<PredictionSet["unavailable"]>; tz: string }) {
+  const { t, marketTime, lang } = usePrefs();
+  const day = (iso: string) => new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date(iso + "T12:00:00Z"));
+  const why = u.gaps
+    .map((g) => (g.kind === "live" ? t("pred.noLive", { sym: symName(t, g.symbol) }) : g.kind === "close" ? t("pred.noClose", { sym: symName(t, g.symbol), day: day(g.date!) }) : t("pred.noPrice", { sym: symName(t, g.symbol) })))
+    .join(" · ");
+  return (
+    <div className="pred-unavail" role="status">
+      <span className="chip">{t(u.phase === "pre" ? "pred.pre" : "pred.mid")}</span>
+      <span>
+        <b>{t("pred.unavailable", { when: marketTime(u.at, tz) })}</b> {why}
+      </span>
+    </div>
+  );
 }
 
 function Run({ run, tz, today, weekly, onTicker }: { run: PredRun; tz: string; today: string; weekly?: boolean; onTicker: (s: string) => void }) {

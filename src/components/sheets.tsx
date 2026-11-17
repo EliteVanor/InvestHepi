@@ -287,6 +287,40 @@ interface Status {
   email: "resend" | "smtp" | "none";
   lastRefresh: Record<SectionId, { at: string; ok: boolean; provider?: string; error?: string } | null>;
   schedule?: { lastTick: { at: string; src: string } | null; late: string[]; slots?: { slot: string; start: string }[] };
+  /** Admin only: today's use per model against its free allowance. */
+  aiUsage?: { key: string; model: string; tokens: number; tokensPerDay?: number; requests: number; requestsPerDay?: number; byRoute: Record<string, number>; cooldownUntil?: string; lastError?: string }[];
+}
+
+/** What each model does (models.ts routes), for the admin's usage list. */
+const MODEL_JOB: Record<string, MsgKey> = { groq120: "st.job120", groq20: "st.job20", qwen: "st.jobQwen", gem35: "st.jobGem", gem31: "st.jobGem" };
+
+/** Today's AI use per model: a bar against the free daily allowance (tokens for Groq, requests for Gemini). */
+function AiUsage({ rows }: { rows: NonNullable<Status["aiUsage"]> }) {
+  const { t, timeAt } = usePrefs();
+  return (
+    <div className="sheet-section">
+      <h3>{t("st.aiUsage")}</h3>
+      <div className="group">
+        {rows.map((u) => {
+          const used = u.tokensPerDay ? u.tokens / u.tokensPerDay : u.requestsPerDay ? u.requests / u.requestsPerDay : 0;
+          const label = u.tokensPerDay ? `${Math.round(u.tokens / 1000)}K / ${Math.round(u.tokensPerDay / 1000)}K ${t("st.tokens")}` : `${u.requests} / ${u.requestsPerDay} ${t("st.requests")}`;
+          return (
+            <div className="row usage-row" key={u.key}>
+              <span className="label">
+                <span className="num" style={{ fontSize: 14 }}>{u.model.replace(/^openai\//, "")}</span>
+                <small className="muted">{t(MODEL_JOB[u.key] ?? "st.jobGem")}{u.cooldownUntil ? ` · ${t("st.cooling", { time: timeAt(u.cooldownUntil) })}` : ""}</small>
+              </span>
+              <span className="usage">
+                <span className={`num ${used >= 0.85 ? "bad" : ""}`}>{label}</span>
+                <span className="usage-bar" aria-hidden="true"><i style={{ width: `${Math.min(100, Math.round(used * 100))}%` }} className={used >= 0.85 ? "hot" : ""} /></span>
+              </span>
+            </div>
+          );
+        })}
+      </div>
+      <p className="hint">{t("st.aiUsageHint")}</p>
+    </div>
+  );
 }
 
 function StatusTab() {
@@ -340,6 +374,7 @@ function StatusTab() {
           <div className="row"><span className="label">{t("st.email")}</span>{s.email === "none" ? onOff(false) : <span className="ok">{s.email === "resend" ? "Resend" : "SMTP"}</span>}</div>
         </div>
       </div>
+      {s.aiUsage?.length ? <AiUsage rows={s.aiUsage} /> : null}
       <div className="sheet-section">
         <h3>{t("st.last")}</h3>
         <div className="group">

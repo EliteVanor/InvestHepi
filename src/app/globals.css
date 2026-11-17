@@ -1139,3 +1139,12 @@ input:-webkit-autofill, input:-webkit-autofill:focus { -webkit-text-fill-color: 
 .pred-body .trigger { font-size: 14px; }
 .pred-note { margin: 4px 0 0; }
 @media (max-width: 719px) { .pred-list { grid-template-columns: 1fr; } }
+
+/* Admin: AI use per model */
+.usage-row .label { display: grid; gap: 2px; }
+.usage { display: grid; gap: 4px; justify-items: end; min-width: 120px; font-size: 13px; }
+.usage-bar { width: 120px; height: 5px; border-radius: 3px; background: var(--fill-2); overflow: hidden; }
+.usage-bar i { display: block; height: 100%; background: var(--green); border-radius: 3px; }
+.usage-bar i.hot { background: var(--red); }
+.pred-unavail { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 10px 12px; margin-bottom: 10px; border-radius: 12px; background: var(--fill-2); font-size: 13px; color: var(--label-2); }
+.pred-unavail b { color: var(--label); font-weight: 600; }

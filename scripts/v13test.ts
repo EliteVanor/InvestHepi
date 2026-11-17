@@ -22,6 +22,8 @@ process.env.CRON_SECRET = "cron";
 process.env.TICK_SECRET = "tick";
 
 const calls: { model: string; system: string }[] = [];
+/** The fake clock the price mocks follow (set by the tick's `now`). */
+let mockNow = Date.now();
 let down = false;
 const analysisJson = JSON.stringify({
   headline: "AI headline", mood: "mixed", summary: ["s"],
@@ -47,6 +49,28 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       content = JSON.stringify({ calls: marks.flatMap((m) => hz.map((h) => ({ interest: m[1], ticker: m[2], horizon: h, direction: "up", confidence: 60, action: "HOLD", action_trigger: "t", rationale: "r", risks: "k" }))) });
     }
     return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 6000 } }), { status: 200 });
+  }
+  // Prices, all relative to the test's fake clock (`mockNow`): daily closes up to yesterday, and the
+  // last two hours of minute prices for "live" (Yahoo spark, DNSE, Eastmoney). Predictions need both.
+  const mins = (n: number, step: number) => Array.from({ length: n }, (_, i) => Math.floor(mockNow / 1000) - (n - 1 - i) * step);
+  const days = () => Array.from({ length: 30 }, (_, i) => Math.floor(mockNow / 86400_000) * 86400 - (30 - i) * 86400 + 12 * 3600);
+  if (url.includes("/v8/finance/spark")) {
+    const syms = decodeURIComponent(url.split("symbols=")[1].split("&")[0]).split(",");
+    const ts = url.includes("range=1d") ? mins(24, 300) : days();
+    return new Response(JSON.stringify(Object.fromEntries(syms.map((sym) => [sym, { timestamp: ts, close: ts.map((_, i) => 100 + i * 0.1), chartPreviousClose: 99 }]))), { status: 200 });
+  }
+  if (url.includes("vndirect.com.vn") && url.includes("q=code:")) {
+    const codes = decodeURIComponent(url.split("q=code:")[1].split("~")[0]).split(",");
+    const rows = codes.flatMap((code) => days().map((ts, i) => ({ code, date: new Date(ts * 1000).toISOString().slice(0, 10), close: 50 + i * 0.1, adClose: 50 + i * 0.1, nmVolume: 9, accumulatedVol: 9 })));
+    return new Response(JSON.stringify({ data: rows }), { status: 200 });
+  }
+  if (url.includes("entrade.com.vn")) {
+    const t = mins(120, 60);
+    return new Response(JSON.stringify({ t, o: t.map(() => 50), h: t.map(() => 51), l: t.map(() => 49), c: t.map((_, i) => 50 + i * 0.01), v: t.map(() => 9) }), { status: 200 });
+  }
+  if (url.includes("eastmoney.com")) {
+    const bj = (sec: number) => new Date(sec * 1000 + 8 * 3600_000).toISOString().slice(0, 16).replace("T", " ");
+    return new Response(JSON.stringify({ data: { preClose: 100, trends: mins(120, 60).map((sec, i) => `${bj(sec)},${100 + i * 0.01}`) } }), { status: 200 });
   }
   if (/rss|news\.google|feeds|\.xml/.test(url)) {
     const items = Array.from({ length: 5 }, (_, i) => `<item><title>Stocks rise on day ${i}</title><link>https://n/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("");
@@ -77,14 +101,18 @@ const MIN = 60_000;
   assert.equal(day("2026-11-21T00:00:00Z", "2026-11-21T23:59:00Z").filter((o) => o.slot.id.startsWith("p-")).length, 0, "Saturday: no predictions");
   const at = (o: { start: number }) => new Date(o.start).toISOString().slice(11, 16);
   const pmon = mon.filter((o) => o.slot.id.startsWith("p-"));
-  assert.deepEqual(pmon.map((o) => `${o.slot.id}@${at(o)}`), ["p-cn-pre@01:00", "p-vn-pre@01:15", "p-jp-mid@02:45", "p-cn-mid@04:15", "p-vn-mid@04:35", "p-eu-pre@07:30", "p-eu-mid@12:00", "p-us-pre@12:30", "p-us-mid@17:00", "p-jp-pre@23:30"], "winter: the times in the plan");
-  assert.equal(pmon.at(-1)!.date, "2026-11-17", "Japan's 23:30 UTC run is Tuesday's before-market (08:30 Tokyo)");
-  assert.ok(day("2026-11-15T23:00:00Z", "2026-11-15T23:59:00Z").some((o) => o.slot.id === "p-jp-pre" && o.date === "2026-11-16"), "Sunday 23:30 UTC: Monday in Tokyo");
-  assert.ok(!day("2026-11-20T23:00:00Z", "2026-11-20T23:59:00Z").some((o) => o.slot.id === "p-jp-pre"), "Friday 23:30 UTC is Saturday in Tokyo: none");
+  assert.deepEqual(pmon.map((o) => `${o.slot.id}@${at(o)}`), ["p-cn-pre@00:00", "p-vn-pre@00:45", "p-jp-mid@02:45", "p-cn-mid@04:15", "p-vn-mid@04:35", "p-eu-pre@06:30", "p-eu-mid@12:00", "p-us-pre@12:30", "p-us-mid@17:00", "p-jp-pre@22:30"], "winter: before-market runs 75-120 min before each open");
+  assert.equal(pmon.at(-1)!.date, "2026-11-17", "Japan's 22:30 UTC run is Tuesday's before-market (07:30 Tokyo)");
+  assert.ok(day("2026-11-15T22:00:00Z", "2026-11-15T23:59:00Z").some((o) => o.slot.id === "p-jp-pre" && o.date === "2026-11-16"), "Sunday 22:30 UTC: Monday in Tokyo");
+  assert.ok(!day("2026-11-20T22:00:00Z", "2026-11-20T23:59:00Z").some((o) => o.slot.id === "p-jp-pre"), "Friday 22:30 UTC is Saturday in Tokyo: none");
+  for (const id of ["p-jp-pre", "p-cn-pre", "p-vn-pre", "p-eu-pre", "p-us-pre"]) {
+    const o = mon.find((x) => x.slot.id === id) ?? TT.occurrences(T("2026-11-16T00:00:00Z"), T("2026-11-17T23:59:00Z")).find((x) => x.slot.id === id)!;
+    const item = o.slot.items[0];
+    assert.ok(TT.itemEnd(o, item) - o.start >= 75 * MIN, `${id}: at least 75 minutes before the open, so a missed poke can't miss the run`);
+  }
   const jul = day("2026-07-15T00:00:00Z", "2026-07-15T23:59:00Z");
   const s = (id: string) => at(jul.find((o) => o.slot.id === id)!);
-  assert.deepEqual([s("p-eu-pre"), s("p-eu-mid"), s("p-us-pre"), s("p-us-mid"), s("p-vn-pre")], ["06:30", "11:00", "11:30", "16:00", "01:15"], "summer: London and New York runs move with their clocks, Hanoi doesn't");
-  assert.ok(T("2026-07-15T06:30:00Z") < T("2026-07-15T07:00:00Z"), "so Europe's before-market run stays before London's 08:00 BST open");
+  assert.deepEqual([s("p-eu-pre"), s("p-eu-mid"), s("p-us-pre"), s("p-us-mid"), s("p-vn-pre")], ["05:30", "11:00", "11:30", "16:00", "00:45"], "summer: London and New York runs move with their clocks, Hanoi doesn't");
   // Per-item deadlines
   const o = (id: string) => mon.find((x) => x.slot.id === id)!;
   assert.equal(TT.itemEnd(o("p-vn-pre"), "p:vn:pre"), T("2026-11-16T02:00:00Z"), "before market: until the HOSE open");
@@ -97,10 +125,10 @@ const MIN = 60_000;
   assert.deepEqual(M.scheduledPerDay(new Date("2026-11-16T09:00:00Z")), { shared: 16, admin: 4 }, "the 120b reserve counts predictions from the timetable");
 
   /* ---------------- a slot runs one unit per tick on two lanes, each lane 65 s apart */
-  await doneBefore(T("2026-11-16T01:00:00Z"));
+  await doneBefore(T("2026-11-16T00:00:00Z"));
   let t = T("2026-11-16T01:16:00Z");
   const sleeps: number[] = [];
-  const opts = { now: () => new Date(t), sleep: async (ms: number) => { sleeps.push(ms); t += ms; } };
+  const opts = { now: () => ((mockNow = t), new Date(t)), sleep: async (ms: number) => { sleeps.push(ms); t += ms; } };
   const runs: { item: string; at: number; ok: boolean; slot: string; set?: string }[] = [];
   const tick = async () => {
     const r = await S.runTick(opts);
@@ -213,7 +241,7 @@ const MIN = 60_000;
   /* ---------------- late and missed: nobody poked Thursday's 21:20 slot */
   const late = await S.lateNow(T("2026-11-19T22:25:00Z"));
   assert.deepEqual(late.map((x) => [x.slot, x.state]), [["b-2120", "late"]], "late 60 min after its time");
-  assert.deepEqual(await S.lateNow(T("2026-11-19T23:30:00Z")), [], "reported for an hour only, so a watchdog emails once or twice");
+  assert.deepEqual((await S.lateNow(T("2026-11-19T23:30:00Z"))).filter((x) => x.slot === "b-2120"), [], "reported for an hour only, so a watchdog emails once or twice");
   assert.deepEqual(await S.lateNow(T("2026-11-19T21:50:00Z")), [], "not late yet");
   const rep2 = await S.scheduleReport(T("2026-11-20T04:00:00Z"));
   assert.ok(rep2.late.includes("b-2120"), "the report keeps it for 24 h");

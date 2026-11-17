@@ -30,7 +30,7 @@ World, US and Vietnam are the same for everyone and never include anyone's perso
 - **Movers**: the biggest moves, with a reason only when a cited headline names the company (otherwise "No clear news").
 - **Key events**: why each matters, a past example of how markets reacted to something similar, and what could go wrong.
 - **Up next**: earnings, FOMC, CPI, jobs and VN30 futures expiry, in the market's own time zone.
-- **Headlines**: refreshed every 15 minutes without AI (your interests every 30), new-since-last-visit dots, the stories the AI used marked "Key", search, saved headlines, "Explain this".
+- **Headlines**: refreshed every 15 minutes without AI (your interests every 30 while you're reading, and right away when you come back), new-since-last-visit dots, the stories the AI used marked "Key", search, saved headlines, "Explain this".
 - **Your time zone**: every time is shown in your zone (automatic, or pick one) and says which zone it is; charts and the open/closed pill stay in the exchange's own time.
 
 <p align="center">

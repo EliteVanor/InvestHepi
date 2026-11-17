@@ -541,6 +541,19 @@ export const en = {
   "track.fromNow": "measured from the price then ({chg} on the day)",
   "track.dirRateDays": "right on up/down calls ({n} calls over {days} ticker-days)",
   "track.byPhase": "Before market · Mid-day",
+  "st.aiUsage": "AI use today",
+  "st.aiUsageHint": "Free daily allowances: Groq counts tokens per model (resets 00:00 UTC), Gemini counts requests (resets midnight Pacific). A model near its limit is skipped and the next one in the job's order is used.",
+  "st.tokens": "tokens",
+  "st.requests": "requests",
+  "st.cooling": "resting until {time}",
+  "st.job120": "Predictions",
+  "st.job20": "Ask AI, backup",
+  "st.jobQwen": "Translations",
+  "st.jobGem": "Briefings, backup",
+  "pred.unavailable": "Prediction unavailable ({when}):",
+  "pred.noLive": "no live price for {sym}",
+  "pred.noClose": "{sym}'s close for {day} isn't out yet",
+  "pred.noPrice": "no price for {sym}",
 };
 
 export type MsgKey = keyof typeof en;

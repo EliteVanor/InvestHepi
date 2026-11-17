@@ -35,6 +35,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     lastBody = body;
     return new Response(JSON.stringify({ choices: [{ message: { content: sloppy } }] }), { status: 200 });
   }
+  if (url.includes("vndirect.com.vn") && url.includes("q=code:")) {
+    // Vietnamese daily closes through Monday Nov 16 2026 (predictions need the latest session's close).
+    const codes = decodeURIComponent(url.split("q=code:")[1].split("~")[0]).split(",");
+    const days = ["2026-11-16", "2026-11-13", "2026-11-12", "2026-11-11", "2026-11-10", "2026-11-09"];
+    return new Response(JSON.stringify({ data: codes.flatMap((code) => days.map((date, i) => ({ code, date, close: 50 - i * 0.2, adClose: 50 - i * 0.2, nmVolume: 9, accumulatedVol: 9 }))) }), { status: 200 });
+  }
   return new Response("<rss><channel></channel></rss>", { status: 200 });
 }) as typeof fetch;
 

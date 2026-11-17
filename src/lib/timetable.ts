@@ -40,17 +40,19 @@ const LONDON = "Europe/London";
 const NEW_YORK = "America/New_York";
 
 export const TIMETABLE: Slot[] = [
-  // Predictions, in each market's local time. Winter UTC in brackets: Japan 08:30 / 11:45 Tokyo
-  // (23:30 the evening before / 02:45), China & HK 09:00 / 12:15 HK (01:00 / 04:15), Vietnam 08:15 /
-  // 11:35 Hanoi (01:15 / 04:35), Europe 07:30 / 12:00 London (07:30 / 12:00), US 07:30 / 12:00 New York
-  // (12:30 / 17:00). Mid-day runs sit in the Asian lunch breaks.
-  { id: "p-jp-pre", tz: TOKYO, days: WEEKDAYS, at: "08:30", items: ["p:jp:pre"] },
+  // Predictions, in each market's local time. Before-market runs start 75-120 minutes before the open,
+  // so several pokes (Vercel every 15 min, cron-job.org every 30) and a retry 20 min later all land
+  // before it: Japan 07:30 Tokyo (open 09:00), China & HK 08:00 HK (09:30), Vietnam 07:45 Hanoi (09:00),
+  // Europe 06:30 London (08:00), US 07:30 New York (09:30). Winter UTC: 22:30 (the evening before),
+  // 00:00, 00:45, 06:30, 12:30. Mid-day runs sit in the Asian lunch breaks and at noon in London and
+  // New York (02:45, 04:15, 04:35, 12:00, 17:00 UTC).
+  { id: "p-jp-pre", tz: TOKYO, days: WEEKDAYS, at: "07:30", items: ["p:jp:pre"] },
   { id: "p-jp-mid", tz: TOKYO, days: WEEKDAYS, at: "11:45", items: ["p:jp:mid"] },
-  { id: "p-cn-pre", tz: HK, days: WEEKDAYS, at: "09:00", items: ["p:cn:pre"] },
+  { id: "p-cn-pre", tz: HK, days: WEEKDAYS, at: "08:00", items: ["p:cn:pre"] },
   { id: "p-cn-mid", tz: HK, days: WEEKDAYS, at: "12:15", items: ["p:cn:mid"] },
-  { id: "p-vn-pre", tz: HANOI, days: WEEKDAYS, at: "08:15", items: ["p:vn:pre", "p:ivn:pre"] },
+  { id: "p-vn-pre", tz: HANOI, days: WEEKDAYS, at: "07:45", items: ["p:vn:pre", "p:ivn:pre"] },
   { id: "p-vn-mid", tz: HANOI, days: WEEKDAYS, at: "11:35", items: ["p:vn:mid", "p:ivn:mid"] },
-  { id: "p-eu-pre", tz: LONDON, days: WEEKDAYS, at: "07:30", items: ["p:eu:pre"] },
+  { id: "p-eu-pre", tz: LONDON, days: WEEKDAYS, at: "06:30", items: ["p:eu:pre"] },
   { id: "p-eu-mid", tz: LONDON, days: WEEKDAYS, at: "12:00", items: ["p:eu:mid"] },
   { id: "p-us-pre", tz: NEW_YORK, days: WEEKDAYS, at: "07:30", items: ["p:us:pre", "p:wus:pre", "p:oil:pre", "p:gold:pre", "p:ius:pre"] },
   { id: "p-us-mid", tz: NEW_YORK, days: WEEKDAYS, at: "12:00", items: ["p:us:mid", "p:wus:mid", "p:oil:mid", "p:gold:mid", "p:ius:mid"] },
