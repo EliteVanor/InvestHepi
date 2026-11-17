@@ -89,5 +89,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const calls = await loadCalls("calls:vn");
   assert.deepEqual(calls.map((c) => c.id).sort(), ["2026-11-17:VCB.VN:w", "2026-11-17:^VNINDEX.VN:d"], "calls on other markets' tickers are dropped");
   assert.equal(calls.find((c) => c.id.endsWith(":w"))!.action, "WAIT", "down + Buy becomes Wait");
+  // The data block the model was given is kept for audits: prices, macro, technicals; no rules, no headlines.
+  const { getJSON } = await import("../src/lib/store");
+  const inp = await getJSON<{ data: string; provider: string }>("pred:vn:input:pre");
+  assert.ok(inp && inp.data.includes("MARKET SNAPSHOT") && inp.data.includes("TECHNICALS") && !inp.data.includes("LATEST HEADLINES") && !inp.data.includes("How you are graded"), "audit data stored without rules or headlines");
+  const route = await import("../src/app/api/predictions/route");
+  const served = await (await route.GET(new Request("http://x/api/predictions?section=vn&inputs=1"))).json();
+  assert.ok(served.inputs["vn:pre"]?.data.includes("^VNINDEX.VN"), "served for audits at /api/predictions?inputs=1");
   console.log("LLM PATH OK", calls.map((c) => c.id));
 })().catch((e) => { console.error(e); process.exit(1); });

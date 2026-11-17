@@ -225,7 +225,7 @@ async function main() {
   const tr = await import("../src/app/api/track/route");
   const csv = await (await tr.GET(new Request("http://x/api/track?format=csv"))).text();
   assert.equal(csv.split("\n").length, 6, "header + 5 calls");
-  assert.ok(csv.startsWith("session,horizon,ticker") && csv.includes("2026-11-03,week,A"));
+  assert.ok(csv.startsWith("session,horizon,phase,ticker") && csv.includes("2026-11-03,week,pre,A"), "CSV: phase column (calls before v18 count as before market)");
   const per = await (await tr.GET(new Request("http://x/api/track?ticker=b"))).json();
   assert.equal(per.calls.length, 2);
 

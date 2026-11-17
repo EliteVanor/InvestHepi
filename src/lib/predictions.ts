@@ -179,6 +179,8 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     positions: holdings.length ? positionsAsText(holdings, data.quotes) : undefined,
     today, weekEnd, now,
   };
+  // Kept for audits: the market data block the model was given (no rules, no headlines).
+  const dataBlock = buildPredictUser(input, 0).split("LATEST HEADLINES")[0].trim();
   const { value, provider } = await generateJSON(route, {
     build: (n) => ({ system: buildPredictSystem(input), user: buildPredictUser(input, n ?? 20) }),
     hint: PREDICT_HINT,
@@ -229,6 +231,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     weekly: weekly.length ? { phase, at: now.toISOString(), provider, date: today, endDate: weekEnd, items: weekly } : prev?.weekly,
   };
   await setJSON(predKey(scope), next);
+  await setJSON(`${predKey(scope)}:input:${phase}`, { at: now.toISOString(), provider, data: dataBlock }, 8 * 86_400);
   await recordCalls(items, interests, provider, now, callsKey, { phase, live: new Map([...live].map(([s, v]) => [s, v.chg])) });
 
   // Call changes and high-confidence calls, for everyone who follows this set.
@@ -251,6 +254,18 @@ export async function loadPredictions(section: SectionId, lang?: string): Promis
       return tr && tr.v === version(s) ? tr : s;
     }),
   );
+}
+
+/** The data block each market's latest runs were given (for audits: every level must trace back to it). */
+export async function loadPredictionInputs(section: SectionId): Promise<Record<string, { at: string; provider: string; data: string }>> {
+  const hash = section === "interests" ? (await currentInterestSet()).hash : undefined;
+  const out: Record<string, { at: string; provider: string; data: string }> = {};
+  for (const scope of scopesFor(section, hash))
+    for (const phase of ["pre", "mid"]) {
+      const v = await getJSON<{ at: string; provider: string; data: string }>(`${predKey(scope)}:input:${phase}`);
+      if (v) out[`${scope}:${phase}`] = v;
+    }
+  return out;
 }
 
 const translating = new Map<string, Promise<PredictionSet[]>>();

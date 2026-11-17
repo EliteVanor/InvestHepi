@@ -247,6 +247,11 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 - Eastmoney reaches Vercel: `/api/chart?range=1d` for Nikkei, Hang Seng, DAX, S&P 500 and WTI all came back with `"source":"eastmoney"`, live levels and the right previous closes (e.g. Nikkei 58,956.67 vs 59,662.02).
 - Found: the schedule report listed the past 24 h of new slot ids as late/missed (they never existed) and the tick would answer 503 for an hour; fixed with `TIMETABLE_SINCE` (slots before the cut-over aren't reported).
 
+**Check-in 1 (Nov 17, 03:36 UTC, read-only)**
+- Ticks run on v18: headlines refreshed at 03:30 (World, US, Vietnam: 60 each); the 02:15 US briefing ran at 03:01 on Gemini Flash-Lite.
+- First real AI prediction: Japan mid-day at 03:01 UTC (12:01 Tokyo) on gpt-oss-120b, measured from the live Nikkei (58,956.67 = Eastmoney's live level), recorded as `2026-11-17:^N225:m` with `baseChg` -1.182; graded at Tokyo's 15:30 close.
+- Audit: start point and "±2.8%" (typical day) trace to the data; the "20-day range high 66,929" couldn't be checked (production's technicals come from a different source than the sandbox's 65,712). Fixed for next time: each run's data block is stored and served at `/api/predictions?section=&inputs=1`; the track CSV gained phase, base_chg, no_result, provisional, closed and graded_on columns.
+
 **Not verified (at merge time)**
 - ~~Eastmoney from Vercel~~ (works, see above). If Vercel can't reach it, Japan, China/HK and Europe before-market runs will mostly show "unavailable" (VNDirect posts their closes the next morning, after those runs), and their mid-day runs will too. Check right after the merge: `/api/chart?symbol=%5EN225&range=1d` should say `"source":"eastmoney"`.
 - A real AI prediction (no AI keys in the sandbox): check the first production runs (prompt rules, calls per market, the action/direction fix) at the first slot after the merge.

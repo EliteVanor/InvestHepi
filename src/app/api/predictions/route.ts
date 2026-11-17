@@ -1,4 +1,4 @@
-import { loadPredictions } from "@/lib/predictions";
+import { loadPredictionInputs, loadPredictions } from "@/lib/predictions";
 import { SECTION_IDS, type SectionId } from "@/lib/types";
 import { gate } from "@/lib/users";
 
@@ -14,6 +14,8 @@ export async function GET(req: Request) {
     const p = new URL(req.url).searchParams;
     const section = (p.get("section") ?? "interests") as SectionId;
     if (!SECTION_IDS.includes(section)) return Response.json({ error: "bad section" }, { status: 400 });
+    // ?inputs=1: the market data each run was given (prices, macro, technicals, calendar), for audits.
+    if (p.get("inputs")) return Response.json({ inputs: await loadPredictionInputs(section) });
     return Response.json({ sets: await loadPredictions(section, p.get("lang") ?? undefined) });
   });
 }
