@@ -85,6 +85,26 @@ Checked against production. Fixed on the branch (not deployed yet):
 - GitHub's scheduler is unreliable: since Nov 15 only one scheduled run fired (01:15 slot ran at 02:22); the Sunday 22:35 slot never ran; the Monday 08:10 slot hadn't started by 08:41. **Most urgent fix:** move the timetable to an external free scheduler (cron-job.org or Upstash QStash) calling `/api/refresh` with `Authorization: Bearer $CRON_SECRET`, keep GitHub as backup.
 - Competitor and AI-for-stocks report (private artifact, owner's account): https://claude.ai/artifact/KNXDbKGgFtLiGQ7iBVHw1S. Main takeaways: make the graded track record the front door (with a do-nothing baseline), get a Vietnamese legal read on publishing buy/hold/wait calls (the SSC warned about unlicensed recommendations in 2026), add fundamentals and foreign flows for VN tickers, web push; don't build order books, screeners, community or trading.
 
+## Session summary, Nov 17 2026 (v18)
+
+One long session; the details are in the v18 section below.
+
+**Goal (unchanged):** catch up on market news fast and act on it, on free tiers only. Briefings explain; predictions make the graded buy / hold / wait calls; the track record grades every call at its market's close and feeds the record back to the model.
+
+**Rules set this session (owner)**
+- Predictions are a separate AI job; briefings make no calls. Two runs per market per weekday (before market, mid-day), each run predicts only its own market (World split into Japan, China & HK, Europe, US stocks, oil, gold); interest sets split into US and Vietnam parts. Weekly calls only from the before-market run. No predictions on weekends.
+- Grading: daily at that day's close on the ticker's own exchange (mid-day from the price at that moment); weekly at the 5th trading day's close (holiday: the previous session); holiday weekday = "market closed, not graded"; graded within the hour (provisional), re-checked against the official close.
+- Every prediction uses the latest data (latest close; live price during the session); otherwise "unavailable" with the reason, never stale. Calls on a non-benchmark ticker need a headline naming it.
+- Prediction times are in each market's local time, starting 75-120 min before the open; briefings every day (US 5 a day, weekends at the weekday rate).
+- Models: predictions on gpt-oss-120b (falls back to Flash-Lite and 20b, then one retry; never invented), briefings on Gemini Flash-Lite first.
+- Headlines: shared sections every 15 min without AI; an interest set every 30 min only while someone reads it, and at once when they sign in or come back.
+- Time zone setting (device default, every time labeled; charts stay in exchange time).
+- Workflow: anything that can only be checked later (a deploy, a close, the next tick) is a scheduled check-in, never a wait or poll inside the session.
+
+**What changed:** v18-docs merged; v18 built (predictions job, local-time timetable with per-item deadlines and two lanes, track record phases/weekly/closed/provisional/by-day stats, live headlines, time zones, Predictions card, AI use in the Status panel); latest-data layer (Eastmoney intraday for Nikkei, Hang Seng, DAX, FTSE, Euro Stoxx, S&P, Dow, oil; `freshenQuotes` for late closes; same-hours ETF moves for US-hours mid-day starts); stress-test fixes (Nasdaq fills, caps, Eastmoney reliability, futures dating, provisional grades); production fixes (phantom late slots, stored audit inputs, headline guard for extra tickers).
+
+**State at the end:** `main` = v18 (c0b9d72) live; headlines refresh every 15 min; first real predictions ran (Japan, China & HK, Vietnam mid-day) from live prices; scheduled check-ins at 08:35 UTC (first graded closes, Europe's before-market run) and 22:20 UTC (US runs and grading). Open items are listed at the end of this file.
+
 ## Session summary, Nov 16 2026 (v13 to v17)
 
 One long session; each round has its own section below.
