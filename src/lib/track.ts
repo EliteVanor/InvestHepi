@@ -235,7 +235,7 @@ export interface TrackStats {
   /** What acting on each action returned: Buy/Add long, Sell/Trim/Avoid the drop avoided, Hold/Wait the move sat out. */
   byAction: { action: string; n: number; avgReturn: number }[];
   /** Calls waiting for their session to close, with when they can be graded. */
-  pending: { id: string; ticker: string; date: string; horizon: "d" | "w"; phase: Phase; madeAt: string; direction: string; action: string; confidence: number; gradesAfter: string; gradeDate: string }[];
+  pending: { id: string; ticker: string; date: string; horizon: "d" | "w"; phase: Phase; madeAt: string; direction: string; action: string; confidence: number; gradesAfter: string; gradeDate: string; closesAt: string }[];
   recent: Call[];
   /** Cumulative % return of following every daily call vs holding the same tickers (before costs). */
   equity: { date: string; ai: number; hold: number }[];
@@ -324,7 +324,7 @@ export function computeStats(calls: Call[]): TrackStats {
   const actions = [...new Set(graded.map((c) => String(c.action).toUpperCase()))];
   const pending = calls
     .filter((c) => c.correct === undefined && !c.gradedAt)
-    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: horizonOf(c), phase: phaseOf(c), madeAt: c.madeAt, direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c), gradeDate: gradeDateOf(c) }))
+    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: horizonOf(c), phase: phaseOf(c), madeAt: c.madeAt, direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c), gradeDate: gradeDateOf(c), closesAt: closeUtc(gradeDateOf(c), gradeTz(c.ticker)).toISOString() }))
     .sort((a, b) => a.gradesAfter.localeCompare(b.gradesAfter));
   const daily = graded.filter((c) => horizonOf(c) === "d");
   const of = (cs: Call[]) => rate(cs.length, hits(cs));

@@ -6,8 +6,8 @@
 import { z } from "zod";
 import { calendarAsText } from "../calendar";
 import { levelText, macroAsText } from "../market";
-import { MARKET_CITY, localNow, type Phase } from "../markets";
-import { symLabel } from "../symbols";
+import { MARKET_CITY, addDays, isWeekend, localNow, sessionClosed, type Phase } from "../markets";
+import { exchangeTz, symLabel } from "../symbols";
 import { technicalsAsText, type Technicals } from "../technicals";
 import type { CalendarEvent, Interest, NewsItem, Quote } from "../types";
 import { VN_RULES } from "./prompt";
@@ -115,8 +115,16 @@ const hhmm = (mins: number) => `${String(Math.floor(mins / 60)).padStart(2, "0")
 const dayName = (iso: string) => new Date(iso + "T12:00:00Z").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" });
 const f = (n: number) => (Number.isFinite(n) ? `${n >= 0 ? "+" : ""}${n.toFixed(1)}%` : "n/a");
 
+/** The latest session on a ticker's exchange that has closed by `now` (weekdays; holidays unknown). */
+export function lastFinishedSession(symbol: string, now: Date, proxy?: string): string {
+  const tz = proxy ? "America/New_York" : exchangeTz(symbol);
+  let d = localNow(now, tz).date;
+  while (isWeekend(d) || !sessionClosed(d, tz, now)) d = addDays(d, -1);
+  return d;
+}
+
 /** One snapshot line per ticker, with the starting price its daily call is measured from. */
-export function predictionSnapshot(p: Pick<PredictInput, "quotes" | "live" | "opened" | "tz">): string {
+export function predictionSnapshot(p: Pick<PredictInput, "quotes" | "live" | "opened" | "tz"> & { now?: Date }): string {
   if (!p.quotes.length) return "(price data unavailable)";
   return p.quotes
     .map((q) => {
@@ -129,7 +137,11 @@ export function predictionSnapshot(p: Pick<PredictInput, "quotes" | "live" | "op
       if (!p.opened.has(q.symbol)) start = `today's call starts from the previous close`;
       else if (live) start = `NOW ${live.price.toFixed(2)} (${f(live.chg)} today, at ${hhmm(localNow(live.at, p.tz).mins)}); today's call starts from this price`;
       else start = `session open but no live price: today's call is measured from the previous close`;
-      return `${label}: ${levelText(q)}${q.stale ? " [stale]" : ""} (last session ${f(q.changePct)}, 5d ${f(wk)}) | ${start}`;
+      // Daily closes are posted hours later by some sources: say so instead of passing an older close off as the latest.
+      const want = p.now ? lastFinishedSession(q.symbol, p.now, q.proxy) : undefined;
+      const last = h.at(-1)?.[0];
+      const lag = want && last && last < want ? ` [the ${want} session's close isn't in the data yet; headlines may describe it]` : "";
+      return `${label}: ${levelText(q)}${q.stale ? " [stale]" : ""}${lag} (last session ${f(q.changePct)}, 5d ${f(wk)}) | ${start}`;
     })
     .join("\n");
 }

@@ -1,5 +1,5 @@
 {
   "schedules": {
-    "tick": { "schedule": "*/15 * * * 0-5", "path": "/api/cron/tick", "requestMethod": "GET" }
+    "tick": { "schedule": "*/15 * * * *", "path": "/api/cron/tick", "requestMethod": "GET" }
   }
 }

@@ -146,7 +146,7 @@ function GeneralTab() {
           <label className="row">
             <span className="label">{t("set.tzShow")}</span>
             <select value={tzSetting} onChange={(e) => pickZone(e.target.value)} aria-label={t("set.tz")}>
-              <option value="auto">{t("set.tzAuto", { zone: zoneOption(deviceZone()) })}</option>
+              <option value="auto">{t("set.tzAuto", { zone: zoneName(deviceZone()) })}</option>
               <optgroup label={t("set.tzCommon")}>
                 {QUICK_ZONES.map((z) => (
                   <option key={z} value={z}>

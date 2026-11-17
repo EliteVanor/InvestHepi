@@ -65,6 +65,7 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
       {!markets.length && (
         <p className="hint pred-note">{section === "interests" ? t("pred.noneYetSet", { when: nextLabel(next("ius") ?? next("ivn")) }) : t("pred.none")}</p>
       )}
+      <div className={`pred-markets${multi ? " multi" : ""}`}>
       {markets.map(({ market, set }) => {
         const tz = set?.tz ?? MARKET_TZ_OF[market];
         const local = localNow(now, tz);
@@ -72,7 +73,8 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
         const n = next(market);
         return (
           <div className="pred-market" key={market}>
-            {multi && <h3 className="pred-mkt">{t(MARKET_NAME[market] ?? "pred.title")}</h3>}
+            {/* World's calls already carry their market's name; interest sets show which clock each part runs on. */}
+            {multi && section === "interests" && <h3 className="pred-mkt">{t(MARKET_NAME[market] ?? "pred.title")}</h3>}
             {!set ? (
               <p className="hint pred-note">{t("pred.first", { when: nextLabel(n) })}</p>
             ) : (
@@ -87,6 +89,7 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
           </div>
         );
       })}
+      </div>
     </section>
   );
 

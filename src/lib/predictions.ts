@@ -25,7 +25,7 @@ import type { Route } from "./llm/models";
 import { buildPredictSystem, buildPredictUser, parsePrediction, PREDICT_HINT, predictOutputTokens } from "./llm/predict";
 import { loadHeadlines } from "./headlines";
 import { isLang } from "./languages";
-import { MARKET_TZ, SETTLE_MINS, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, nthWeekday, sectionOfMarket, type Phase, type SlotMarket } from "./markets";
+import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, nthWeekday, sectionOfMarket, type Phase, type SlotMarket } from "./markets";
 import { alignAction, coverage, marketData, SHARED_CALLS } from "./pipeline";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
@@ -184,7 +184,8 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
       phase,
       madeAt: now.toISOString(),
       gradeDate,
-      gradesAt: new Date(closeUtc(gradeDate, exchangeTz(raw.ticker)).getTime() + SETTLE_MINS * 60_000).toISOString(),
+      // The close that grades it (grading itself runs within the hour after, once prices settle).
+      gradesAt: closeUtc(gradeDate, exchangeTz(raw.ticker)).toISOString(),
     });
   }
   if (!items.length) throw new Error(`${provider} returned no usable calls`);

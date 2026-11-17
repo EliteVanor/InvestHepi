@@ -76,7 +76,7 @@ export function TrackSheet({ onClose, section = "interests" }: { onClose: () => 
                       <span className="tr-when muted">{relTime(p.gradesAfter, lang)}</span>
                     </div>
                     <div className="tr-sub">
-                      <span className="tr-made">{madeLabel(t, lang, p)}</span> · {marketTime(p.madeAt, exchangeTz(p.ticker), { day: p.horizon === "w" })} · {t("track.gradedClose", { when: marketTime(p.gradesAfter, exchangeTz(p.ticker), { day: true }) })}
+                      <span className="tr-made">{madeLabel(t, lang, p)}</span> · {marketTime(p.madeAt, exchangeTz(p.ticker), { day: p.horizon === "w" })} · {t("track.gradedClose", { when: marketTime(p.closesAt ?? p.gradesAfter, exchangeTz(p.ticker), { day: true }) })}
                     </div>
                   </div>
                 ))}
