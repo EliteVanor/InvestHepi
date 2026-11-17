@@ -28,8 +28,8 @@ InvestHepi did 5 first (v1-v4: 8 languages, live charts, catch-up mode, command 
 5. Build. One concern per commit. No mixed UI + logic refactor in the same round if avoidable.
 6. Verify: unit tests, typecheck, both build modes, a local production build in a real browser (wide + phone, light + dark, all languages touched), and real endpoints from the sandbox.
 7. Docs in the same round: a handoff section (changed / verified / not verified / open items) and the architecture file.
-8. Ask before merging. After merging: wait for the new build (poll for a marker only it has), then read-only checks on production, then a browser pass.
-9. If a result can only be checked later (a market close, an hourly job), schedule a check-in instead of holding the session.
+8. Ask before merging. After merging, don't wait for the deploy: schedule a check-in a few minutes out that confirms the new build (a marker only it has), then runs read-only checks on production and a browser pass. Not live yet: the check-in reschedules itself.
+9. If a result can only be checked later (a deploy, a market close, an hourly job), schedule a check-in instead of holding the session or polling.
 
 ## 3. Definition of done
 
