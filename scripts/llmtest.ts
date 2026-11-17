@@ -68,7 +68,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       const body = JSON.parse(String(init?.body));
       assert.equal(body.reasoning_effort, undefined, "no Groq-only params sent to Gemini");
       if (String(body.messages[0].content).includes("You are the forecaster")) {
-        const pred = { calls: [{ interest: "VN-Index", ticker: "^vnindex.vn", horizon: "Today", direction: "Bullish", confidence: "61", action: "buy", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "Banks", ticker: "VCB.VN", horizon: "this week", direction: "down", confidence: 58, action: "BUY", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "x", ticker: "AAPL", horizon: "today", direction: "up", confidence: 70, action: "BUY", action_trigger: "", rationale: "", risks: "" }] };
+        const pred = { calls: [{ interest: "VN-Index", ticker: "^vnindex.vn", horizon: "Today", direction: "Bullish", confidence: "61", action: "buy", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "Banks", ticker: "VCB.VN", horizon: "this week", direction: "down", confidence: 58, action: "BUY", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "x", ticker: "AAPL", horizon: "today", direction: "up", confidence: 70, action: "BUY", action_trigger: "", rationale: "", risks: "" }, { interest: "Banks", ticker: "BID.VN", horizon: "today", direction: "down", confidence: 58, action: "WAIT", action_trigger: "t", rationale: "a headline about BIDV", risks: "k" }, { interest: "Securities firms", ticker: "VND.VN", horizon: "today", direction: "down", confidence: 56, action: "WAIT", action_trigger: "t", rationale: "follows the sector", risks: "k" }] };
         return new Response(JSON.stringify({ choices: [{ message: { content: "```json\n" + JSON.stringify(pred) + "\n```" } }] }), { status: 200 });
       }
       return new Response(JSON.stringify({ choices: [{ message: { content: sloppy } }] }), { status: 200 });
@@ -83,16 +83,19 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   assert.equal(d2.analysis.movers.length, 0, "but a mover with no price in the snapshot is dropped (this test has no price data)");
   // Predictions start on Groq 120b; a 429 falls back to Gemini, whose sloppy JSON is repaired.
   const { runPrediction } = await import("../src/lib/predictions");
+  // The live headline list the run reads: one names BIDV (BID.VN), none names VNDirect (VND.VN).
+  const store = await import("../src/lib/store");
+  await store.setJSON("news:vn", { at: "2026-11-17T01:00:00.000Z", items: [{ id: "h1", title: "Lãi suất ngân hàng 17/11: VPBank và BIDV cùng giảm", link: "https://n/1", source: "VnExpress", publishedAt: "2026-11-17T00:30:00.000Z" }], errors: [] });
   const r = await runPrediction({ market: "vn", phase: "pre", now: new Date("2026-11-17T01:16:00Z") });
   assert.deepEqual([r.ok, r.note], [true, "gemini:gemini-3.5-flash-lite"], `prediction fell back on the 429 (${r.note})`);
   const { loadCalls } = await import("../src/lib/track");
   const calls = await loadCalls("calls:vn");
-  assert.deepEqual(calls.map((c) => c.id).sort(), ["2026-11-17:VCB.VN:w", "2026-11-17:^VNINDEX.VN:d"], "calls on other markets' tickers are dropped");
+  assert.deepEqual(calls.map((c) => c.id).sort(), ["2026-11-17:BID.VN:d", "2026-11-17:VCB.VN:w", "2026-11-17:^VNINDEX.VN:d"], "other markets' tickers dropped; beyond the benchmarks, only a ticker a headline names (BIDV yes, VNDirect no)");
   assert.equal(calls.find((c) => c.id.endsWith(":w"))!.action, "WAIT", "down + Buy becomes Wait");
-  // The data block the model was given is kept for audits: prices, macro, technicals; no rules, no headlines.
+  // What the model was given is kept for audits: prices, macro, technicals, track record, headlines; no rules.
   const { getJSON } = await import("../src/lib/store");
   const inp = await getJSON<{ data: string; provider: string }>("pred:vn:input:pre");
-  assert.ok(inp && inp.data.includes("MARKET SNAPSHOT") && inp.data.includes("TECHNICALS") && !inp.data.includes("LATEST HEADLINES") && !inp.data.includes("How you are graded"), "audit data stored without rules or headlines");
+  assert.ok(inp && inp.data.includes("MARKET SNAPSHOT") && inp.data.includes("TECHNICALS") && inp.data.includes("BIDV cùng giảm") && !inp.data.includes("How you are graded"), "audit data stored with the headlines, without the rules");
   const route = await import("../src/app/api/predictions/route");
   const served = await (await route.GET(new Request("http://x/api/predictions?section=vn&inputs=1"))).json();
   assert.ok(served.inputs["vn:pre"]?.data.includes("^VNINDEX.VN"), "served for audits at /api/predictions?inputs=1");
