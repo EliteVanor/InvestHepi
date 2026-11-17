@@ -9,11 +9,11 @@ Decided by the owner on Nov 16-17 2026. Don't re-ask these; ask only what's stil
 - **Daily: 2 per market per weekday**, "before market" and "mid-day", **graded at that day's close on the ticker's own exchange** (VN 14:45 Hanoi, US 16:00 New York, etc.). Not 24 h.
 - **Weekly:** once a day, only in the before-market run, **graded at the close of the 5th trading day counting the prediction day** (Wed → next Tue close). If that day is a holiday (no price bar), grade on the previous full session.
 - **Holiday weekday:** the daily slot may still fire (no holiday calendar); with no session that day, mark "market closed, not graded".
-- **No predictions on Saturday and Sunday** (markets closed).
+- **No predictions on Saturday and Sunday** (markets closed; confirmed).
 - **Times (UTC, winter; the timetable is UTC):**
   - Vietnam: before 01:15 (08:15 Hanoi), mid-day 04:35 (lunch break).
   - US: before 12:30, mid-day 17:00.
-  - World: per market on its own clock, 2 each: Japan before 23:30 (previous UTC day) / mid-day 02:45; China & Hong Kong before 01:00 / mid-day 04:15; Europe before 07:30 / mid-day 12:00; US stocks, oil and gold with the US times. Each world market's weekly call goes in its own before-market run.
+  - World: per market on its own clock, 2 each (8 World runs a day, confirmed): Japan before 23:30 (previous UTC day) / mid-day 02:45; China & Hong Kong before 01:00 / mid-day 04:15; Europe before 07:30 / mid-day 12:00; US stocks, oil and gold with the US times. Each world market's weekly call goes in its own before-market run.
   - My Interests: each set split by market (US or Vietnam, by each interest's first ticker); each part on its market's clock, so up to 4 runs a set a day.
 - **Models:** predictions on gpt-oss-120b (shared and admin; users: 120b beyond the reserve, then 20b, then Flash-Lite). **Briefings move to Gemini Flash-Lite first** (120b as fallback). Recount `reserveFor120` from the timetable.
 - **AI failure:** retry once 20 min later; otherwise the slot is "missed": no rule-based prediction, nothing graded.
@@ -32,7 +32,7 @@ Decided by the owner on Nov 16-17 2026. Don't re-ask these; ask only what's stil
 
 ## Headlines
 
-- **Refreshed every 15 minutes for all sections**, including active users' interest sets, with no AI, from the scheduler tick (Vercel's schedule already ticks every 15 min).
+- **Shared sections (World, US, Vietnam) refreshed every 15 minutes; active users' interest sets every 30 minutes**, with no AI, from the scheduler tick (Vercel's schedule already ticks every 15 min). Roughly 6,000 feed requests a day or fewer.
 - The briefing keeps the headlines it cited (its source ids point into its own list); the live list is separate, and "Key" badges match by headline id.
 - Back off per host on a 429 (Google News and some Vietnamese sites rate-limit).
 
@@ -56,7 +56,7 @@ Decided by the owner on Nov 16-17 2026. Don't re-ask these; ask only what's stil
 
 ## Verification
 
-- `v18test`: timetable slots and times, grading at each exchange's close (daily) and the 5th close with the holiday rule (weekly), market-closed days, the My Interests split, record labels and graded times, migration of existing records, budgets, headline refresh.
+- `v18test`: timetable slots and times, grading at each exchange's close (daily) and the 5th close with the holiday rule (weekly), market-closed days, the My Interests split, record labels and graded times, migration of existing records, budgets, headline refresh (15 min shared, 30 min interest sets).
 - All suites, typecheck, both builds; browser checks in all 8 languages, wide and phone, light and dark.
 - After merge: read-only production checks, then a scheduled check-in at the first prediction slot and the first close.
 
