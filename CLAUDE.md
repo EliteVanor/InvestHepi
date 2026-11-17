@@ -9,6 +9,14 @@ Product goals, the owner's decisions and working preferences, and open items are
 
 InvestHepi: a Next.js 15 (App Router, React 19, TypeScript) market-news site deployed on Vercel Hobby. It pulls headlines and prices, has an LLM write a briefing per section (summary, trend, events, movers, scenarios), runs a separate prediction job that makes buy/hold/wait calls twice a weekday per market, and grades those calls at each market's close. Sections are `interests` (per user), `world`, `us`, `vn` (Vietnam). Everything is designed to run on free tiers (Groq/Gemini, Upstash Redis, GitHub Actions), and that constraint drives much of the architecture.
 
+## Project at a glance (Nov 17 2026, v18)
+
+- **Goal:** catch up on market news fast and act on it, on free tiers only; Vietnamese readers matter most.
+- **Three jobs:** briefings (explain, no calls; Gemini Flash-Lite first), predictions (graded buy / hold / wait calls, two runs per market per weekday in local time; gpt-oss-120b first), and the track record (grades each call at its market's close, within the hour, then re-checked against the official close; feeds the record back into the prediction prompt).
+- **Non-negotiables:** every prediction uses the latest data or says "unavailable"; every number the AI writes must trace to the data it was given (inputs are stored for audits); one timetable; every time labeled with its zone; free-tier budgets counted for every change.
+- **Workflow:** HANDOFF first, questions as one numbered list, plan, "go", build, stress test on real data, docs, ask before merging, then scheduled check-ins (never waits) for deploys, closes and ticks.
+- The owner's decisions, session summaries and open items are in `docs/HANDOFF.md`; the rest of this file is how the code works.
+
 ## Commands
 
 ```bash
