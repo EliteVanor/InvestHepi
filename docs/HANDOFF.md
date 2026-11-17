@@ -4,7 +4,7 @@ Read this with `CLAUDE.md` (architecture, commands, technical rules). This file 
 
 ## Goal
 
-InvestHepi helps someone catch up on market news fast and act on it: a short AI briefing per section with buy / hold / wait calls, confidence, triggers, risks and past examples, plus a track record that grades every call. Audience: the owner first, then Vietnamese investors (the UI is in 8 languages, Vietnamese matters most).
+InvestHepi helps someone catch up on market news fast and act on it: a short AI briefing per section (summary, trend, events, movers, scenarios), separate AI predictions with buy / hold / wait calls, confidence, triggers and risks (twice a weekday per market), plus a track record that grades every call at its market's close. Audience: the owner first, then Vietnamese investors (the UI is in 8 languages, Vietnamese matters most).
 
 Hard constraint: **free plans only** (Vercel Hobby, Upstash free, Groq/Gemini free tiers, GitHub Actions). Every feature must keep AI token use and request volume low.
 
@@ -16,11 +16,15 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - **Shared sections never show personal stocks.** World = world indexes + global giants + macro. US = S&P 500, Dow, Nasdaq 100, Russell 2000 + mega caps. Vietnam = VN-Index, VN30, HNX, UPCoM + banks + large caps. The AI's calls in shared sections are on market groups, not users' stocks.
 - **World has no market open/closed pill** (it spans many exchanges).
 - **Refreshing (decided Nov 16, mechanism changed in v13):** briefings refresh on the app's own timetable (`src/lib/timetable.ts`), run by a tick that Vercel Schedules, cron-job.org and GitHub poke on a plain interval; a run that's late or duplicated never spends AI twice, and a slot more than an hour late is reported. Users' interest sets refresh automatically 4 times a weekday (01:15, 08:10, 12:30, 21:20 UTC), the admin's 6 times, **but only for users seen in the last day** (decided Nov 16, v14); someone back after longer gets one catch-up briefing in the background when they open the app (if theirs is over 12 h old). Signed-in users can also refresh their own My Interests by hand: 5 a day, 90 minutes apart, on a lighter model (Gemini Flash-Lite); every press writes a new briefing and tells them how many presses are left. The admin can refresh any section, 10 a day, on the best model. Shared sections can't be refreshed by users. A newly saved interest set gets its first briefing automatically, once.
-- **Schedule:** weekdays World 4, US 2 (12:30 UTC pre-open is the graded call), Vietnam 5 (01:15 UTC pre-HOSE is the graded call). Sunday: each shared section twice, the admin's set 3 times, users none. Saturday: nothing.
-- **Models:** shared on gpt-oss-120b (budget reserved), personal overflow on gpt-oss-20b, translation on qwen, Gemini Flash-Lite as backup; Ask AI on 20b. Shared sections use 20b only as the very last resort.
+- **Schedule (v18):** briefings every day (weekends at the weekday rate): World 4, US 5 (02:15, 12:30, 15:30, 17:00, 21:20 UTC), Vietnam 5; the admin's set 6, users' sets 4. Predictions on weekdays only, two per market in the market's own local time (Japan 08:30/11:45 Tokyo, China & HK 09:00/12:15 HK, Vietnam 08:15/11:35 Hanoi, Europe 07:30/12:00 London, US, US stocks, oil and gold 07:30/12:00 New York; interest sets split into US and Vietnam parts on those clocks).
+- **Predictions (decided Nov 17, v18):** a separate AI job from briefings; briefings make no calls. Daily calls before market and at mid-day, graded at that day's close on the ticker's own exchange (mid-day from the price at that moment); weekly calls only in the before-market run, graded at the 5th trading day's close counting the prediction day (holiday: the previous full session); a holiday weekday is "market closed, not graded"; no predictions on weekends; each run predicts only its own market (owner, Nov 17: "each market got 2 predictions and only predict its market"). A failed run is retried once, then missed: no rule-based predictions.
+- **Headlines (v18):** World, US and Vietnam refresh every 15 minutes, active users' interest sets every 30, with no AI.
+- **Time zone (v18):** one setting per person (default: the device's), every time labeled with its zone; charts and the open/closed pill stay in exchange time.
+- **Models (v18):** predictions on gpt-oss-120b (budget reserved for the shared and admin runs; users' runs use it only beyond the reserve, then 20b, then Flash-Lite); briefings on Gemini Flash-Lite first, 120b as fallback; translation on qwen; Ask AI on 20b.
 - **When no AI model works:** keep the last AI briefing and explain it in a banner; readers can switch to a rule-based summary of the latest news (only they see it; cached).
 - **One language setting per person**, used for the app, briefings and alert emails. **Every briefing is generated in English and translated** (cached per briefing version). Never regenerate a briefing to change its language.
 - **Signed-out visitors** can read World / US / Vietnam; My Interests shows a sign-in invitation. Visitors land on World (Vietnam if their language is Vietnamese).
+- **Track record (v18 additions):** each record shows when it was made ("Before market", "Mid-day", or "Week from <day>") and when it's graded; the likely range and the "always up" baseline count each ticker and day once; records from before v18 are labeled "Before market" with their grades unchanged.
 - **Track record (decided Nov 16, v16-v17):** it must make predictions better over time. The headline is the up/down hit rate next to the "always up" baseline, with a likely range and an "Early data" label under 30 calls; flat calls are judged against each ticker's usual daily move; Hold/Wait are scored apart (result by action); moves inside the band are "no result"; each call shows its record at that confidence, and from 20 graded calls at a level the shown confidence moves toward the real hit rate (the AI's own number stays visible and is what gets recorded); grading happens within the hour after each market closes; an action must agree with its direction.
 - **Wide-screen panels (decided Nov 16, v16):** macOS-style. The sidebar folds to an icon rail with its toggle top-left; Ask AI folds to a slim rail with its toggle top-right in the same spot as the close button; both slide; refined glass look, minimal, Apple-like.
 - **Search like Apple Stocks:** find any US, Vietnamese or global stock / ETF / index (accents optional), tap + to follow. Following creates a one-ticker interest.
@@ -39,7 +43,7 @@ The working rules (session start, stress testing, research and ideas, delivering
 - Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT` (admin, 10), `USER_REFRESH_DAILY_LIMIT` (5), `USER_REFRESH_GAP_MIN` (90), `RULES_DAILY_LIMIT` (30), `ASK_DAILY_LIMIT`, `TICK_SECRET` (lets cron-job.org poke the scheduler and nothing else), model overrides `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, limits `GROQ_TPD`, `GEMINI_RPD`.
 - Google OAuth consent screen: branding filled in, privacy/terms pages exist; publishing needs no logo (a logo triggers brand verification).
 - A personal Claude cloud environment named `invest-helper` exists with network access to the market-data hosts (Yahoo, Nasdaq, DNSE, Vietcap, VNDirect, ...) for live testing. Node needs `NODE_USE_ENV_PROXY=1` there.
-- Tests: 13 offline suites (`npm test`), all passing (v9test, budgettest, v10test added Nov 16).
+- Tests: 19 offline suites (`npm test`), all passing (v18test added Nov 17).
 
 ## Stress test, Nov 16 2026 (branch `claude/stoic-davinci-nncgqw`)
 
@@ -192,6 +196,41 @@ From the first real grades (7 Vietnam calls, Nov 16): HPG "up" moved exactly 0.0
 
 **Not verified:** on production until merged (the HPG call should flip to no result at the first hourly grading after deploy).
 
+## v18 (branch `v18`, Nov 17 2026): predictions apart from briefings, time zones, weekend briefings, live headlines
+
+Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner asked (Nov 17) for each market to have its own two predictions that predict only that market, after I flagged that Europe's 07:30 UTC run lands after London's open in summer. So World runs per market (Japan, China & HK, Europe, US stocks, oil, gold: 12 runs a weekday instead of 8) and prediction times are written in each market's local time, so summer time can't move a before-market run past the open.
+
+**What changed**
+- **Predictions** (`predictions.ts`, `llm/predict.ts`, `markets.ts`): their own prompt and schema, one market per run, the live price at the time for mid-day runs, `pred:<scope>` storage, translations on read (Vietnam pre-translated into Vietnamese), alerts after interest-set runs, `/api/predictions`. Briefings lost their calls and the track record in their prompt (smaller prompts, Flash-Lite first).
+- **Timetable and scheduler**: briefing slots every day; prediction slots in local time with `tz`; each item has its own deadline (before market: the open; mid-day: 90 min; briefings: the next run of the same briefing); two lanes (predictions, briefings) each 65 s apart; headline refresh in the tick. `vercel.json` and refresh.yml now poke every day (Saturday briefings).
+- **Track record**: phases (`:d` before market, `:m` mid-day, `:w` weekly), weekly end date and holiday rule, `closed`, mid-day calls measured from the price then (`baseChg`) or kept out of the headline without one (`noLiveBase`), stats by independent ticker-day (`rateByDay`), by phase; rows show when made and when graded.
+- **Headlines**: `news:<section>` / `news:ib:<hash>` refreshed every 15/30 min, per-host 30-min rest after a 429/503, `/api/news`; the page shows the live list with "Key" by id.
+- **Time zone setting**: Settings → Appearance & language → Time zone (Automatic, Hanoi, New York, UTC, then every zone with its offset), saved per account and device; briefing, history, prediction, track-record, status and banner times follow it with the zone named, plus "your time" next to market times when they differ.
+- **UI**: the Predictions card under the briefing; catch-up, "since your last visit", Ask AI (suggestions and context), the stock page and the watchlist read predictions; the morning email lists them.
+
+**Free-tier cost (counted)**
+- gpt-oss-120b: 16 shared + up to 4 admin prediction runs a weekday. Real prompts built from live data on Nov 17: 2.3K-2.8K input tokens + 0.6K-1.8K reserved output (US before market, 8 calls, is the largest at ~4.6K). About 60-80K of the ~194K usable a day; the reserve (`reserveFor120`) keeps that much for them.
+- Gemini Flash-Lite: briefings now start there: 14 shared + 6 admin a day, every day, plus 4 per active user; with 10 active users ~60 requests a day per model, of 500.
+- qwen (translations): Vietnamese pre-translations of shared briefings rose from 11 a weekday (6 Sunday) to 14 every day, plus 2 Vietnam prediction translations a weekday (small). Other languages translate on first read; a section's predictions translate in one call.
+- Headlines: ~1,350 feed requests a day for World/US/Vietnam plus ~580 per active interest set (Google News and Yahoo RSS); under the plan's ~6,000 with up to 8 active sets.
+- Vercel Schedules: every 15 min every day = ~2,980 runs a month of Hobby's 5,000.
+
+**Verified**
+- `npm test` (19 suites, new `v18test`), typecheck, build with and without `AUTH_*`.
+- Real data from the sandbox (`NODE_USE_ENV_PROXY=1`), fake AI only: every market's prompt built from live prices, technicals and headlines (VN prompt audited line by line: levels, dates and headlines all trace to the sources); prompt sizes as above; calls recorded with the right sessions (VN before the open → today; Tokyo after its close → next session; Hang Seng before 09:30 HK → counted from the previous close).
+- Browser (production build, seeded data, frozen clock): wide and phone, light and dark, Vietnamese and the other 6 languages on World; the Predictions card, the track sheet (made/graded labels, closed, uncounted), the time zone setting; no console errors except the expected translate 502 (no AI key here) and Vercel Analytics' 404.
+
+**Found and fixed on the way**
+- Nasdaq's daily history lags by hours (at 01:30 UTC Tuesday SPY's history still ended Friday while Monday was -2.3%); the prediction prompt now says "the <date> session's close isn't in the data yet" instead of passing an older close off as the latest.
+- Graded-at labels showed close + 15 min of settling (15:00 for HOSE); they show the close (14:45) now.
+- An expanded prediction stretched the card next to it; World's six markets now sit in a grid on wide screens without repeating the market name.
+
+**Not verified**
+- A real AI prediction (no AI keys in the sandbox): check the first production runs (prompt rules, calls per market, the action/direction fix) at the first slot after the merge.
+- Mid-day base prices in production: Vietnam (DNSE 1-day chart) and US ETFs (Nasdaq intraday) should give live prices; Japan, China/HK and Europe have no intraday source from Vercel (Yahoo refuses it), so their mid-day calls will be graded from the previous close and kept out of the headline (`noLiveBase`, shown as "not counted"). That's 6 of the 16 shared runs a weekday.
+- The tick's headline refresh and the two lanes on Vercel (check `/api/status?schedule=1` and that `news:*` lists move every 15 min).
+- Real graded weekly calls (the first weekly grades come 5 trading days after the merge).
+
 ## Open items / known gaps
 
 - BLS release dates (CPI, jobs) return 403 to Vercel, so the calendar has no US macro releases; the AI was inventing dates (now told not to). Options: hardcode the BLS schedule yearly like FOMC (needs dates checked on bls.gov), or fetch it from GitHub Actions.
@@ -204,7 +243,11 @@ From the first real grades (7 Vietnam calls, Nov 16): HPG "up" moved exactly 0.0
 - `/api/status` tells anonymous visitors which AI providers and services are configured (no secrets).
 
 - Translations are covered by tests with a fake AI but haven't been checked with a real AI key; verify output quality on the live site.
-- Grading uses each exchange's close time but no holiday calendars: a holiday simply has no bar, so its calls wait for the next session's close (a daily call on a holiday is graded against the next day). Tet and US holidays aren't modeled in the market clocks either.
+- No holiday calendars: a daily call on a holiday is marked "market closed, not graded" once a later bar exists or two days pass; a weekly call whose 5th day is a holiday grades on the previous session. The timetable still runs prediction slots on holidays (cost: one wasted run per market) and the open/closed pill doesn't know them.
+- Nasdaq's 1-day series includes extended hours (04:00-20:00 New York), so the strip's evening "live" price for US ETFs is an after-hours print, and Nasdaq's daily history lags a few hours after the close. Mid-day prediction bases (12:00 New York) are unaffected. Fix later: take the regular-session close from the 1-day bars.
+- Japan's before-market window is 30 min (08:30 Tokyo until the 09:00 open), China & HK's and Europe's too: a poke must land in it (Vercel every 15 min, cron-job.org every 30); a missed run shows as "missed" in the schedule report.
+- cron-job.org: if the owner's job runs on weekdays only, set it to every day (briefings run on weekends now). Vercel Schedules and GitHub were changed in the repo.
+- Time zones: calendar event times ("14:00 ET") stay in their source's zone, labeled; converting them is a later step.
 - Interest sets saved in Vietnamese before v8 get their first English briefing on the next scheduled run.
 - Alert emails to other users need a verified Resend domain or Gmail SMTP (Resend's test sender only reaches the account owner).
 - After v17's deploy: HPG's Nov 16 "up, 0.00%" call should flip to "no result" at the first hourly grading pass (~20:26 UTC Nov 16); check `/api/track?section=vn` (`direction.noResult` >= 1, up/down 2/4). VHM's old "down + Hold" keeps its action (the fix applies to new briefings only).

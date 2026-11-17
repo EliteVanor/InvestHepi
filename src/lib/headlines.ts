@@ -24,6 +24,7 @@ export const SHARED_EVERY_MIN = 15;
 export const SET_EVERY_MIN = 30;
 const SLACK_MIN = 2;
 const SHARED: SharedSection[] = ["world", "us", "vn"];
+const SETS_KEY = "news:sets";
 
 export const newsKey = (section: SectionId, hash?: string) => (section === "interests" ? `news:ib:${hash}` : `news:${section}`);
 
@@ -53,9 +54,14 @@ export async function refreshHeadlines(now = new Date()): Promise<number> {
     const key = newsKey(s);
     if (due(await getJSON<LiveNews>(key), SHARED_EVERY_MIN, now)) jobs.push(fetchSectionNews(s).then((r) => saveHeadlines(key, r, now)));
   }
-  for (const [hash, g] of await interestGroups()) {
-    const key = newsKey("interests", hash);
-    if (due(await getJSON<LiveNews>(key), SET_EVERY_MIN, now)) jobs.push(fetchSectionNews("interests", g.interests).then((r) => saveHeadlines(key, r, now)));
+  // Interest sets: listing them reads every active user's settings, so only look when a pass is due.
+  const setsPass = await getJSON<{ at: string }>(SETS_KEY);
+  if (due(setsPass ? { at: setsPass.at, items: [], errors: [] } : null, SHARED_EVERY_MIN, now)) {
+    await setJSON(SETS_KEY, { at: now.toISOString() });
+    for (const [hash, g] of await interestGroups()) {
+      const key = newsKey("interests", hash);
+      if (due(await getJSON<LiveNews>(key), SET_EVERY_MIN, now)) jobs.push(fetchSectionNews("interests", g.interests).then((r) => saveHeadlines(key, r, now)));
+    }
   }
   const done = await Promise.allSettled(jobs);
   return done.filter((d) => d.status === "fulfilled").length;
