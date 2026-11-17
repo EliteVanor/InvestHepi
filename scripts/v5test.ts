@@ -151,7 +151,9 @@ const OWNER_EMAIL = "owner@example.com";
   assert.equal(units.filter((u) => u.item === "p:ius:pre").length, 1, "only the default set has a US part (Alice follows Vietnamese stocks)");
   assert.ok(briefs.every((u) => u.ok), JSON.stringify(briefs.filter((u) => !u.ok)));
   // The mocked model only ever calls QQQ: markets without it get no usable calls, which is a failed run (no invented calls).
-  assert.ok(units.filter((u) => u.item === "p:ius:pre" || u.item === "p:us:pre").every((u) => u.ok), "QQQ is in these markets");
+  assert.ok(units.filter((u) => u.item === "p:ius:pre").every((u) => u.ok), "QQQ is the default set's Nasdaq benchmark");
+  // In the US market QQQ isn't a benchmark (the Nasdaq 100's is ^NDX) and no headline names it: dropped, so no usable calls.
+  assert.ok(units.filter((u) => u.item === "p:us:pre").every((u) => !u.ok && /no usable calls/.test(u.note ?? "")), "a non-benchmark ticker without a headline gets no call");
   assert.ok(units.filter((u) => u.item === "p:oil:pre").every((u) => !u.ok && /no usable calls/.test(u.note ?? "")), "a reply about other tickers isn't recorded for oil");
   assert.ok(feedsHit.some((u) => u.includes("vnexpress.net")) && feedsHit.some((u) => u.includes("cafef.vn")), "Vietnamese news feeds used");
   assert.ok(feedsHit.some((u) => u.includes("hl=vi&gl=VN")), "Google News searched in Vietnamese");

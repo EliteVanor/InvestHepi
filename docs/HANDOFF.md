@@ -252,6 +252,11 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 - First real AI prediction: Japan mid-day at 03:01 UTC (12:01 Tokyo) on gpt-oss-120b, measured from the live Nikkei (58,956.67 = Eastmoney's live level), recorded as `2026-11-17:^N225:m` with `baseChg` -1.182; graded at Tokyo's 15:30 close.
 - Audit: start point and "±2.8%" (typical day) trace to the data; the "20-day range high 66,929" couldn't be checked (production's technicals come from a different source than the sandbox's 65,712). Fixed for next time: each run's data block is stored and served at `/api/predictions?section=&inputs=1`; the track CSV gained phase, base_chg, no_result, provisional, closed and graded_on columns.
 
+**Audit check-in (Nov 17, 04:51 UTC, read-only)**
+- China & HK mid-day (04:16 UTC, 120b): start point 23,571.61 (-0.8%), downtrend and range trace to the data; Shanghai skipped (no live price), as designed. "RSI near 50" for 46 is loose but not invented.
+- Vietnam mid-day (04:46 UTC, 120b): every start point, "≈1% below" level, RSI (32, 29) and the ±2.4% band trace to the data; track rows have phase=mid and base_chg.
+- Found: the model added calls on BID, VND and PNJ "following the sector", though the prompt allows extra tickers only with a headline about them. Fixed with a code guard: a non-benchmark call is kept only if a headline the run saw names the ticker (BIDV and Novaland had one; VNDirect and PNJ didn't). Also: the stored audit input now includes the headlines, so headline-based reasons can be checked too.
+
 **Not verified (at merge time)**
 - ~~Eastmoney from Vercel~~ (works, see above). If Vercel can't reach it, Japan, China/HK and Europe before-market runs will mostly show "unavailable" (VNDirect posts their closes the next morning, after those runs), and their mid-day runs will too. Check right after the merge: `/api/chart?symbol=%5EN225&range=1d` should say `"source":"eastmoney"`.
 - A real AI prediction (no AI keys in the sandbox): check the first production runs (prompt rules, calls per market, the action/direction fix) at the first slot after the merge.

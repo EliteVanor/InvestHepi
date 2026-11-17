@@ -26,7 +26,7 @@ import { buildPredictSystem, buildPredictUser, parsePrediction, PREDICT_HINT, pr
 import { loadHeadlines } from "./headlines";
 import { isLang } from "./languages";
 import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, lastFinishedSession, nthWeekday, sectionOfMarket, type Phase, type SlotMarket } from "./markets";
-import { alignAction, coverage, marketData, SHARED_CALLS } from "./pipeline";
+import { alignAction, coverage, headlineMentions, marketData, SHARED_CALLS } from "./pipeline";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
 import { PROXIES, exchangeTz } from "./symbols";
@@ -179,8 +179,8 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     positions: holdings.length ? positionsAsText(holdings, data.quotes) : undefined,
     today, weekEnd, now,
   };
-  // Kept for audits: the market data block the model was given (no rules, no headlines).
-  const dataBlock = buildPredictUser(input, 0).split("LATEST HEADLINES")[0].trim();
+  // Kept for audits: everything the model was given except the rules (data, track record, headlines).
+  const dataBlock = buildPredictUser(input, 20);
   const { value, provider } = await generateJSON(route, {
     build: (n) => ({ system: buildPredictSystem(input), user: buildPredictUser(input, n ?? 20) }),
     hint: PREDICT_HINT,
@@ -189,6 +189,8 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   });
 
   // Keep calls on this market's tickers only; mid-day runs make no weekly calls; one call per ticker and horizon.
+  const benchmarks = new Set(firsts.map((t) => t.toUpperCase()));
+  const shown = news.slice(0, 20);
   const allowed = new Map<string, Interest>();
   for (const it of interests) for (const t of it.tickers) allowed.set(t.toUpperCase(), it);
   const seen = new Set<string>();
@@ -197,6 +199,9 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     const it = allowed.get(c.ticker.toUpperCase());
     if (!it) continue;
     if (stale.has(c.ticker.toUpperCase())) continue; // no latest data for this ticker: no call on it
+    // Beyond each market's benchmark, a ticker gets a call only if a headline the model saw names it
+    // (the prompt says so; the model once called BID, VND and PNJ "following the sector").
+    if (!benchmarks.has(c.ticker.toUpperCase()) && !shown.some((n) => headlineMentions(n.title, c.ticker.toUpperCase()))) continue;
     if (phase === "mid" && c.horizon === "this week") continue;
     const k = `${c.ticker}|${c.horizon}`;
     if (seen.has(k)) continue;
