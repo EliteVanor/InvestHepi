@@ -65,7 +65,10 @@ const reset = () => {
   /* ---------------- routes */
   assert.deepEqual(M.chainFor("translate").map((d) => d.provider.model), ["qwen/qwen3.8-27b", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"], "translation never uses the briefing models");
   assert.deepEqual(M.chainFor("userManual").map((d) => d.provider.model), ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "openai/gpt-oss-20b"], "users' refresh button: Gemini first");
-  assert.deepEqual(M.chainFor("shared").map((d) => d.provider.model), ["openai/gpt-oss-120b", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "openai/gpt-oss-20b"], "shared: 20b only as the last resort");
+  assert.deepEqual(M.chainFor("predShared").map((d) => d.provider.model), ["openai/gpt-oss-120b", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "openai/gpt-oss-20b"], "shared predictions: 120b first, 20b only as the last resort");
+  assert.deepEqual(M.chainFor("shared").map((d) => d.provider.model), ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "openai/gpt-oss-120b", "openai/gpt-oss-20b"], "shared briefings: Flash-Lite first (v18)");
+  assert.deepEqual(M.chainFor("userAuto").map((d) => d.provider.model), ["gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "openai/gpt-oss-20b", "openai/gpt-oss-120b"], "users' briefings: Flash-Lite first, 120b last");
+  assert.deepEqual(M.chainFor("predUser")[0].provider.model, "openai/gpt-oss-120b", "users' predictions try 120b (beyond the reserve)");
   assert.deepEqual(M.chainFor("ask").map((d) => d.provider.model), ["openai/gpt-oss-20b", "openai/gpt-oss-120b"]);
 
   reset();
@@ -95,18 +98,21 @@ const reset = () => {
   await complete("You translate x", [{ role: "user", content: '["a"]' }], { route: "translate" });
   assert.equal(calls.filter((c) => c.model.includes("qwen")).length, 0, "skipped while cooling down");
 
-  /* ---------------- the 120b reserve: users' automatic briefings leave room for shared + admin */
+  /* ---------------- the 120b reserve: users' automatic jobs leave room for shared + admin predictions */
   const g120 = M.modelDef("groq120")!;
   const weekday = new Date("2026-11-17T09:00:00Z");
   const fresh = { day: dayIn("UTC", weekday), tokens: 0, requests: 0, byRoute: {} };
-  assert.equal(M.reserveFor120(fresh, weekday), (11 + 6) * 7000, "nothing done yet: 11 shared + 6 admin at 7K");
-  assert.equal(M.reserveFor120({ ...fresh, tokens: 60000, requests: 10, byRoute: { shared: 8, adminAuto: 2 } }, weekday), (3 + 4) * 6000, "uses the measured average");
-  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-21T09:00:00Z")), { shared: 0, admin: 0 }, "Saturday: nothing scheduled");
-  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-22T09:00:00Z")), { shared: 6, admin: 3 }, "Sunday");
+  // A UTC weekday: Vietnam 2, US 2, World 6 markets x 2 = 16 shared runs; the admin's set up to 4 (US + Vietnam parts).
+  assert.deepEqual(M.scheduledPerDay(weekday), { shared: 16, admin: 4 });
+  assert.equal(M.reserveFor120(fresh, weekday), (16 + 4) * 6000, "nothing done yet: 16 shared + 4 admin at 6K");
+  assert.equal(M.reserveFor120({ ...fresh, tokens: 60000, requests: 10, byRoute: { predShared: 8, predAdmin: 2 } }, weekday), (8 + 2) * 6000, "uses the measured average");
+  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-21T09:00:00Z")), { shared: 0, admin: 0 }, "Saturday: no predictions");
+  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-22T09:00:00Z")), { shared: 1, admin: 0 }, "Sunday UTC: only Japan's Monday before-market run (08:30 Tokyo = 23:30 UTC)");
   const { setJSON } = await import("../src/lib/store");
-  await setJSON("llm:usage:groq120", { day: dayIn("UTC"), tokens: 120_000, requests: 17, byRoute: { shared: 2 } });
+  await setJSON("llm:usage:groq120", { day: dayIn("UTC"), tokens: 120_000, requests: 17, byRoute: { predShared: 2 } });
   assert.equal((await M.available(g120, "userAuto")).ok, false, "users' sets move off 120b once only the reserve is left");
-  assert.equal((await M.available(g120, "shared")).ok, true, "shared briefings can still use it");
+  assert.equal((await M.available(g120, "predUser")).ok, false, "users' predictions too");
+  assert.equal((await M.available(g120, "predShared")).ok, true, "shared predictions can still use it");
   assert.equal((await M.available(g120, "adminManual")).ok, true, "and the admin");
   await setJSON("llm:usage:groq120", { day: dayIn("UTC"), tokens: 0, requests: 0, byRoute: {} });
 
@@ -114,7 +120,7 @@ const reset = () => {
   const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   reset();
   const first = await P.refreshShared("us", "en");
-  assert.equal(first.provider, "groq:openai/gpt-oss-120b");
+  assert.equal(first.provider, "gemini:gemini-3.5-flash-lite");
   const aiAt = first.generatedAt;
   reset();
   for (const m of ["openai/gpt-oss-120b", "openai/gpt-oss-20b", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"]) mode[m] = "down";
@@ -123,7 +129,7 @@ const reset = () => {
   assert.equal(failed.keptAi, true, "the result says the AI briefing was kept");
   const shown = await P.loadDigest("us", undefined, "en");
   assert.equal(shown!.generatedAt, aiAt, "readers keep the last AI briefing");
-  assert.equal(shown!.provider, "groq:openai/gpt-oss-120b");
+  assert.equal(shown!.provider, "gemini:gemini-3.5-flash-lite");
   const since = await P.aiFailedSince("us", shown);
   assert.ok(since && since > aiAt, "the failed run is reported so the page can explain it");
   const rules = await P.loadRules("us");

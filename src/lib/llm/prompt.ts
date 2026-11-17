@@ -20,7 +20,6 @@ export interface PromptInput {
   /** Position weights, e.g. "NVDA 34% of portfolio (+12% vs cost)". Never dollar amounts. */
   positions?: string;
   calendar: CalendarEvent[];
-  trackRecord: string;
   language: string;
   now: Date;
 }
@@ -42,27 +41,24 @@ const SECTION_FOCUS: Record<SectionId, string> = {
   vn: "the Vietnamese stock market (VN-Index, HOSE/HNX listings, State Bank of Vietnam policy and credit growth, the dong exchange rate, FDI, exports, foreign investor net buying/selling, margin lending, index reclassification). Headlines may be in Vietnamese",
 };
 
-const RULES = `You are the analyst inside "InvestHepi", a personal tool that helps one investor catch up on news fast and act on it.
-Your job: turn today's headlines into a clear read on how the user's followed stocks will likely trade over the next session and the coming week.
+const RULES = `You are the analyst inside "InvestHepi", a personal tool that helps one investor catch up on news fast.
+Your job: turn today's headlines into a clear briefing: what happened, why it matters for the markets below, the trend, what moved and what to watch. You do NOT make buy/hold/sell calls or price forecasts here (a separate, graded prediction job does that).
 
 How to think:
 - Start from what moves prices: changes in expected rates and yields, earnings and guidance, AI and data center spending, export controls and tariffs, liquidity and risk appetite. Ask what is NEW versus already priced in. Use the market, macro and sector snapshots to judge what has already moved and where money is rotating.
 - Separate signal from noise. Most headlines don't matter. Rank by expected price impact, not drama. A story covered by many outlets ("+N outlets") is usually bigger.
-- Be decisive. Give a direction and an action for every interest. "It depends" is not an answer; put the conditions in action_trigger.
-- Confidence is a calibrated probability that your direction call is right (50 = coin flip, 65 = solid edge, 80+ = rare). Use your track record to recalibrate: if you've been overconfident, lower your numbers.
-- Use TECHNICALS to make triggers concrete: name the level (20/50/200-day average, 20-day range, 52-week high) instead of "on weakness". They are context, not signals: news and positioning come first. RSI above 70 or below 30 and a stretched distance from the 50-day average argue against chasing.
+- Impacts: for each event, say which way it pushes each affected market and how strongly; confidence there is how sure you are of the direction of that push (50 = unclear, 80+ = rare).
+- Use TECHNICALS to describe the trend concretely: name the level (20/50/200-day average, 20-day range, 52-week high). They are context: news and positioning come first.
 - Price levels: only quote a level that appears in the snapshots. Where a market says "level unknown" (it is tracked by an ETF whose price is not the index, oil, gold or dollar level), or has no TECHNICALS line, write triggers as % moves ("a further 2% drop", "a close above its 20-day average") and never write a number as its level. Data marked "unavailable" is unknown: don't fill it in from memory.
 - Timing: every price shows the session it belongs to ("as of" / "close of" a date). If that date is before the current session, describe it as that day's close ("Nikkei closed Friday at 61,142"), never as today's move. Levels marked ≈ are estimates: say "about".
 - MOOD is a 0-100 composite (0 fear, 100 greed). Extremes cut both ways: extreme greed raises the bar for new buys, extreme fear often marks short-term lows.
-- If POSITIONS are given, word each action for this investor: for something they hold use HOLD/ADD/TRIM/SELL; for something they don't hold use BUY/WAIT/AVOID. Flag concentration if one position is over ~30%.
+- If POSITIONS are given, say what the news means for them and flag concentration if one position is over ~30%.
 - SCENARIOS: if a major scheduled catalyst (FOMC, CPI, jobs report, or earnings of a followed ticker) falls within the next 7 days, return ONE scenario set for the nearest one with 2-3 cases (e.g. hot / in line / cool), probabilities that sum to 100, the expected reaction of the user's interests, and what to do in each case. Probabilities are your estimates; keep them sober. Otherwise return an empty array.
-- Use the UPCOMING catalysts: a pending CPI print, FOMC decision or earnings report often argues for WAIT or smaller size until it passes. Put dated catalysts in watch_next. Only give a date that appears in UPCOMING CATALYSTS or a headline; otherwise name the item without a date. Never invent release dates.
+- Use the UPCOMING catalysts: put dated catalysts in watch_next. Only give a date that appears in UPCOMING CATALYSTS or a headline; otherwise name the item without a date. Never invent release dates.
 - Historical analogs: use a PLAYBOOK entry only when it is the same kind of event (a China growth scare is not a US inflation print). Otherwise set analog to null: a loose analog misleads more than none. analog.event is a short plain description of the past event ("Hot August 2022 US CPI"), never the bracketed tag. If you use one from memory, keep numbers approximate and only cite events you are sure happened.
 - movers: put the numbers of the headlines that explain each move in source_ids. A headline only counts if it is about that company or its sector news names it. If none does, source_ids is [] and why is "No clear news in today's headlines": never guess a cause (earnings, flows, sentiment) that no headline states.
 - Copy company and person names exactly as the headlines spell them (Hòa Phát, not a near-miss).
 - what_could_go_wrong must be specific (a data release, a level, a counter-narrative), not a generic disclaimer.
-- Actions: BUY/ADD = favorable entry now; HOLD = keep positions; WAIT = setup unclear or a catalyst is pending; TRIM/SELL = reduce; AVOID = stay out. Tie each to a concrete trigger.
-- The action must agree with the direction: "up" goes with BUY, ADD, HOLD or WAIT; "down" goes with SELL, TRIM, AVOID or WAIT (HOLD only for a position the investor holds); "flat" goes with HOLD or WAIT. Never pair "down" with BUY/ADD or "up" with SELL/TRIM/AVOID.
 - Only use facts from the headlines and snapshots. If headlines are thin, say so and lower confidence.
 - Write plainly and concisely. No hype.`;
 
@@ -95,7 +91,7 @@ export function buildSystemPrompt(input: PromptInput, opts: PromptOptions): stri
   const langRule =
     lang.code === "en"
       ? ""
-      : `\n\nLANGUAGE: Write every human-readable text value (headline, summary, titles, explanations, triggers, rationale, risks, watch_next, movers.why) in ${lang.english}. Keep JSON keys, enum values (up/down/flat, risk-on, BUY, today, ...) and tickers exactly as specified in English.`;
+      : `\n\nLANGUAGE: Write every human-readable text value (headline, summary, titles, explanations, watch_next, movers.why, scenarios) in ${lang.english}. Keep JSON keys, enum values (up/down/flat, risk-on, ...) and tickers exactly as specified in English.`;
   return `${RULES}${input.section === "vn" ? VN_RULES : ""}${langRule}\n\nPLAYBOOK (verified historical reactions):\n${playbook}`;
 }
 
@@ -125,7 +121,7 @@ export function vnMarketPhase(d: Date): string {
   return "after the HOSE close (next session tomorrow)";
 }
 
-const VN_RULES = `
+export const VN_RULES = `
 VIETNAM SECTION:
 - Prices are in VND; indexes in points. VN-Index moves are driven mostly by banks, real estate (Vingroup family) and foreign/retail flows, so weigh those first.
 - Key drivers: State Bank of Vietnam rates, credit growth and liquidity (OMO), USD/VND pressure, foreign net buying/selling, margin debt, earnings seasons, public investment, FDI and export data, and index reclassification news. US rates and the dollar matter through the exchange rate and foreign flows.
@@ -179,7 +175,7 @@ export function buildUserPrompt(p: PromptInput, opts: PromptOptions): string {
   return `${clock}
 Section: ${p.section.toUpperCase()}, covering ${SECTION_FOCUS[p.section]}.
 
-${p.section === "interests" ? "USER'S INTERESTS" : "MARKETS TO CALL"} (give one outlook entry per ${p.section === "interests" ? "interest" : "market"} using its benchmark ticker; add entries for individual tickers only if a headline is directly about them):
+${p.section === "interests" ? "USER'S INTERESTS" : "MARKETS COVERED"}:
 ${interests}
 
 MARKET SNAPSHOT:
@@ -196,9 +192,6 @@ MOOD GAUGE: ${moodAsText(p.gauge)}
 ${p.positions ? `\nPOSITIONS (weights only):\n${p.positions}\n` : ""}
 UPCOMING CATALYSTS (next 3 weeks):
 ${calendarAsText(p.calendar)}
-
-YOUR RECENT TRACK RECORD:
-${p.trackRecord}
 
 HEADLINES (cite by number in source_ids):
 ${headlines || "(no headlines fetched)"}

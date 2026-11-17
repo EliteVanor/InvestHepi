@@ -74,7 +74,7 @@ const until = async (cond: () => Promise<boolean>, ms = 8000) => {
   await walk(path.join(ROOT, "src/app/api"));
   assert.deepEqual(routes.sort(), [
     "api/alerts", "api/alerts/test", "api/ask", "api/auth/[...nextauth]", "api/calendar", "api/chart", "api/chats", "api/cron/tick",
-    "api/digest", "api/history", "api/interests", "api/me", "api/portfolio", "api/quotes", "api/refresh", "api/search", "api/settings",
+    "api/digest", "api/history", "api/interests", "api/me", "api/news", "api/portfolio", "api/predictions", "api/quotes", "api/refresh", "api/search", "api/settings",
     "api/status", "api/track", "api/translate",
   ], "API surface unchanged (add new routes here on purpose)");
 

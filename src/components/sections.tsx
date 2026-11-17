@@ -189,10 +189,6 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
 export function briefingText(d: Digest, t: ReturnType<typeof usePrefs>["t"]): string {
   const a = d.analysis;
   const lines = [a.headline, "", ...a.summary.map((s) => `• ${s}`)];
-  if (a.outlook.length) {
-    lines.push("", t("calls.title"));
-    for (const o of a.outlook) lines.push(`• ${groupName(t, o.interest)} (${symName(t, o.ticker)}): ${t(`act.${o.action}`)} · ${t(`dir.${o.direction}`)} · ${o.confidence}%. ${o.actionTrigger}`);
-  }
   if (a.watchNext.length) lines.push("", t("watch.title"), ...a.watchNext.map((w) => `• ${w}`));
   return lines.join("\n");
 }
@@ -207,7 +203,7 @@ export function Briefing({
   rulesView?: boolean;
   onToggleRules?: (on: boolean) => void;
 }) {
-  const { t, lang } = usePrefs();
+  const { t, lang, timeAt } = usePrefs();
   const a = digest.analysis;
   const [speaking, setSpeaking] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -270,7 +266,7 @@ export function Briefing({
           <span>
             {rulesView
               ? t("ai.rulesBanner")
-              : t("ai.failedBanner", { age: relTime(digest.generatedAt, lang), time: new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" }).format(new Date(aiFailedAt)) })}
+              : t("ai.failedBanner", { age: relTime(digest.generatedAt, lang), time: timeAt(aiFailedAt) })}
           </span>
           <button onClick={() => onToggleRules(!rulesView)}>{rulesView ? t("ai.backToAi") : t("ai.showRules")}</button>
         </div>
@@ -301,7 +297,9 @@ export function Briefing({
         </div>
       )}
       <div className="hero-meta">
-        <span>{t("brief.updated", { t: relTime(digest.generatedAt, lang) })}</span>
+        <span title={timeAt(digest.generatedAt, { date: true })}>
+          {t("brief.updated", { t: relTime(digest.generatedAt, lang) })} · {timeAt(digest.generatedAt)}
+        </span>
         <span>{digest.provider === "rules" ? t("brief.rules") : providerName(digest.provider)}</span>
         {/* The story count jumps to the headlines list at the end of the page. */}
         <button className="meta-link" onClick={() => document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
@@ -335,52 +333,6 @@ function IconInfo16() {
       <circle cx="12" cy="12" r="9" />
       <path d="M12 11v5M12 8h.01" />
     </svg>
-  );
-}
-
-/* ----------------------------------------------------------------- Calls */
-
-export function Calls({ outlook, onTicker }: { outlook: Outlook[]; onTicker: (s: string) => void }) {
-  const { t } = usePrefs();
-  if (!outlook.length) return null;
-  return (
-    <section className="card" aria-labelledby="calls-h">
-      <h2 className="card-title" id="calls-h">
-        <IconTarget /> {t("calls.title")}
-      </h2>
-      <div className="calls">
-        {outlook.map((o, i) => (
-          <article className="call" key={i}>
-            <div className="call-head">
-              <Ring value={o.confidence} direction={o.direction} />
-              <div>
-                <div className="call-name">{groupName(t, o.interest)}</div>
-                <div className="call-sub">
-                  <button onClick={() => onTicker(o.ticker)} style={{ color: "var(--accent)", fontWeight: 600 }}>
-                    {symName(t, o.ticker)}
-                  </button>{" "}
-                  · <span className={o.direction}>{arrow(o.direction)} {t(`dir.${o.direction}`)}</span> ·{" "}
-                  {o.horizon === "today" ? t("calls.today") : t("calls.thisWeek")}
-                </div>
-              </div>
-              <span className={`action ${o.action}`}>{t(`act.${o.action}`)}</span>
-            </div>
-            <div className="trigger">{o.actionTrigger}</div>
-            <div className="muted">{o.rationale}</div>
-            <div className="muted">
-              <b>{t("calls.risks")}:</b> {o.risks}
-            </div>
-            {/* The track record at this confidence level; when it moved the number, the AI's own is shown too. */}
-            {o.record && (
-              <div className="call-record">
-                {t("calls.record", { hits: o.record.hits, n: o.record.n })}
-                {o.aiConfidence != null && o.aiConfidence !== o.confidence && <> · {t("calls.adjusted", { ai: o.aiConfidence })}</>}
-              </div>
-            )}
-          </article>
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -561,10 +513,12 @@ export function WatchNext({ items }: { items: string[] }) {
 /* ------------------------------------------------------------- Headlines */
 
 export function Headlines({
-  digest, interests, newIds, onMarkRead, searchRef, onExplain,
+  digest, items, interests, newIds, onMarkRead, searchRef, onExplain,
 }: {
   onExplain?: (title: string) => void;
   digest: Digest;
+  /** The live list (refreshed every 15/30 min); "Key" marks the headlines this briefing's events cite. */
+  items?: NewsItem[];
   interests: Interest[];
   newIds: Set<string>;
   onMarkRead: () => void;
@@ -582,11 +536,12 @@ export function Headlines({
     window.addEventListener("ih-search", on);
     return () => window.removeEventListener("ih-search", on);
   }, [searchRef]);
+  const news = items ?? digest.news;
   const keyIds = useMemo(() => new Set(digest.analysis.events.flatMap((e) => e.sourceIds.map((i) => digest.news[i]?.id)).filter(Boolean)), [digest]);
-  const tags = useMemo(() => [...new Set(digest.news.flatMap((n) => n.tags ?? []))], [digest.news]);
+  const tags = useMemo(() => [...new Set(news.flatMap((n) => n.tags ?? []))], [news]);
   const tagName = (id: string) => interests.find((i) => i.id === id)?.name ?? id;
 
-  const base = filter === "saved" ? saved : filter === "new" ? digest.news.filter((n) => newIds.has(n.id)) : filter === "all" ? digest.news : digest.news.filter((n) => n.tags?.includes(filter));
+  const base = filter === "saved" ? saved : filter === "new" ? news.filter((n) => newIds.has(n.id)) : filter === "all" ? news : news.filter((n) => n.tags?.includes(filter));
   const needle = q.trim().toLowerCase();
   const list = needle ? base.filter((n) => `${n.title} ${n.source} ${n.summary ?? ""}`.toLowerCase().includes(needle)) : base;
 

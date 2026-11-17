@@ -8,7 +8,7 @@
  * cost no AI calls.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CalendarEvent, Digest } from "@/lib/types";
+import type { CalendarEvent, Digest, Outlook } from "@/lib/types";
 import type { T } from "@/lib/i18n";
 import { relTime } from "@/lib/i18n";
 import { useAccount } from "./account";
@@ -39,13 +39,13 @@ export function renderAnswer(text: string) {
 }
 
 /** Questions about the briefing on screen, in the reader's language. Exported for tests. */
-export function suggestionsFor(t: T, digest?: Digest | null, events: CalendarEvent[] = [], section?: string): string[] {
+export function suggestionsFor(t: T, digest?: Digest | null, events: CalendarEvent[] = [], section?: string, calls: Outlook[] = []): string[] {
   const out: string[] = [];
   const a = digest?.analysis;
+  for (const o of calls.filter((c) => c.horizon === "today").slice(0, 2)) out.push(t("ask.sWhy", { action: t(`act.${o.action}`), name: groupName(t, o.interest) }));
   if (a) {
-    for (const o of a.outlook.slice(0, 2)) out.push(t("ask.sWhy", { action: t(`act.${o.action}`), name: groupName(t, o.interest) }));
     const ev = [...a.events].sort((x, y) => y.importance - x.importance)[0];
-    const target = ev?.impacts[0]?.interest ?? a.outlook[0]?.interest;
+    const target = ev?.impacts[0]?.interest ?? calls[0]?.interest;
     if (ev && target) out.push(t("ask.sEvent", { title: ev.title.length > 70 ? `${ev.title.slice(0, 68)}…` : ev.title, name: groupName(t, target) }));
     const mv = [...(a.movers ?? [])].sort((x, y) => Math.abs(y.changePct) - Math.abs(x.changePct))[0];
     if (mv) out.push(t("ask.sMover", { name: symName(t, mv.ticker), chg: fmtPct(mv.changePct) }));
@@ -60,9 +60,11 @@ const FOLLOW_UPS = ["ask.fRisks", "ask.fWrong", "ask.fSimple", "ask.fAct"] as co
 const CURRENT = "ih-chat-current";
 
 export function AskPanel({
-  digest, calendar, section, request, docked, onClose, closeLabel,
+  digest, calls, calendar, section, request, docked, onClose, closeLabel,
 }: {
   digest?: Digest | null;
+  /** The section's predictions (suggested questions start from them). */
+  calls?: Outlook[];
   calendar?: CalendarEvent[];
   section?: string;
   /** A question sent from elsewhere on the page ("explain this headline", the palette). */
@@ -195,7 +197,7 @@ export function AskPanel({
       })
       .catch(() => {});
 
-  const suggestions = suggestionsFor(t, digest, calendar, section);
+  const suggestions = suggestionsFor(t, digest, calendar, section, calls);
   const lastAi = [...msgs].reverse().find((m) => m.role === "assistant" && !m.error);
 
   return (
@@ -312,7 +314,7 @@ export function AskPanel({
 }
 
 /** Phones and narrow windows: the same chat in a sheet. */
-export function AskSheet({ onClose, initial, digest, calendar, section }: { onClose: () => void; initial?: string; digest?: Digest | null; calendar?: CalendarEvent[]; section?: string }) {
+export function AskSheet({ onClose, initial, digest, calls, calendar, section }: { onClose: () => void; initial?: string; digest?: Digest | null; calls?: Outlook[]; calendar?: CalendarEvent[]; section?: string }) {
   const { t } = usePrefs();
   const [req] = useState(() => (initial ? { q: initial, n: Date.now() } : null));
   return (
@@ -324,7 +326,7 @@ export function AskSheet({ onClose, initial, digest, calendar, section }: { onCl
       }
       onClose={onClose}
     >
-      <AskPanel digest={digest} calendar={calendar} section={section} request={req} />
+      <AskPanel digest={digest} calls={calls} calendar={calendar} section={section} request={req} />
     </Sheet>
   );
 }

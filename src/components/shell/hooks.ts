@@ -7,7 +7,8 @@
 import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { Account } from "@/components/account";
 import type { T } from "@/lib/i18n";
-import { SECTION_IDS, type Digest, type SectionId } from "@/lib/types";
+import { SECTION_IDS, type Digest, type NewsItem, type SectionId } from "@/lib/types";
+import type { PredictionSet } from "@/lib/predictions-view";
 
 export type Api = <R = unknown>(url: string, init?: RequestInit) => Promise<R>;
 export type Digests = Partial<Record<SectionId, Digest | null>>;
@@ -225,14 +226,16 @@ export function useTranslateOnRead(o: {
 /* ----------------------------------------------------------- headlines */
 
 type NewSnap = Partial<Record<SectionId, { at: string; ids: Set<string> }>>;
+/** A headline list and its version (the live list's refresh time, or the briefing's). */
+export type NewsList = { at: string; items: NewsItem[] };
 
 /**
- * "New" dots. For each briefing version, which headlines the reader hadn't seen when it arrived
- * (a first visit on this device starts with everything read). Viewing a section for 4 seconds
- * marks its headlines seen; the open tab keeps its dots until "mark all read".
+ * "New" dots. For each version of a section's headline list, which headlines the reader hadn't seen
+ * when it arrived (a first visit on this device starts with everything read). Viewing a section for 4
+ * seconds marks its headlines seen; the open tab keeps its dots until "mark all read".
  */
-export function useNewHeadlines(o: { ready: boolean; seen: Set<string>; markSeen: (ids: string[]) => void; digests: Digests; active: Digest | null | undefined; tab: SectionId }) {
-  const { ready, seen, markSeen, digests, active, tab } = o;
+export function useNewHeadlines(o: { ready: boolean; seen: Set<string>; markSeen: (ids: string[]) => void; lists: Partial<Record<SectionId, NewsList | null>>; active: NewsList | null | undefined; tab: SectionId }) {
+  const { ready, seen, markSeen, lists, active, tab } = o;
   const [newSnap, setNewSnap] = useState<NewSnap>({});
   const firstVisit = useRef<boolean | null>(null);
   useEffect(() => {
@@ -247,33 +250,33 @@ export function useNewHeadlines(o: { ready: boolean; seen: Set<string>; markSeen
     const toMark: string[] = [];
     let changed = false;
     for (const s of SECTION_IDS) {
-      const d = digests[s];
-      if (!d || prev[s]?.at === d.generatedAt) continue;
+      const d = lists[s];
+      if (!d || prev[s]?.at === d.at) continue;
       const fresh = prev[s] === undefined && firstVisit.current;
-      next[s] = { at: d.generatedAt, ids: fresh ? new Set<string>() : new Set(d.news.filter((n) => !seen.has(n.id)).map((n) => n.id)) };
-      if (fresh) toMark.push(...d.news.map((n) => n.id));
+      next[s] = { at: d.at, ids: fresh ? new Set<string>() : new Set(d.items.filter((n) => !seen.has(n.id)).map((n) => n.id)) };
+      if (fresh) toMark.push(...d.items.map((n) => n.id));
       changed = true;
     }
     if (changed) setNewSnap(next);
     if (toMark.length) markSeen(toMark);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [digests]);
+  }, [lists]);
 
   useEffect(() => {
     if (!active) return;
-    const id = setTimeout(() => markSeen(active.news.map((n) => n.id)), 4000);
+    const id = setTimeout(() => markSeen(active.items.map((n) => n.id)), 4000);
     return () => clearTimeout(id);
   }, [active, markSeen]);
 
-  /** Unread count per section (the open tab: what was new when its briefing arrived). */
+  /** Unread count per section (the open tab: what was new when its list arrived). */
   const badge = (s: SectionId) => {
     if (s === tab) return newSnap[s]?.ids.size ?? 0;
-    const d = digests[s];
-    return d ? d.news.filter((n) => !seen.has(n.id)).length : 0;
+    const d = lists[s];
+    return d ? d.items.filter((n) => !seen.has(n.id)).length : 0;
   };
-  const markAllRead = (d: Digest) => {
-    markSeen(d.news.map((n) => n.id));
-    setNewSnap((p) => ({ ...p, [tab]: { at: d.generatedAt, ids: new Set() } }));
+  const markAllRead = (d: NewsList) => {
+    markSeen(d.items.map((n) => n.id));
+    setNewSnap((p) => ({ ...p, [tab]: { at: d.at, ids: new Set() } }));
   };
   return { newIds: newSnap[tab]?.ids ?? new Set<string>(), interestsNew: newSnap.interests?.ids.size ?? 0, badge, markAllRead };
 }
@@ -293,12 +296,12 @@ export interface RefreshUi {
  * Who may press Refresh and what the button says. The admin can refresh any section (10 a day);
  * signed-in users only their own My Interests (5 a day, 90 minutes apart, lighter model).
  */
-export function refreshState(account: Account, tab: SectionId, t: T, lang: string, now = new Date()) {
+export function refreshState(account: Account, tab: SectionId, t: T, lang: string, now = new Date(), tz?: string) {
   const can = account.admin || (account.mode === "multi" && !!account.user && tab === "interests");
   const quota = account.refresh ?? null;
   const waitUntil = !account.admin && quota?.nextAt && new Date(quota.nextAt) > now ? quota.nextAt : null;
   const blocked = !account.admin && !!quota && (quota.left <= 0 || !!waitUntil);
-  const clock = (iso: string) => new Intl.DateTimeFormat(lang, { hour: "numeric", minute: "2-digit" }).format(new Date(iso));
+  const clock = (iso: string) => new Intl.DateTimeFormat(lang, { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: tz }).format(new Date(iso));
   const waitText = waitUntil ? t("refresh.waitUntil", { time: clock(waitUntil) }) : null;
   const limitText = t("refresh.limit", { limit: quota?.limit ?? 5 });
   const title = account.admin
@@ -367,4 +370,91 @@ export function useShortcuts(h: Shortcuts) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+}
+
+/* --------------------------------------------------------- predictions */
+
+export type PredSets = Partial<Record<SectionId, PredictionSet[]>>;
+
+/**
+ * Each section's latest predictions (loaded with the page, again every 5 minutes while open), and
+ * their notes translated on read: the server caches one translation per prediction version, so only
+ * the first reader of a new run costs an AI call.
+ */
+export function usePredictions(o: { ready: boolean; api: Api; lang: string; tab: SectionId }) {
+  const { ready, api, lang, tab } = o;
+  const [preds, setPreds] = useState<PredSets>({});
+  const [translating, setTranslating] = useState<SectionId | null>(null);
+  const tried = useRef(new Set<string>());
+  const load = useCallback(
+    (s: SectionId) =>
+      api<{ sets: PredictionSet[] }>(`/api/predictions?section=${s}&lang=${lang}`)
+        .then((j) => setPreds((p) => ({ ...p, [s]: j.sets })))
+        .catch(() => setPreds((p) => ({ ...p, [s]: p[s] ?? [] }))),
+    [api, lang],
+  );
+  useEffect(() => {
+    if (!ready) return;
+    SECTION_IDS.forEach((s) => load(s));
+    const id = setInterval(() => document.visibilityState === "visible" && SECTION_IDS.forEach((s) => load(s)), 5 * 60_000);
+    return () => clearInterval(id);
+  }, [ready, load]);
+  useEffect(() => {
+    const sets = preds[tab];
+    if (!sets?.length || lang === "en" || sets.every((s) => s.language === lang)) return;
+    const k = `${tab}:${lang}:${sets.map((s) => `${s.daily?.at}|${s.weekly?.at}`).join(",")}`;
+    if (tried.current.has(k)) return;
+    tried.current.add(k);
+    setTranslating(tab);
+    api<{ sets: PredictionSet[] }>(`/api/translate?section=${tab}&lang=${lang}&kind=predictions`, { method: "POST" })
+      .then((j) => j.sets?.length && setPreds((p) => ({ ...p, [tab]: j.sets })))
+      .catch(() => {})
+      .finally(() => setTranslating((x) => (x === tab ? null : x)));
+  }, [preds, tab, lang, api]);
+  return { preds, reloadPredictions: load, translatingPreds: translating };
+}
+
+/* ---------------------------------------------------------- live news */
+
+export type LiveNewsMap = Partial<Record<SectionId, { at: string; items: NewsItem[] }>>;
+
+/**
+ * The live headline lists, polled every 5 minutes while the page is visible. Shared sections are
+ * refreshed by the scheduler every 15 minutes; My Interests every 30 while someone reads it (these
+ * polls are what says so), and at once when a reader comes back to a stale list.
+ */
+export function useLiveNews(o: { ready: boolean; api: Api }) {
+  const { ready, api } = o;
+  const [news, setNews] = useState<LiveNewsMap>({});
+  const load = useCallback(
+    function load(s: SectionId, retry = 0): Promise<void> {
+      return api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`)
+        .then((j) => {
+          if (j.at && j.items.length) setNews((n) => (n[s]?.at === j.at ? n : { ...n, [s]: { at: j.at!, items: j.items } }));
+          // My Interests' list was stale (back after a while): the server is fetching it now, ask again soon.
+          if (j.refreshing && retry < 3) setTimeout(() => void load(s, retry + 1), 12_000);
+        })
+        .catch(() => {});
+    },
+    [api],
+  );
+  useEffect(() => {
+    if (!ready) return;
+    SECTION_IDS.forEach((s) => load(s));
+    const id = setInterval(() => document.visibilityState === "visible" && SECTION_IDS.forEach((s) => load(s)), 5 * 60_000);
+    return () => clearInterval(id);
+  }, [ready, load]);
+  return { liveNews: news, reloadNews: load };
+}
+
+/**
+ * Headlines a reader sees for a section: the live list, with titles translated where the briefing's
+ * translated copy has the same headline (by id); newer ones show as published. Falls back to the
+ * briefing's own list.
+ */
+export function newsFor(digest: Digest | null | undefined, live?: { at: string; items: NewsItem[] }): { at: string; items: NewsItem[] } | null {
+  if (!live?.items.length) return digest ? { at: digest.generatedAt, items: digest.news } : null;
+  if (!digest) return live;
+  const tr = new Map(digest.news.filter((n) => n.titleOrig).map((n) => [n.id, n]));
+  return { at: live.at > digest.generatedAt ? live.at : digest.generatedAt, items: live.items.map((n) => (tr.has(n.id) ? { ...n, title: tr.get(n.id)!.title, titleOrig: n.title } : n)) };
 }

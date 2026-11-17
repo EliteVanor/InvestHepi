@@ -2,6 +2,8 @@
 
 Decided by the owner on Nov 16-17 2026. Don't re-ask these; ask only what's still open.
 
+**Changed during the round (Nov 17):** each World market predicts on its own (Japan, China & HK, Europe, US stocks, oil, gold: 2 runs each, 12 a weekday), and prediction times are set in each market's local time so summer time can't push a before-market run past the open.
+
 ## Predictions (new, separate AI job)
 
 - **Briefing** = summary, trend, big events, movers, scenarios. **No buy/hold/wait calls any more.**

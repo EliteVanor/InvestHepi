@@ -16,7 +16,9 @@ import { CommandPalette, type PaletteActions } from "@/components/palette";
 import { PortfolioCard, Watchlist } from "@/components/portfolio";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
-import { Briefing, Calls, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
+import { Briefing, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
+import { PredictionsCard } from "@/components/predictions";
+import { callsOf } from "@/lib/predictions-view";
 import { SetupChecklist } from "@/components/setup";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, type Tab as SettingsTab } from "@/components/sheets";
 import { TrackSheet } from "@/components/track";
@@ -26,7 +28,10 @@ import {
   savedTab,
   translateKey,
   useBriefingPoll,
+  newsFor,
+  useLiveNews,
   useNewHeadlines,
+  usePredictions,
   useRulesView,
   useSavedTab,
   useShortcuts,
@@ -68,7 +73,7 @@ type Sheet =
 const marketTz = (tab: SectionId) => (tab === "vn" ? "Asia/Ho_Chi_Minh" : "America/New_York");
 
 function App() {
-  const { ready, t, lang, setLang, api, needPassword, seen, markSeen, toggleTheme } = usePrefs();
+  const { ready, t, lang, setLang, api, needPassword, seen, markSeen, toggleTheme, tz, tzSetting, setTz } = usePrefs();
   const toast = useToast();
   const [tab, setTab] = useSavedTab();
   const { isMobile, isWide } = useViewport();
@@ -130,11 +135,15 @@ function App() {
       // One language per account: a device with no explicit choice adopts the saved one; otherwise the
       // device's choice is saved (it drives alert emails and which translations the scheduler keeps).
       if (me?.user || (me?.mode === "single" && st?.role !== "viewer")) {
-        api<{ briefingLanguage: string }>("/api/settings")
+        api<{ briefingLanguage: string; timeZone?: string }>("/api/settings")
           .then((s) => {
             const chosen = lsGet<string | null>("ih-lang", null);
             if (!chosen && isLang(s.briefingLanguage) && s.briefingLanguage !== lang) setLang(s.briefingLanguage);
             else if (s.briefingLanguage !== lang) api("/api/settings", { method: "PUT", body: JSON.stringify({ briefingLanguage: lang }) }).catch(() => {});
+            // Time zone: same rule (a device without its own choice adopts the account's).
+            const zoneChosen = lsGet<string | null>("ih-tz", null);
+            if (!zoneChosen && s.timeZone && s.timeZone !== tzSetting) setTz(s.timeZone);
+            else if (zoneChosen && s.timeZone !== tzSetting) api("/api/settings", { method: "PUT", body: JSON.stringify({ timeZone: tzSetting }) }).catch(() => {});
           })
           .catch(() => {});
       }
@@ -161,7 +170,13 @@ function App() {
   const active = isRulesTab && rulesDigests[tab] ? rulesDigests[tab] : digests[tab];
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
   const { translatingTab, translateFailed } = useTranslateOnRead({ tab, lang, api, digests, setDigests, rulesDigests, setRulesDigests, isRulesTab, viewingOld: !!oldDigest });
-  const { newIds, interestsNew, badge, markAllRead } = useNewHeadlines({ ready, seen, markSeen, digests, active, tab });
+  // Headlines: the live list (refreshed every 15/30 min without AI), titles translated where the briefing has them.
+  const { liveNews } = useLiveNews({ ready: ready && !needPassword, api });
+  const lists = useMemo(() => Object.fromEntries(SECTION_IDS.map((s) => [s, newsFor(digests[s], liveNews[s])])), [digests, liveNews]);
+  const activeList = useMemo(() => (oldDigest?.section === tab ? { at: oldDigest.digest.generatedAt, items: oldDigest.digest.news } : newsFor(active, liveNews[tab])), [oldDigest, tab, active, liveNews]);
+  const { newIds, interestsNew, badge, markAllRead } = useNewHeadlines({ ready, seen, markSeen, lists, active: activeList, tab });
+  const { preds, translatingPreds } = usePredictions({ ready: ready && !needPassword, api, lang, tab });
+  const allCalls = useMemo(() => SECTION_IDS.flatMap((s) => callsOf(preds[s] ?? [])), [preds]);
   // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
   const isHome = tab === "interests";
@@ -212,7 +227,7 @@ function App() {
   const jumpToNews = useCallback(() => document.getElementById("headlines")?.scrollIntoView({ behavior: "smooth", block: "start" }), []);
   const openTicker = useCallback((symbol: string) => setSheet({ kind: "ticker", symbol }), []);
 
-  const rs = refreshState(account, tab, t, lang);
+  const rs = refreshState(account, tab, t, lang, new Date(), tz);
   const refresh = useCallback(
     async (s: SectionId) => {
       setRefreshing(s);
@@ -347,7 +362,7 @@ function App() {
       )}
 
       <div className={isWide ? `shell${sideRail ? " rail" : ""}${readOnly ? " nodock" : !dockOpen ? " dockclosed" : ""}` : undefined}>
-        {isWide && <Sidebar tab={tab} rail={sideRail} toggleRail={toggleRail} badge={badge} newIds={newIds} news={shown?.news ?? null} guestChip={guestChip} refresh={refreshUi} actions={frame} />}
+        {isWide && <Sidebar tab={tab} rail={sideRail} toggleRail={toggleRail} badge={badge} newIds={newIds} news={activeList?.items ?? null} guestChip={guestChip} refresh={refreshUi} actions={frame} />}
         <main className="page">
           <div className="page-head">
             <div className="page-title">
@@ -411,7 +426,7 @@ function App() {
             <>
               {interestsDigest && (
                 <div style={{ display: isHome && !oldDigest ? undefined : "none" }}>
-                  <SinceLastVisit digest={interestsDigest} quotes={interestsLive} newCount={interestsNew} onTicker={openTicker} />
+                  <SinceLastVisit digest={interestsDigest} calls={callsOf(preds.interests ?? [])} quotes={interestsLive} newCount={interestsNew} onTicker={openTicker} />
                 </div>
               )}
               <Briefing
@@ -426,10 +441,10 @@ function App() {
                 onHistory={() => setSheet({ kind: "history" })}
                 onCatchUp={() => setSheet({ kind: "catchup" })}
               />
-              <Calls outlook={shown.analysis.outlook} onTicker={openTicker} />
+              {!oldDigest && <PredictionsCard sets={preds[tab]} section={tab} onTicker={openTicker} onTrack={frame.track} translating={translatingPreds === tab} />}
               <ScenariosCard scenarios={shown.analysis.scenarios} />
               {isHome && <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />}
-              {isHome && <Watchlist symbols={watchSymbols} quotes={liveQuotes} technicals={shown.technicals} outlook={shown.analysis.outlook} onOpen={openTicker} />}
+              {isHome && <Watchlist symbols={watchSymbols} quotes={liveQuotes} technicals={shown.technicals} outlook={callsOf(preds.interests ?? [])} onOpen={openTicker} />}
               <div className="grid">
                 <div>
                   {isMobile && marketCards}
@@ -437,11 +452,12 @@ function App() {
                   {isMobile && aheadCards}
                   <Headlines
                     digest={shown}
+                    items={activeList?.items ?? shown.news}
                     interests={interests}
                     newIds={newIds}
                     searchRef={searchRef}
                     onExplain={readOnly ? undefined : (title) => openAsk(t("ask.explain", { title }))}
-                    onMarkRead={() => markAllRead(shown)}
+                    onMarkRead={() => activeList && markAllRead(activeList)}
                   />
                 </div>
                 {!isMobile && (
@@ -464,7 +480,7 @@ function App() {
               <IconPanelRight />
             </button>
             <div className="dock-panel" inert={!dockOpen}>
-              <AskPanel docked digest={shown} calendar={calendar.events} section={tab} request={askReq} onClose={() => toggleDock(false)} closeLabel={`${t("ui.hideChat")} (])`} />
+              <AskPanel docked digest={shown} calls={callsOf(preds[tab] ?? [])} calendar={calendar.events} section={tab} request={askReq} onClose={() => toggleDock(false)} closeLabel={`${t("ui.hideChat")} (])`} />
             </div>
           </aside>
         )}
@@ -502,16 +518,18 @@ function App() {
           symbol={sheet.symbol}
           quote={quoteFor(sheet.symbol)}
           digests={allDigests}
+          calls={allCalls}
           onClose={() => (sheet.back === "search" ? setSheet({ kind: "search" }) : followDirty.current ? closeSearch() : setSheet(null))}
           onAlert={readOnly ? undefined : (symbol) => setSheet({ kind: "settings", tab: "alerts", symbol })}
           action={<FollowButton symbol={sheet.symbol} name={symLabel(sheet.symbol)} region={sheet.symbol.endsWith(".VN") ? "vn" : "intl"} type={sheet.symbol.startsWith("^") ? "INDEX" : undefined} follow={follow} label />}
         />
       )}
       {sheet?.kind === "search" && <StockSearchSheet onClose={closeSearch} onOpen={(symbol) => setSheet({ kind: "ticker", symbol, back: "search" })} follow={follow} readOnly={readOnly} />}
-      {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} initial={sheet.q} digest={shown} calendar={calendar.events} section={tab} />}
+      {sheet?.kind === "ask" && <AskSheet onClose={() => setSheet(null)} initial={sheet.q} digest={shown} calls={callsOf(preds[tab] ?? [])} calendar={calendar.events} section={tab} />}
       {sheet?.kind === "catchup" && shown && (
         <CatchUp
           digest={shown}
+          calls={callsOf(preds[tab] ?? [])}
           calendar={calendar.events}
           onClose={() => setSheet(null)}
           onAsk={() => {

@@ -6,12 +6,14 @@
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { makeT, type T } from "@/lib/i18n";
-import { isLang, type LangCode } from "@/lib/languages";
+import { isLang, langInfo, type LangCode } from "@/lib/languages";
 import type { NewsItem } from "@/lib/types";
+import { NAMED_ZONES, clockIn, dayClockIn, isZone, resolveZone, sameClock, zoneCity } from "@/lib/zones";
+import type { MsgKey } from "@/lib/i18n";
 
 export type Theme = "system" | "light" | "dark";
 
-const K = { theme: "ih-theme", lang: "ih-lang", pw: "ih-password", seen: "ih-seen", saved: "ih-saved" };
+const K = { theme: "ih-theme", lang: "ih-lang", pw: "ih-password", seen: "ih-seen", saved: "ih-saved", tz: "ih-tz" };
 const MAX_SEEN = 4000;
 const MAX_SAVED = 200;
 
@@ -56,6 +58,16 @@ interface Prefs {
   lang: LangCode;
   setLang: (l: LangCode) => void;
   t: T;
+  /** Time zone setting ("auto" = the device's) and the zone it resolves to. */
+  tzSetting: string;
+  tz: string;
+  setTz: (setting: string) => void;
+  /** Translated name of a zone ("Hanoi", "Hà Nội", "UTC"). */
+  zoneName: (tz: string) => string;
+  /** "08:15 Hanoi" in the reader's zone (or `tz`). With `day`: "Mon 08:15 Hanoi". */
+  timeAt: (at: string | number | Date, opts?: { tz?: string; day?: boolean; date?: boolean }) => string;
+  /** A market time with the reader's in brackets when it differs: "08:15 Hanoi · 01:15 your time". */
+  marketTime: (at: string | number | Date, marketTz: string, opts?: { day?: boolean; date?: boolean }) => string;
   needPassword: boolean;
   setPassword: (pw: string) => void;
   forgetPassword: () => void;
@@ -73,6 +85,7 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [theme, setThemeState] = useState<Theme>("system");
   const [lang, setLangState] = useState<LangCode>("en");
+  const [tzSetting, setTzSetting] = useState<string>("auto");
   const pwRef = useRef("");
   const [needPassword, setNeedPassword] = useState(false);
   const [seen, setSeen] = useState<Set<string>>(new Set());
@@ -82,6 +95,8 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
     setThemeState(lsGet<Theme>(K.theme, "system"));
     const l = lsGet<string | null>(K.lang, null);
     setLangState(isLang(l) ? l : detectLang());
+    const z = lsGet<string>(K.tz, "auto");
+    setTzSetting(isZone(z) ? z : "auto");
     pwRef.current = lsGet<string>(K.pw, "");
     setSeen(new Set(lsGet<string[]>(K.seen, [])));
     setSaved(lsGet<NewsItem[]>(K.saved, []));
@@ -117,6 +132,31 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const t = useMemo(() => makeT(lang), [lang]);
+  const setTz = useCallback((z: string) => {
+    if (!isZone(z)) return;
+    setTzSetting(z);
+    lsSet(K.tz, z);
+  }, []);
+  const tz = useMemo(() => resolveZone(tzSetting), [tzSetting]);
+  const zoneName = useCallback((z: string) => (NAMED_ZONES[z] ? t(`tz.${NAMED_ZONES[z]}` as MsgKey) : zoneCity(z)), [t]);
+  const timeAt = useCallback(
+    (at: string | number | Date, o: { tz?: string; day?: boolean; date?: boolean } = {}) => {
+      const z = o.tz ?? tz;
+      const locale = langInfo(lang).locale;
+      return `${o.day || o.date ? dayClockIn(at, z, locale, o.date) : clockIn(at, z)} ${zoneName(z)}`;
+    },
+    [tz, lang, zoneName],
+  );
+  const marketTime = useCallback(
+    (at: string | number | Date, mtz: string, o: { day?: boolean; date?: boolean } = {}) => {
+      const main = timeAt(at, { tz: mtz, ...o });
+      if (sameClock(mtz, tz, new Date(at))) return main;
+      const locale = langInfo(lang).locale;
+      const mine = o.day || o.date ? dayClockIn(at, tz, locale, o.date) : clockIn(at, tz);
+      return `${main} · ${t("tz.yours", { time: mine })}`;
+    },
+    [timeAt, tz, lang, t],
+  );
 
   const api = useCallback(async <R,>(path: string, init?: RequestInit): Promise<R> => {
     const res = await fetch(path, {
@@ -172,7 +212,7 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const isSaved = useCallback((id: string) => savedIds.has(id), [savedIds]);
 
   const value: Prefs = {
-    ready, theme, setTheme, toggleTheme, lang, setLang, t, needPassword, setPassword, forgetPassword, api, seen, markSeen, saved, toggleSaved, isSaved,
+    ready, theme, setTheme, toggleTheme, lang, setLang, t, tzSetting, tz, setTz, zoneName, timeAt, marketTime, needPassword, setPassword, forgetPassword, api, seen, markSeen, saved, toggleSaved, isSaved,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

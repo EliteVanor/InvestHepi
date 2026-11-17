@@ -2,11 +2,16 @@
  * Which AI model does which job, and how much of each free daily allowance is left.
  *
  * Groq's limits are per model (gpt-oss-120b, gpt-oss-20b and qwen each get 200K tokens a day), and
- * Gemini's Flash-Lite models allow 500 requests a day each. Each job ("route") has its own order:
- *   shared       World/US/Vietnam: 120b → Flash-Lite 3.5 → 3.1 → 20b (last resort)
- *   adminAuto    the admin's interest set on the schedule: 120b → 20b → Flash-Lite
+ * Gemini's Flash-Lite models allow 500 requests a day each. Each job ("route") has its own order.
+ * Predictions (the graded calls) get gpt-oss-120b; briefings (summary, events, movers, scenarios)
+ * start on Gemini Flash-Lite so 120b's daily tokens go to predictions:
+ *   predShared   World/US/Vietnam predictions: 120b → Flash-Lite 3.5 → 3.1 → 20b (last resort)
+ *   predAdmin    the admin's interest-set predictions: 120b → 20b → Flash-Lite
+ *   predUser     users' predictions: 120b (only beyond the reserve below) → 20b → Flash-Lite
+ *   shared       World/US/Vietnam briefings: Flash-Lite 3.5 → 3.1 → 120b → 20b
+ *   adminAuto    the admin's interest briefing on the schedule: Flash-Lite 3.5 → 3.1 → 120b → 20b
  *   adminManual  the admin's refresh button: same order
- *   userAuto     users' sets on the schedule: 120b (only beyond the reserve below) → 20b → Flash-Lite
+ *   userAuto     users' briefings on the schedule: Flash-Lite 3.5 → 3.1 → 20b → 120b (beyond the reserve)
  *   userManual   users' refresh button: Flash-Lite 3.5 → 3.1 → 20b
  *   translate    qwen → Flash-Lite 3.5 → 3.1 (never the briefing models)
  *   ask          Ask AI: 20b → 120b
@@ -23,13 +28,16 @@ import { geminiProvider, groqProvider, type CompatProvider } from "./openai-comp
 import { dayIn } from "../dates";
 
 export type ModelKey = "groq120" | "groq20" | "qwen" | "gem35" | "gem31";
-export type Route = "shared" | "adminAuto" | "adminManual" | "userAuto" | "userManual" | "translate" | "ask";
+export type Route = "predShared" | "predAdmin" | "predUser" | "shared" | "adminAuto" | "adminManual" | "userAuto" | "userManual" | "translate" | "ask";
 
 export const ROUTES: Record<Route, ModelKey[]> = {
-  shared: ["groq120", "gem35", "gem31", "groq20"],
-  adminAuto: ["groq120", "groq20", "gem35", "gem31"],
-  adminManual: ["groq120", "groq20", "gem35", "gem31"],
-  userAuto: ["groq120", "groq20", "gem35", "gem31"],
+  predShared: ["groq120", "gem35", "gem31", "groq20"],
+  predAdmin: ["groq120", "groq20", "gem35", "gem31"],
+  predUser: ["groq120", "groq20", "gem35", "gem31"],
+  shared: ["gem35", "gem31", "groq120", "groq20"],
+  adminAuto: ["gem35", "gem31", "groq120", "groq20"],
+  adminManual: ["gem35", "gem31", "groq120", "groq20"],
+  userAuto: ["gem35", "gem31", "groq20", "groq120"],
   userManual: ["gem35", "gem31", "groq20"],
   translate: ["qwen", "gem35", "gem31"],
   ask: ["groq20", "groq120"],
@@ -75,7 +83,7 @@ export interface ModelUsage {
   day: string;
   tokens: number;
   requests: number;
-  /** Successful briefings per route today (drives the shared/admin reserve on 120b). */
+  /** Successful runs per route today (drives the shared/admin prediction reserve on 120b). */
   byRoute: Partial<Record<Route, number>>;
   cooldownUntil?: number;
   lastError?: string;
@@ -113,23 +121,24 @@ export async function recordRefusal(def: ModelDef, status: number, retryAfterSec
 
 /* ------------------------------------------------------------ budget */
 
-/** Shared and admin briefings the timetable writes today (UTC): see timetable.ts. */
+/** Shared and admin predictions the timetable runs today (UTC) on 120b first: see timetable.ts. */
 export function scheduledPerDay(now = new Date()): { shared: number; admin: number } {
   return plannedPerDay(now);
 }
 
-const AVG_BRIEFING_TOKENS = 7000;
+/** A prediction run costs about 5K tokens (a briefing about 7K); used until today's average is known. */
+const AVG_RUN_TOKENS = 6000;
 
 /**
- * Tokens on 120b that users' automatic briefings must leave alone: the shared and admin briefings
- * still due today, at today's measured average cost (7K until there's data).
+ * Tokens on 120b that users' automatic jobs must leave alone: the shared and admin predictions still
+ * due today, at today's measured average cost per request.
  */
 export function reserveFor120(u: ModelUsage, now = new Date()): number {
   const plan = scheduledPerDay(now);
   const done = (r: Route) => u.byRoute[r] ?? 0;
-  const left = Math.max(0, plan.shared - done("shared")) + Math.max(0, plan.admin - done("adminAuto"));
-  const briefings = done("shared") + done("adminAuto") + done("adminManual") + done("userAuto");
-  const avg = briefings >= 2 && u.tokens > 0 ? Math.max(3000, u.tokens / u.requests) : AVG_BRIEFING_TOKENS;
+  const left = Math.max(0, plan.shared - done("predShared")) + Math.max(0, plan.admin - done("predAdmin"));
+  const runs = Object.values(u.byRoute).reduce((a, b) => a + (b ?? 0), 0);
+  const avg = runs >= 2 && u.tokens > 0 ? Math.max(3000, u.tokens / u.requests) : AVG_RUN_TOKENS;
   return left * avg;
 }
 
@@ -139,9 +148,9 @@ export async function available(def: ModelDef, route: Route, now = new Date()): 
   if (u.cooldownUntil && u.cooldownUntil > now.getTime()) return { ok: false, why: `cooling down until ${new Date(u.cooldownUntil).toISOString().slice(11, 16)} UTC` };
   if (def.tokensPerDay && u.tokens >= def.tokensPerDay * 0.97) return { ok: false, why: "daily tokens used up" };
   if (def.requestsPerDay && u.requests >= def.requestsPerDay * 0.97) return { ok: false, why: "daily requests used up" };
-  if (def.key === "groq120" && route === "userAuto" && def.tokensPerDay) {
+  if (def.key === "groq120" && (route === "userAuto" || route === "predUser") && def.tokensPerDay) {
     const room = def.tokensPerDay * 0.97 - u.tokens - reserveFor120(u, now);
-    if (room < AVG_BRIEFING_TOKENS) return { ok: false, why: "kept for shared and admin briefings" };
+    if (room < AVG_RUN_TOKENS) return { ok: false, why: "kept for shared and admin predictions" };
   }
   return { ok: true };
 }

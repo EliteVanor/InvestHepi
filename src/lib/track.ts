@@ -1,59 +1,46 @@
 /**
- * Track record: log the AI's direction calls and grade them against real closes.
+ * Track record: log the AI's prediction calls and grade them against real closes.
  *
- * A call targets the NEXT regular session that hasn't opened yet, so every graded call was made
- * before the market could react (no peeking). Re-running before the open overwrites the call with
- * the latest view. "today" calls are graded on that session's close vs the prior close; "this week"
- * calls on the 5th session's close.
+ * Calls come from the prediction runs (predictions.ts), two a weekday per market:
+ *  - "before market" (phase pre): a daily call graded at that session's close on the ticker's own
+ *    exchange, measured from the previous close; plus a weekly call graded at the close of the 5th
+ *    weekday counting the prediction day (a holiday there: the previous full session).
+ *  - "mid-day" (phase mid): a daily call graded at the same close, measured from the price at the time
+ *    of the call (`baseChg`, its move since the previous close, so it works with any price series).
+ *    Without a live price that day it's graded from the previous close but not counted in the
+ *    headline (`noLiveBase`): headlines could already say how the morning went.
+ * A weekday with no session (a holiday) gets "market closed, not graded" (`closed`). A close the daily
+ * source hasn't posted yet comes from an intraday series: graded within the hour as `provisional`,
+ * re-graded from the official close when it's posted.
+ *
+ * Ids: <session>:<ticker>:d (before market), :m (mid-day), :w (weekly). Calls from before v18 have
+ * no phase and count as before market (they came from the 08:15 Hanoi run).
  */
-import { getQuotes } from "./market";
+import { freshenQuotes, getQuotes } from "./market";
+import { SETTLE_MINS, addDays, closeUtc, dailyTarget, localNow, nthWeekday, sessionClosed, type Phase } from "./markets";
 import { exchangeTz } from "./symbols";
 import { getJSON, setJSON } from "./store";
 import type { Call, Interest, Outlook } from "./types";
 
+export { sessionClosed } from "./markets";
+
 const KEY = "calls";
 const MAX_CALLS = 3000;
 
-function addDays(iso: string, n: number): string {
-  const d = new Date(iso + "T12:00:00Z");
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-const isWeekend = (iso: string) => [0, 6].includes(new Date(iso + "T12:00:00Z").getUTCDay());
-
-/** Local opening time (minutes after midnight) of each exchange time zone. */
-const OPEN_MINS: Record<string, number> = {
-  "America/New_York": 570, // 9:30
-  "Asia/Ho_Chi_Minh": 540, // HOSE 9:00
-  "Asia/Tokyo": 540,
-  "Asia/Seoul": 540,
-  "Asia/Hong_Kong": 570,
-  "Asia/Shanghai": 570,
-  "Asia/Kolkata": 555,
-  "Europe/London": 480,
-  "Europe/Berlin": 540,
-  "Europe/Paris": 540,
-};
-
-function localNow(d: Date, timeZone: string) {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false })
-      .formatToParts(d)
-      .map((x) => [x.type, x.value]),
-  );
-  return { date: `${p.year}-${p.month}-${p.day}`, mins: (Number(p.hour) % 24) * 60 + Number(p.minute) };
-}
+export const horizonOf = (c: Pick<Call, "id">): "d" | "w" => (c.id.endsWith(":w") ? "w" : "d");
+export const phaseOf = (c: Pick<Call, "id" | "phase">): Phase => c.phase ?? (c.id.endsWith(":m") ? "mid" : "pre");
+/** The session a call is graded on: its own for daily calls, the 5th weekday counting it for weekly ones. */
+export const gradeDateOf = (c: Pick<Call, "id" | "date" | "endDate">) => c.endDate ?? (horizonOf(c) === "w" ? nthWeekday(c.date, 5) : c.date);
 
 /**
- * Date of the next regular session that has not opened yet ON THE TICKER'S OWN EXCHANGE (holidays
- * ignored; grading handles them). Using New York's clock for everything let a Vietnam briefing written
- * at 11:00 in Hanoi be graded on a HOSE session that was already half over.
+ * Date of the next regular session that has not opened yet on the ticker's own exchange (holidays
+ * ignored). Calls before v18 targeted this; it's kept for reports and old tests.
  */
 export function targetSession(now: Date, ticker = "SPY"): string {
-  const tz = exchangeTz(ticker);
-  const { date, mins } = localNow(now, tz);
-  let d = !isWeekend(date) && mins < (OPEN_MINS[tz] ?? 570) ? date : addDays(date, 1);
-  while (isWeekend(d)) d = addDays(d, 1);
+  const t = dailyTarget(now, ticker);
+  if (!t.opened) return t.date;
+  let d = addDays(t.date, 1);
+  while ([0, 6].includes(new Date(d + "T12:00:00Z").getUTCDay())) d = addDays(d, 1);
   return d;
 }
 
@@ -61,21 +48,29 @@ export async function loadCalls(key = KEY): Promise<Call[]> {
   return (await getJSON<Call[]>(key)) ?? [];
 }
 
-export async function recordCalls(outlook: Outlook[], interests: Interest[], provider: string, now = new Date(), key = KEY): Promise<number> {
-  if (provider === "rules") return 0; // only grade real analyses
+export interface RecordOptions {
+  phase?: Phase;
+  /** Per ticker: its move since the previous close (%) in the session the call is graded on, when known. */
+  live?: Map<string, number>;
+}
+
+export async function recordCalls(outlook: Outlook[], interests: Interest[], provider: string, now = new Date(), key = KEY, opts: RecordOptions = {}): Promise<Call[]> {
+  if (provider === "rules") return []; // only grade real analyses
   const tracked = new Map<string, Interest>();
   for (const it of interests) for (const t of it.tickers) tracked.set(t.toUpperCase(), it);
   const calls = await loadCalls(key);
-  let n = 0;
+  const phase = opts.phase ?? "pre";
+  const out: Call[] = [];
   for (const o of outlook) {
     const it = tracked.get(o.ticker);
     if (!it) continue;
-    const date = targetSession(now, o.ticker);
-    const horizon = o.horizon === "this week" ? "w" : "d";
-    const id = `${date}:${o.ticker}:${horizon}`;
+    const weekly = o.horizon === "this week";
+    const target = dailyTarget(now, o.ticker);
+    const id = `${target.date}:${o.ticker}:${weekly ? "w" : phase === "mid" ? "m" : "d"}`;
+    const chg = opts.live?.get(o.ticker);
     const call: Call = {
       id,
-      date,
+      date: target.date,
       madeAt: now.toISOString(),
       interest: it.name,
       ticker: o.ticker,
@@ -83,31 +78,19 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
       confidence: o.aiConfidence ?? o.confidence, // the model's own number: calibration learns from it
       action: o.action,
       provider,
+      phase,
+      ...(weekly ? { endDate: nthWeekday(target.date, 5) } : {}),
+      // Made after the open: measured from the price then; without one it can't count in the headline.
+      ...(target.opened ? (chg != null && Number.isFinite(chg) ? { baseChg: Number(chg.toFixed(3)) } : { noLiveBase: true }) : {}),
     };
     const i = calls.findIndex((c) => c.id === id);
     if (i >= 0) calls[i] = call;
     else calls.push(call);
-    n++;
+    out.push(call);
   }
   await setJSON(key, calls.slice(-MAX_CALLS));
-  return n;
+  return out;
 }
-
-/** Regular close on each exchange, minutes after local midnight (holidays: no bar, so nothing grades). */
-const CLOSE_MINS: Record<string, number> = {
-  "America/New_York": 960, // 16:00
-  "Asia/Ho_Chi_Minh": 885, // HOSE 14:45 (ATC)
-  "Asia/Tokyo": 930,
-  "Asia/Seoul": 930,
-  "Asia/Hong_Kong": 960,
-  "Asia/Shanghai": 900,
-  "Asia/Kolkata": 930,
-  "Europe/London": 990,
-  "Europe/Berlin": 1050,
-  "Europe/Paris": 1050,
-};
-/** Closing prints settle a few minutes after the bell. */
-const SETTLE_MINS = 15;
 
 /**
  * The clock that decides when a ticker's session is over: its own exchange, except an ETF stand-in
@@ -115,29 +98,10 @@ const SETTLE_MINS = 15;
  */
 const gradeTz = (ticker: string, proxy?: string) => (proxy ? "America/New_York" : exchangeTz(ticker));
 
-/** Whether the session on `date` is over on that clock. */
-export function sessionClosed(date: string, tz: string, now: Date): boolean {
-  const { date: today, mins } = localNow(now, tz);
-  return date < today || (date === today && mins >= (CLOSE_MINS[tz] ?? 960) + SETTLE_MINS);
-}
-
-/** UTC time of a local wall-clock time in `tz` (for "graded after ..." hints). */
-function zonedToUtc(date: string, mins: number, tz: string): Date {
-  const guess = new Date(`${date}T00:00:00Z`).getTime() + mins * 60_000;
-  const l = localNow(new Date(guess), tz);
-  const shown = new Date(`${l.date}T00:00:00Z`).getTime() + l.mins * 60_000;
-  return new Date(guess - (shown - guess));
-}
-
-/** When a pending call can be graded: its last session's close plus settling, in UTC. */
-export function gradesAfter(c: Pick<Call, "date" | "ticker" | "id">): string {
+/** When a pending call can be graded: its graded session's close plus settling, in UTC. */
+export function gradesAfter(c: Pick<Call, "date" | "ticker" | "id"> & { endDate?: string }): string {
   const tz = gradeTz(c.ticker);
-  let d = c.date;
-  for (let i = 1; i < (c.id.endsWith(":w") ? 5 : 1); ) {
-    d = addDays(d, 1);
-    if (!isWeekend(d)) i++;
-  }
-  return zonedToUtc(d, (CLOSE_MINS[tz] ?? 960) + SETTLE_MINS, tz).toISOString();
+  return new Date(closeUtc(gradeDateOf(c), tz).getTime() + SETTLE_MINS * 60_000).toISOString();
 }
 
 /**
@@ -153,6 +117,9 @@ export function flatBand(closes: number[], weekly: boolean): number {
   return Number((weekly ? day * Math.sqrt(5) : day).toFixed(2));
 }
 
+/** Without a bar for a weekday, it counts as a holiday once a later session exists or two days have passed. */
+const CLOSED_AFTER_MS = 48 * 3600_000;
+
 export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
   const calls = await loadCalls(key);
   // Up/down calls graded before v17 with a move inside the band become "no result" (one-time, cheap).
@@ -162,42 +129,80 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     c.noResult = true;
     fixed++;
   }
-  const pending = calls.filter((c) => c.correct === undefined && !c.gradedAt && sessionClosed(c.date, gradeTz(c.ticker), now));
+  // Due: ungraded calls whose graded session has closed, and provisional grades waiting for the official close.
+  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker), now)));
   if (!pending.length) {
     if (fixed) await setJSON(key, calls);
     return 0;
   }
   const tickers = [...new Set(pending.map((c) => c.ticker))];
-  // Fresh prices only (never the stale fallback), fetched in one batch.
-  const quotes = new Map((await getQuotes(tickers, { allowStale: false })).map((q) => [q.symbol, q]));
+  // Fresh prices only (never the stale fallback), fetched in one batch. Daily sources post a close hours
+  // later (Nasdaq's history in the evening, VNDirect's world closes the next morning), so a close they
+  // haven't posted yet is taken from an intraday series (freshenQuotes): graded within the hour,
+  // marked provisional, and re-graded from the official close once it's posted.
+  const official = await getQuotes(tickers, { allowStale: false });
+  const officialBy = new Map(official.map((q) => [q.symbol, q]));
+  const quotes = new Map((await freshenQuotes(official, now)).map((q) => [q.symbol, q]));
   let graded = 0;
   for (const c of pending) {
     const q = quotes.get(c.ticker);
     if (!q) continue;
     const tz = gradeTz(c.ticker, q.proxy);
+    const end = gradeDateOf(c);
+    const officialDates = new Set(officialBy.get(c.ticker)?.history.map(([d]) => d) ?? []);
     // Only finished sessions: today's bar is a live price until the exchange has closed.
     const hist = q.history.filter(([d]) => sessionClosed(d, tz, now));
     const before = hist.filter(([d]) => d < c.date);
     const base = before.at(-1);
-    const sessions = hist.filter(([d]) => d >= c.date);
-    const weekly = c.id.endsWith(":w");
-    const need = weekly ? 5 : 1;
-    if (!base || sessions.length < need) continue;
-    const out = sessions[need - 1];
-    const r = ((out[1] - base[1]) / base[1]) * 100;
-    const band = flatBand(before.map(([, v]) => v), weekly);
+    if (!base) continue;
+    const weekly = horizonOf(c) === "w";
+    let out = hist.find(([d]) => d === end);
+    if (!out) {
+      if (c.provisional) continue;
+      // No bar for the graded session yet: still being posted, or the market was closed that day.
+      const later = hist.some(([d]) => d > end);
+      const overdue = now.getTime() - closeUtc(end, tz).getTime() > CLOSED_AFTER_MS;
+      if (!later && !overdue) continue;
+      const inside = weekly ? hist.filter(([d]) => d >= c.date && d < end).at(-1) : undefined;
+      if (!inside) {
+        // Daily call on a holiday (or a whole week of them): market closed, not graded.
+        c.closed = true;
+        c.gradedAt = now.toISOString();
+        graded++;
+        continue;
+      }
+      out = inside; // weekly: the previous full session
+    }
+    const viaIntraday = !officialDates.has(out[0]) || !officialDates.has(base[0]) ? q.closeVia : undefined;
+    // A provisional grade is only redone once the official close is in.
+    if (c.provisional && viaIntraday) continue;
+    const fromPrev = out[1] / base[1];
+    // Calls made during the session are measured from the price at that moment.
+    const r = (c.baseChg != null ? fromPrev / (1 + c.baseChg / 100) - 1 : fromPrev - 1) * 100;
+    // Half a session left moves about sqrt(1/2) of a full one, so its band is narrower.
+    const band = Number((flatBand(before.map(([, v]) => v), weekly) * (c.baseChg != null ? Math.SQRT1_2 : 1)).toFixed(2));
     c.baseClose = base[1];
     c.outcomeClose = out[1];
     c.returnPct = r;
     c.band = band;
+    if (out[0] !== end) c.gradedOn = out[0];
+    c.correct = undefined;
+    c.noResult = undefined;
     // A move inside the band says nothing about an up/down call: graded, but "no result" (not a miss).
     if (c.direction !== "flat" && Math.abs(r) < band) c.noResult = true;
     else c.correct = c.direction === "up" ? r > 0 : c.direction === "down" ? r < 0 : Math.abs(r) < band;
+    if (viaIntraday) c.provisional = viaIntraday;
+    else delete c.provisional;
     c.gradedAt = now.toISOString();
     graded++;
   }
   if (graded || fixed) await setJSON(key, calls);
   return graded;
+}
+
+/** Local wall-clock of when a call was made, on its exchange's clock (for labels). */
+export function madeLocal(c: Pick<Call, "madeAt" | "ticker">): { date: string; mins: number } {
+  return localNow(new Date(c.madeAt), exchangeTz(c.ticker));
 }
 
 export interface Bucket {
@@ -225,7 +230,19 @@ export interface TrackStats {
    * Up/down calls only: the headline. `base` is how often an "always up" call would have been right
    * on the same calls (markets rise more often than not), `skill` the hit rate minus that.
    */
-  direction: Rate & { base: number | null; skill: number | null; noResult: number };
+  direction: Rate & {
+    base: number | null;
+    skill: number | null;
+    noResult: number;
+    /** Up/down calls behind the rate (several calls on one ticker and day share one outcome, so `n` counts days). */
+    calls: number;
+  };
+  /** Graded but kept out of every rate: made during the session without a live price that day. */
+  uncounted: number;
+  /** Weekday calls on a day the market was closed: not graded. */
+  closed: number;
+  /** Daily calls by when they were made. */
+  byPhase: { pre: Rate; mid: Rate };
   /** Flat calls: right when the move stayed inside the ticker's band. */
   flat: Rate;
   /** Mean (confidence - outcome)^2 over graded calls; 0 is perfect, 0.25 is a coin flip at 50%. */
@@ -235,7 +252,7 @@ export interface TrackStats {
   /** What acting on each action returned: Buy/Add long, Sell/Trim/Avoid the drop avoided, Hold/Wait the move sat out. */
   byAction: { action: string; n: number; avgReturn: number }[];
   /** Calls waiting for their session to close, with when they can be graded. */
-  pending: { id: string; ticker: string; date: string; horizon: "d" | "w"; direction: string; action: string; confidence: number; gradesAfter: string }[];
+  pending: { id: string; ticker: string; date: string; horizon: "d" | "w"; phase: Phase; madeAt: string; direction: string; action: string; confidence: number; gradesAfter: string; gradeDate: string; closesAt: string }[];
   recent: Call[];
   /** Cumulative % return of following every daily call vs holding the same tickers (before costs). */
   equity: { date: string; ai: number; hold: number }[];
@@ -268,7 +285,8 @@ export function rate(n: number, hits: number): Rate {
 }
 
 export function equityCurve(calls: Call[]): TrackStats["equity"] {
-  const daily = calls.filter((c) => c.correct !== undefined && c.id.endsWith(":d"));
+  // One call per ticker and day: the before-market daily call (mid-day calls start from a different price).
+  const daily = calls.filter((c) => c.correct !== undefined && !c.noLiveBase && horizonOf(c) === "d" && phaseOf(c) === "pre");
   const byDate = new Map<string, Call[]>();
   for (const c of daily) byDate.set(c.date, [...(byDate.get(c.date) ?? []), c]);
   let ai = 1;
@@ -290,13 +308,32 @@ const RANGES: [string, number, number][] = [
   ["80%+", 80, 101],
 ];
 
+/**
+ * Rate over independent outcomes: calls on the same ticker, horizon and graded session share one
+ * outcome (the before-market and mid-day calls on one day), so each such group counts once, with the
+ * share of its calls that were right. Exported for tests.
+ */
+export function rateByDay(cs: Call[]): Rate & { base: number | null } {
+  const groups = new Map<string, Call[]>();
+  for (const c of cs) {
+    const k = `${c.ticker}|${horizonOf(c)}|${gradeDateOf(c)}`;
+    groups.set(k, [...(groups.get(k) ?? []), c]);
+  }
+  const g = [...groups.values()];
+  const share = (xs: Call[], f: (c: Call) => boolean) => xs.filter(f).length / xs.length;
+  const hits = g.reduce((s, xs) => s + share(xs, (c) => !!c.correct), 0);
+  const up = g.reduce((s, xs) => s + share(xs, (c) => (c.returnPct ?? 0) > 0), 0);
+  const r = rate(g.length, hits);
+  return { ...r, hits: Number(hits.toFixed(2)), base: g.length ? up / g.length : null };
+}
+
 export function computeStats(calls: Call[]): TrackStats {
-  const graded = calls.filter((c) => c.correct !== undefined);
+  // Counted: graded right or wrong, with a clean starting price.
+  const graded = calls.filter((c) => c.correct !== undefined && !c.noLiveBase);
   const hits = (cs: Call[]) => cs.filter((c) => c.correct).length;
   const directional = graded.filter((c) => c.direction !== "flat");
   const flat = graded.filter((c) => c.direction === "flat");
-  const dir = rate(directional.length, hits(directional));
-  const base = directional.length ? directional.filter((c) => (c.returnPct ?? 0) > 0).length / directional.length : null;
+  const dir = rateByDay(directional);
   const buckets = RANGES.map(([label, lo, hi]) => {
     const b = graded.filter((c) => c.confidence >= lo && c.confidence < hi);
     return { label, n: b.length, hits: hits(b), avgConfidence: b.length ? b.reduce((s, c) => s + c.confidence, 0) / b.length : 0 };
@@ -304,20 +341,23 @@ export function computeStats(calls: Call[]): TrackStats {
   const actions = [...new Set(graded.map((c) => String(c.action).toUpperCase()))];
   const pending = calls
     .filter((c) => c.correct === undefined && !c.gradedAt)
-    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: (c.id.endsWith(":w") ? "w" : "d") as "d" | "w", direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c) }))
+    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: horizonOf(c), phase: phaseOf(c), madeAt: c.madeAt, direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c), gradeDate: gradeDateOf(c), closesAt: closeUtc(gradeDateOf(c), gradeTz(c.ticker)).toISOString() }))
     .sort((a, b) => a.gradesAfter.localeCompare(b.gradesAfter));
+  const daily = graded.filter((c) => horizonOf(c) === "d");
+  const of = (cs: Call[]) => rate(cs.length, hits(cs));
+  const shown = calls.filter((c) => c.gradedAt);
   return {
     total: calls.length,
     graded: graded.length,
     hitRate: graded.length ? hits(graded) / graded.length : null,
-    direction: { ...dir, base, skill: dir.rate != null && base != null ? dir.rate - base : null, noResult: calls.filter((c) => c.noResult).length },
-    flat: rate(flat.length, hits(flat)),
+    direction: { ...dir, skill: dir.rate != null && dir.base != null ? dir.rate - dir.base : null, noResult: calls.filter((c) => c.noResult).length, calls: directional.length },
+    uncounted: calls.filter((c) => c.noLiveBase && c.gradedAt && !c.closed).length,
+    closed: calls.filter((c) => c.closed).length,
+    flat: of(flat),
     brier: graded.length ? graded.reduce((s, c) => s + (c.confidence / 100 - (c.correct ? 1 : 0)) ** 2, 0) / graded.length : null,
     buckets,
-    byHorizon: {
-      d: rate(graded.filter((c) => c.id.endsWith(":d")).length, hits(graded.filter((c) => c.id.endsWith(":d")))),
-      w: rate(graded.filter((c) => c.id.endsWith(":w")).length, hits(graded.filter((c) => c.id.endsWith(":w")))),
-    },
+    byHorizon: { d: of(daily), w: of(graded.filter((c) => horizonOf(c) === "w")) },
+    byPhase: { pre: of(daily.filter((c) => phaseOf(c) === "pre")), mid: of(daily.filter((c) => phaseOf(c) === "mid")) },
     byAction: actions
       .map((action) => {
         const cs = graded.filter((c) => String(c.action).toUpperCase() === action);
@@ -325,7 +365,7 @@ export function computeStats(calls: Call[]): TrackStats {
       })
       .sort((a, b) => b.n - a.n),
     pending: pending.slice(0, 60),
-    recent: [...graded, ...calls.filter((c) => c.noResult)].sort((a, b) => (b.gradedAt ?? "").localeCompare(a.gradedAt ?? "") || b.date.localeCompare(a.date)).slice(0, 40),
+    recent: shown.sort((a, b) => (b.gradedAt ?? "").localeCompare(a.gradedAt ?? "") || b.date.localeCompare(a.date)).slice(0, 40),
     equity: equityCurve(calls),
     byTicker: [...new Set(graded.map((c) => c.ticker))]
       .map((ticker) => {
@@ -362,11 +402,13 @@ export function trackRecordText(stats: TrackStats): string {
   const d = stats.direction;
   const lines = [`${stats.graded} graded calls.`];
   if (d.noResult) lines.push(`${d.noResult} up/down calls moved less than the ticker's usual range and were not counted.`);
-  if (d.n) lines.push(`Up/down calls: right ${pct(d.rate)} (n=${d.n}, likely range ${pct(d.low)}-${pct(d.high)}); "always up" would have been right ${pct(d.base)}, so your edge is ${d.skill == null ? "n/a" : `${d.skill >= 0 ? "+" : ""}${(d.skill * 100).toFixed(0)} pts`}.`);
+  if (d.n) lines.push(`Up/down calls: right ${pct(d.rate)} (${d.calls} calls over ${d.n} independent ticker-days, likely range ${pct(d.low)}-${pct(d.high)}); "always up" would have been right ${pct(d.base)}, so your edge is ${d.skill == null ? "n/a" : `${d.skill >= 0 ? "+" : ""}${(d.skill * 100).toFixed(0)} pts`}.`);
   if (stats.flat.n) lines.push(`Flat calls: right ${pct(stats.flat.rate)} (n=${stats.flat.n}).`);
   for (const b of stats.buckets) if (b.n) lines.push(`When you said ${b.label} (avg ${b.avgConfidence.toFixed(0)}): right ${pct(b.hits / b.n)} (n=${b.n}).`);
   const h = stats.byHorizon;
   if (h.d.n && h.w.n) lines.push(`Today calls right ${pct(h.d.rate)} (n=${h.d.n}); this-week calls right ${pct(h.w.rate)} (n=${h.w.n}).`);
+  const ph = stats.byPhase;
+  if (ph?.pre.n && ph.mid.n) lines.push(`Daily calls made before the open right ${pct(ph.pre.rate)} (n=${ph.pre.n}); made at mid-day right ${pct(ph.mid.rate)} (n=${ph.mid.n}).`);
   const act = stats.byAction.filter((a) => a.n >= 3).map((a) => `${a.action} ${a.avgReturn >= 0 ? "+" : ""}${a.avgReturn.toFixed(2)}% avg (n=${a.n})`);
   if (act.length) lines.push(`Average result of each action: ${act.join("; ")}.`);
   const tick = stats.byTicker.filter((t) => t.n >= 3).slice(0, 8).map((t) => `${t.ticker} ${t.hits}/${t.n}`);

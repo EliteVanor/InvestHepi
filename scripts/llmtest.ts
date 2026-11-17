@@ -35,6 +35,12 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     lastBody = body;
     return new Response(JSON.stringify({ choices: [{ message: { content: sloppy } }] }), { status: 200 });
   }
+  if (url.includes("vndirect.com.vn") && url.includes("q=code:")) {
+    // Vietnamese daily closes through Monday Nov 16 2026 (predictions need the latest session's close).
+    const codes = decodeURIComponent(url.split("q=code:")[1].split("~")[0]).split(",");
+    const days = ["2026-11-16", "2026-11-13", "2026-11-12", "2026-11-11", "2026-11-10", "2026-11-09"];
+    return new Response(JSON.stringify({ data: codes.flatMap((code) => days.map((date, i) => ({ code, date, close: 50 - i * 0.2, adClose: 50 - i * 0.2, nmVolume: 9, accumulatedVol: 9 }))) }), { status: 200 });
+  }
   return new Response("<rss><channel></channel></rss>", { status: 200 });
 }) as typeof fetch;
 
@@ -48,8 +54,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   assert.equal(d.analysis.mood, "risk-on");
   assert.equal(d.analysis.events[0].impacts[0].direction, "up");
   assert.equal(d.analysis.events[0].importance, 5);
-  assert.equal(d.analysis.outlook[0].action, "BUY");
-  assert.equal(d.analysis.outlook[1].horizon, "this week");
+  assert.equal(d.analysis.outlook, undefined, "briefings make no calls");
   assert.equal(d.language, "en", "generated in English; readers get it translated into their language");
   assert.ok(lastBody, "groq was called");
 
@@ -62,20 +67,27 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (url.includes("generativelanguage")) {
       const body = JSON.parse(String(init?.body));
       assert.equal(body.reasoning_effort, undefined, "no Groq-only params sent to Gemini");
+      if (String(body.messages[0].content).includes("You are the forecaster")) {
+        const pred = { calls: [{ interest: "VN-Index", ticker: "^vnindex.vn", horizon: "Today", direction: "Bullish", confidence: "61", action: "buy", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "Banks", ticker: "VCB.VN", horizon: "this week", direction: "down", confidence: 58, action: "BUY", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "x", ticker: "AAPL", horizon: "today", direction: "up", confidence: 70, action: "BUY", action_trigger: "", rationale: "", risks: "" }] };
+        return new Response(JSON.stringify({ choices: [{ message: { content: "```json\n" + JSON.stringify(pred) + "\n```" } }] }), { status: 200 });
+      }
       return new Response(JSON.stringify({ choices: [{ message: { content: sloppy } }] }), { status: 200 });
     }
     return real(input, init);
   }) as typeof fetch;
   const d2 = await refreshSection("world");
-  assert.equal(d2.provider, "gemini:gemini-3.5-flash-lite", "falls back to Gemini (Flash-Lite: 500 requests a day) on Groq 429");
-  assert.ok(d2.providerNote?.includes("429"), "fallback note mentions the 429");
+  assert.equal(d2.provider, "gemini:gemini-3.5-flash-lite", "shared briefings start on Gemini Flash-Lite (v18)");
   const S = await import("../src/lib/llm/schema");
   const parsed = S.toAnalysis(S.AnalysisSchema.parse(S.normalizeRaw(S.extractJSON(sloppy))));
   assert.deepEqual([parsed.movers[0].ticker, parsed.movers[0].changePct], ["NVDA", 3.2], "movers parsed from the model's reply");
   assert.equal(d2.analysis.movers.length, 0, "but a mover with no price in the snapshot is dropped (this test has no price data)");
+  // Predictions start on Groq 120b; a 429 falls back to Gemini, whose sloppy JSON is repaired.
+  const { runPrediction } = await import("../src/lib/predictions");
+  const r = await runPrediction({ market: "vn", phase: "pre", now: new Date("2026-11-17T01:16:00Z") });
+  assert.deepEqual([r.ok, r.note], [true, "gemini:gemini-3.5-flash-lite"], `prediction fell back on the 429 (${r.note})`);
   const { loadCalls } = await import("../src/lib/track");
-  const { currentCallsKey } = await import("../src/lib/interests");
-  const calls = await loadCalls(await currentCallsKey());
-  assert.deepEqual(calls.map((c) => c.id.split(":").slice(1).join(":")).sort(), ["QQQ:w", "SOXX:d"]);
+  const calls = await loadCalls("calls:vn");
+  assert.deepEqual(calls.map((c) => c.id).sort(), ["2026-11-17:VCB.VN:w", "2026-11-17:^VNINDEX.VN:d"], "calls on other markets' tickers are dropped");
+  assert.equal(calls.find((c) => c.id.endsWith(":w"))!.action, "WAIT", "down + Buy becomes Wait");
   console.log("LLM PATH OK", calls.map((c) => c.id));
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -1,6 +1,7 @@
 /**
  * Briefing pipeline: gather news, prices and the calendar for a section or interest set, have the
- * AI (or the rule-based fallback) write the briefing, then store it and record its calls.
+ * AI (or the rule-based fallback) write the briefing (summary, trend, events, movers, scenarios),
+ * then store it. Briefings make no buy/hold/wait calls: those are the prediction job (predictions.ts).
  *
  * Two kinds of briefings:
  *  - Shared sections (World, US, Vietnam): written once in English, the same for everyone.
@@ -11,17 +12,17 @@ import { createHash } from "node:crypto";
 import { afterRefresh } from "./alerts";
 import { getCalendar } from "./calendar";
 import { SECTORS } from "./chart";
-import { BENCHMARKS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTION_FEEDS, SECTION_GROUPS, SECTION_MACRO, SECTION_STRIPS, type SharedSection, type StripGroup } from "./config";
+import { BENCHMARKS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTION_GROUPS, SECTION_MACRO, SECTION_STRIPS, type SharedSection, type StripGroup } from "./config";
 import { OWNER, currentUid, withUser } from "./context";
 import { analyze, type Route } from "./llm";
 import { analyzeWithRules } from "./llm/rules";
-import { getQuotes } from "./market";
+import { freshenQuotes, getQuotes } from "./market";
 import { computeMood } from "./mood";
-import { dedupe, fetchFeeds, fetchInterestNews } from "./news";
+import { fetchSectionNews, newsKey, saveHeadlines } from "./headlines";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
 import { getTechnicals, type Technicals } from "./technicals";
-import { calibrate, computeStats, gradeCalls, loadCalls, recordCalls, trackRecordText } from "./track";
+import { computeStats, loadCalls } from "./track";
 import { multiUser } from "./users";
 import { fold, vnNameSync } from "./vnlist";
 import { symLabel } from "./symbols";
@@ -73,7 +74,7 @@ async function buildRules(section: SectionId, now: Date): Promise<Digest> {
   return buildDigest({ section, interests: SECTION_GROUPS[shared], lang: "en", callsKey: SHARED_CALLS[shared], now, rulesOnly: true });
 }
 
-interface MarketData {
+export interface MarketData {
   key: string;
   at: number;
   quotes: Quote[];
@@ -85,7 +86,7 @@ interface MarketData {
 const MARKET_TTL_MS = 10 * 60_000;
 
 /** What one digest prices: strip/AI symbols, macro, whether US sectors matter, and the mood inputs. */
-interface Coverage {
+export interface Coverage {
   symbols: string[];
   macro: string[];
   sectors: boolean;
@@ -113,14 +114,15 @@ export function coverage(section: SectionId, interests: Interest[], extra: strin
 }
 
 /** Prices, macro, sectors and technicals, shared across sections and users for 10 minutes. */
-async function marketData(cov: Coverage): Promise<MarketData> {
+export async function marketData(cov: Coverage): Promise<MarketData> {
   const key = [[...new Set(cov.symbols.map((s) => s.toUpperCase()))].sort().join(","), cov.macro.join(","), cov.sectors ? "s" : "", cov.tech.slice(0, 16).join(",")].join("|");
   const slot = `market:${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
   const cached = await getJSON<MarketData>(slot).catch(() => null);
   if (cached && cached.key === key && Date.now() - cached.at < MARKET_TTL_MS && cached.quotes.length) return cached;
+  // Freshened: a close the daily source hasn't posted yet is taken from an intraday series.
   const [quotes, macro, sectors, technicals] = await Promise.all([
-    getQuotes(cov.symbols),
-    getQuotes(cov.macro),
+    getQuotes(cov.symbols).then((q) => freshenQuotes(q)),
+    getQuotes(cov.macro).then((q) => freshenQuotes(q)),
     cov.sectors ? getQuotes(SECTORS.map((x) => x.symbol)) : Promise.resolve([] as Quote[]),
     getTechnicals(cov.tech).catch(() => ({}) as Record<string, Technicals>),
   ]);
@@ -149,9 +151,7 @@ export const SHARED_CALLS: Record<"world" | "us" | "vn", string> = { world: "cal
 async function buildDigest(o: BuildOptions): Promise<Digest> {
   const cov = coverage(o.section, o.interests, o.extraSymbols);
   const [newsRes, market, calendar] = await Promise.all([
-    o.section === "interests"
-      ? fetchInterestNews(o.interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY)
-      : fetchFeeds(SECTION_FEEDS[o.section]).then((r) => ({ items: dedupe(r.items), errors: r.errors })),
+    fetchSectionNews(o.section, o.interests),
     marketData(cov),
     getCalendar(o.interests).catch(() => ({ events: [], notes: [], generatedAt: o.now.toISOString() })),
   ]);
@@ -159,7 +159,8 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
   const breadth = cov.sectors ? sectors : quotes.filter((q) => cov.breadth.includes(q.symbol));
   const gauge = computeMood({ spy: technicals[cov.bench], sectors: breadth, macro, quotes, benchSymbol: cov.bench });
   const news = newsRes.items.slice(0, MAX_ITEMS_PER_SECTION);
-  const stats = computeStats(await loadCalls(o.callsKey));
+  // The headlines just fetched also refresh the live list readers see (no extra requests).
+  if (!o.rulesOnly) await saveHeadlines(newsKey(o.section, o.section === "interests" ? interestHash(o.interests, "en") : undefined), newsRes, o.now).catch(() => {});
   if (o.rulesOnly) {
     return {
       section: o.section, generatedAt: o.now.toISOString(), provider: "rules", providerNote: "Rule-based summary of the latest headlines (no AI).",
@@ -177,20 +178,13 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
     gauge,
     positions: o.positions,
     calendar: calendar.events,
-    trackRecord: trackRecordText(stats),
     language: o.lang,
     now: o.now,
   }, o.route ?? (o.section === "interests" ? "userAuto" : "shared"));
   // Movers' numbers come from the price data, never from the model (it once reported a 5-day gain as
   // the last session's). A ticker that isn't in the snapshot is dropped.
   analysis.movers = alignMovers(analysis.movers ?? [], quotes, news);
-  // The track record adjusts each call's confidence once its level has enough graded calls; the
-  // model's own number is kept (aiConfidence) and is what gets recorded and graded.
-  analysis.outlook = (analysis.outlook ?? []).map((x) => {
-    const c = calibrate(x.confidence, stats);
-    const action = alignAction(x.direction, x.action, !!o.positions);
-    return { ...x, action, ...(action !== x.action ? { aiAction: x.action } : {}), aiConfidence: x.confidence, confidence: c.confidence, ...(c.record ? { record: c.record } : {}) };
-  });
+  delete analysis.outlook; // briefings make no calls (predictions.ts does)
   return {
     section: o.section,
     generatedAt: o.now.toISOString(),
@@ -262,10 +256,7 @@ export async function refreshShared(section: SectionId, lang: string, now = new 
   // Each shared section covers its own market groups and keeps its own track record.
   const interests = SECTION_GROUPS[shared];
   const callsKey = SHARED_CALLS[shared];
-  await gradeCalls(now, callsKey).catch(() => 0);
   const d = await buildDigest({ section, interests, lang, callsKey, now, route });
-  // Calls are keyed by date + ticker + horizon, so refreshing in several languages doesn't double-count.
-  await recordCalls(d.analysis.outlook, interests, d.provider, now, callsKey).catch(() => {});
   const prefix = prefixFor(section, lang);
   const { keptAi } = await storeBriefing(prefix, d);
   await setJSON(`${prefix}:last`, { at: d.generatedAt, provider: d.provider, ok: !keptAi });
@@ -280,7 +271,6 @@ export async function refreshShared(section: SectionId, lang: string, now = new 
 export async function refreshInterestSet(interests: Interest[], lang: string, uids: string[], now = new Date(), route: Route = uids.includes(OWNER) ? "adminAuto" : "userAuto"): Promise<Refreshed> {
   const hash = interestHash(interests, lang);
   const callsKey = await callsKeyFor(hash);
-  await gradeCalls(now, callsKey).catch(() => 0);
   const prev = (await getJSON<Digest>(`ib:${hash}`)) ?? (uids.includes(OWNER) ? await getJSON<Digest>("digest:interests") : null);
   const holdings = !multiUser() ? await loadHoldings().catch(() => []) : [];
   const d = await buildDigest({
@@ -294,7 +284,6 @@ export async function refreshInterestSet(interests: Interest[], lang: string, ui
     now,
     route,
   });
-  await recordCalls(d.analysis.outlook, interests, d.provider, now, callsKey);
   const { keptAi } = await storeBriefing(`ib:${hash}`, d);
   await setJSON(`ib:${hash}:last`, { at: d.generatedAt, provider: d.provider, ok: !keptAi });
   for (const uid of uids) await withUser(uid, () => runAlerts(prev)).catch(() => {});
@@ -337,8 +326,12 @@ async function runAlerts(prevInterests: Digest | null | undefined) {
   const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
   const week = calls.filter((c) => c.correct !== undefined && (c.gradedAt ?? "") >= weekAgo);
   const held = await loadHoldings().catch(() => []);
+  // Imported late: predictions.ts imports this module.
+  const { callsOf, loadPredictions } = await import("./predictions");
+  const preds = await loadPredictions("interests").catch(() => []);
   return afterRefresh({
     interests: withHoldings(interests, held.map((h) => h.symbol)),
+    calls: callsOf(preds),
     digests: { interests: i, world: w, us: u },
     prevInterests,
     calendar: cal.events,

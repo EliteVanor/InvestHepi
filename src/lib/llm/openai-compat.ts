@@ -120,6 +120,24 @@ export async function analyzeWithCompat(p: CompatProvider, system: string, user:
   return { raw: parsed.data, usage };
 }
 
+/** Any JSON job (predictions): the hint is appended to the system prompt, `parse` validates the reply. */
+export async function jsonWithCompat<T>(p: CompatProvider, system: string, user: string, hint: string, parse: (raw: unknown) => T, maxTokens: number): Promise<{ value: T; usage: Usage }> {
+  const sys = `${system}\n\n${hint}`;
+  const res = await post(
+    p,
+    { model: p.model, messages: [{ role: "system", content: sys }, { role: "user", content: user }], response_format: { type: "json_object" }, max_tokens: maxTokens, ...reasoning(p, false) },
+    90_000,
+  );
+  const j = await res.json();
+  const content: string = j?.choices?.[0]?.message?.content ?? "";
+  const usage = usageOf(j, sys + user, content);
+  try {
+    return { value: parse(extractJSON(content)), usage };
+  } catch (e) {
+    throw Object.assign(new Error(`${p.id}: ${(e as Error).message}`), { usage });
+  }
+}
+
 /** Plain-text answer (Ask AI, translations). */
 export async function completeWithCompat(p: CompatProvider, system: string, messages: { role: "user" | "assistant"; content: string }[], maxTokens = 1500, timeoutMs = 60_000): Promise<{ text: string; usage: Usage }> {
   const res = await post(p, { model: p.model, messages: [{ role: "system", content: system }, ...messages], max_tokens: maxTokens, ...reasoning(p, true) }, timeoutMs);

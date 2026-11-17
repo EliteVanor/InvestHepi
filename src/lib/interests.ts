@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { DEFAULT_INTERESTS } from "./config";
 import { OWNER, currentUid, ukey, withUser } from "./context";
 import { isLang } from "./languages";
+import { isZone } from "./zones";
 import { getJSON, setJSON } from "./store";
 import { activeUsers, multiUser } from "./users";
 import type { Interest, Settings } from "./types";
@@ -23,7 +24,7 @@ export async function saveInterests(list: Interest[]): Promise<void> {
 
 export async function loadSettings(): Promise<Settings> {
   const s = await getJSON<Partial<Settings>>(ukey("settings"));
-  return { ...DEFAULT_SETTINGS, ...s, briefingLanguage: isLang(s?.briefingLanguage) ? s!.briefingLanguage! : "en" };
+  return { ...DEFAULT_SETTINGS, ...s, briefingLanguage: isLang(s?.briefingLanguage) ? s!.briefingLanguage! : "en", timeZone: isZone(s?.timeZone) ? s!.timeZone : "auto" };
 }
 
 export async function saveSettings(s: Settings): Promise<void> {

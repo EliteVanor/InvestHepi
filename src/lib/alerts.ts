@@ -3,8 +3,9 @@
  *
  * Two entry points:
  *  - checkPriceAlerts(): cheap, no AI. Run by the scheduler every ~15 min during US hours.
- *  - afterRefresh(): runs after briefings refresh. Handles AI call changes, high-confidence calls,
- *    catalyst reminders, the morning briefing email and the Sunday weekly recap.
+ *  - predictionAlerts(): runs after an interest set's prediction run: call changes and high-confidence calls.
+ *  - afterRefresh(): runs after briefings refresh: catalyst reminders, the morning briefing email
+ *    (with the latest predictions) and the Sunday weekly recap.
  * Every alert has a de-dupe key per ET day, all alerts from one check go out as one email,
  * and there's a daily cap so a bad day can't flood the inbox.
  */
@@ -285,8 +286,22 @@ function nextWeekday(iso: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** After a prediction run of the current user's interest set: call changes and high-confidence calls. */
+export async function predictionAlerts(next: Outlook[], prev: Outlook[], interests: Interest[], now = new Date()) {
+  const settings = await loadAlertSettings();
+  if (!settings.enabled) return { skipped: "alerts disabled" };
+  const lang = await mailLang();
+  const t = makeT(lang);
+  const date = dayIn(NY, now);
+  const followed = [...new Set(interests.flatMap((i) => i.tickers))];
+  const events = evaluateBriefingRules(settings, next, prev, [], followed, date, nextWeekday(date), t);
+  return { sent: (await dispatch(events, settings, lang, now)).sentKeys.length };
+}
+
 export interface RefreshContext {
   interests: Interest[];
+  /** The latest predictions of the user's interest set (the morning email's calls). */
+  calls?: Outlook[];
   digests: Partial<Record<"interests" | "world" | "us", Digest | null>>;
   prevInterests?: Digest | null;
   calendar: CalendarEvent[];
@@ -304,10 +319,9 @@ export async function afterRefresh(ctx: RefreshContext, now = new Date()) {
   const out: Record<string, unknown> = {};
 
   const interests = ctx.digests.interests;
-  if (interests && interests.provider !== "rules") {
-    // Catalyst reminders go out in the evening for the next session.
-    const cal = mins >= 16 * 60 ? ctx.calendar : [];
-    const events = evaluateBriefingRules(settings, interests.analysis.outlook, ctx.prevInterests?.analysis.outlook, cal, followed, date, nextWeekday(date), t);
+  if (interests && interests.provider !== "rules" && mins >= 16 * 60) {
+    // Catalyst reminders go out in the evening for the next session (call alerts follow prediction runs).
+    const events = evaluateBriefingRules(settings, [], undefined, ctx.calendar, followed, date, nextWeekday(date), t);
     out.alerts = (await dispatch(events, settings, lang, now)).sentKeys.length;
   }
 
@@ -437,7 +451,7 @@ export function renderMorning(ctx: RefreshContext, t: T, lang: LangCode, now: Da
   const dateStr = new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "long", month: "long", day: "numeric", timeZone: "America/New_York" }).format(now);
   const summary = `<ul style="margin:0;padding:0 0 0 18px">${a.summary.map((s) => `<li class="tx" style="margin:0 0 8px;font-size:15px;line-height:1.5">${esc(s)}</li>`).join("")}</ul>`;
   const calls = table(
-    a.outlook
+    (ctx.calls ?? [])
       .map((o) =>
         row(
           `<b style="font-weight:600">${esc(o.interest)}</b> <span class="mu" style="color:#6e6e73">${esc(o.ticker)} · ${o.confidence}%</span><br><span style="font-size:14px">${esc(o.actionTrigger)}</span>`,
@@ -462,9 +476,9 @@ export function renderMorning(ctx: RefreshContext, t: T, lang: LangCode, now: Da
   const cal = ctx.calendar.slice(0, 5).map((e) => row(esc(e.title), esc(calWhen(e, lang)))).join("");
   const body = `<div class="mu" style="color:#6e6e73;font-size:14px;margin:-8px 0 14px">${esc(dateStr)} · ${esc(t(`mood.${a.mood}` as MsgKey))}${mood}</div>
 <div class="tx" style="font-size:18px;line-height:1.4;font-weight:600;margin:0 0 14px">${esc(a.headline)}</div>
-${summary}${section(t("calls.title"), calls)}${scenarios}${movers}${events}${others ? section(t("mail.worldUs"), table(others)) : ""}${cal ? section(t("cal.title"), table(cal)) : ""}`;
+${summary}${ctx.calls?.length ? section(t("pred.title"), calls) : ""}${scenarios}${movers}${events}${others ? section(t("mail.worldUs"), table(others)) : ""}${cal ? section(t("cal.title"), table(cal)) : ""}`;
   const subject = t("mail.morningSubject", { headline: a.headline.length > 90 ? a.headline.slice(0, 88) + "…" : a.headline });
-  const text = [a.headline, "", ...a.summary.map((s) => `• ${s}`), "", ...a.outlook.map((o) => `${o.interest} (${o.ticker}): ${t(`act.${o.action}` as MsgKey)} ${o.confidence}%: ${o.actionTrigger}`)].join("\n");
+  const text = [a.headline, "", ...a.summary.map((s) => `• ${s}`), "", ...(ctx.calls ?? []).map((o) => `${o.interest} (${o.ticker}): ${t(`act.${o.action}` as MsgKey)} ${o.confidence}%: ${o.actionTrigger}`)].join("\n");
   return { subject, html: shell({ lang, preheader: a.summary[0] ?? a.headline, title: t("mail.morningTitle"), body, t }), text };
 }
 

@@ -196,37 +196,65 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   const { SECTION_STRIPS } = await import("../src/lib/config");
   const d = await P.refreshShared("vn", "vi");
-  assert.equal(d.analysis.outlook.length, 6, "one call per Vietnamese group");
-  assert.ok(lastPrompt.user.includes("MARKETS TO CALL") && lastPrompt.user.includes("VN-Index (benchmark ^VNINDEX.VN"), "groups in prompt");
+  assert.equal(d.analysis.outlook, undefined, "briefings make no calls (v18)");
+  assert.ok(lastPrompt.user.includes("MARKETS COVERED") && lastPrompt.user.includes("VN-Index (benchmark ^VNINDEX.VN"), "groups in the briefing prompt");
   assert.ok(!/SPY|QQQ|SOXX|NVDA/.test(lastPrompt.user.split("MACRO:")[0]), "no US interests or benchmarks in the Vietnam snapshot");
   assert.ok(lastPrompt.user.includes("ICT") && /HOSE/.test(lastPrompt.user), "Vietnam clock and session");
   assert.ok(lastPrompt.sys.includes("VIETNAM SECTION") && lastPrompt.sys.includes("Vietnamese"), "Vietnam rules + Vietnamese output");
+  assert.ok(!/TRACK RECORD|action_trigger/.test(lastPrompt.sys + lastPrompt.user), "no calls, no track record in a briefing prompt");
   assert.ok(lastPrompt.user.includes("USD/VND"), "exchange rate in macro");
   assert.ok(!lastPrompt.user.includes("SECTORS"), "US sectors left out of the Vietnam prompt");
   assert.deepEqual(d.strip?.map((g) => g.key), ["indexes", "banks", "largecaps"]);
   assert.equal(d.quotes[0].symbol, "^VNINDEX.VN", "VN-Index leads");
   assert.ok(d.gauge && d.gauge.parts.some((p) => p.key === "breadth"), "mood from the VN-Index and Vietnamese large caps");
   const { loadCalls } = await import("../src/lib/track");
-  const calls = await loadCalls(P.SHARED_CALLS.vn);
-  assert.ok(calls.length >= 6, "Vietnam calls logged for grading");
-  await P.refreshShared("vn", "en");
-  assert.equal((await loadCalls(P.SHARED_CALLS.vn)).length, calls.length, "a second language doesn't double-count");
+  assert.equal((await loadCalls(P.SHARED_CALLS.vn)).length, 0, "a briefing records no calls");
 
-  const u = await P.refreshShared("us", "en");
-  assert.deepEqual(u.strip, SECTION_STRIPS.us);
+  // ---- predictions: one market per run, Vietnam on the Hanoi clock
+  const PR = await import("../src/lib/predictions");
+  const preTime = new Date("2026-11-17T01:16:00Z"); // 08:16 Hanoi, before the open
+  const r1 = await PR.runPrediction({ market: "vn", phase: "pre", now: preTime });
+  assert.equal(r1.ok, true, r1.note);
+  assert.ok(lastPrompt.user.includes("MARKETS TO CALL") && lastPrompt.user.includes("BEFORE-MARKET RUN") && lastPrompt.user.includes("08:16 Hanoi"), "before-market prompt on Hanoi time");
+  assert.ok(lastPrompt.sys.includes("VIETNAM SECTION") && lastPrompt.user.includes("YOUR TRACK RECORD"), "Vietnam rules and the track record");
+  const calls = await loadCalls(P.SHARED_CALLS.vn);
+  assert.equal(calls.length, 6, "one daily call per Vietnamese group");
+  assert.ok(calls.every((c) => c.id.endsWith(":d") && c.phase === "pre" && c.date === "2026-11-17" && c.baseChg == null), "graded at today's close from the previous close");
+  await PR.runPrediction({ market: "vn", phase: "pre", now: preTime });
+  assert.equal((await loadCalls(P.SHARED_CALLS.vn)).length, calls.length, "a rerun replaces, doesn't double-count");
+
+  await PR.runPrediction({ market: "us", phase: "pre", now: new Date("2026-11-17T12:31:00Z") });
   assert.ok(lastPrompt.user.includes("S&P 500 (benchmark ^GSPC") && lastPrompt.user.includes("Dow Jones (benchmark ^DJI"), "US calls on the indexes");
   assert.ok(!/- Chip stocks|SOXX/.test(lastPrompt.user), "no personal interests in US");
-  assert.ok(lastPrompt.user.includes("SECTORS"), "US keeps the sector rotation");
-  assert.ok(!lastPrompt.sys.includes("VIETNAM SECTION"));
-  const w = await P.refreshShared("world", "en");
-  assert.equal(w.analysis.outlook.length, 6);
-  assert.ok(lastPrompt.user.includes("Europe (benchmark ^STOXX50E") && lastPrompt.user.includes("EUR/USD"), "world groups + world macro");
-  assert.ok((await loadCalls(P.SHARED_CALLS.world)).length >= 6, "world calls graded too");
+  assert.ok(lastPrompt.user.includes("07:31 New York") && !lastPrompt.sys.includes("VIETNAM SECTION"));
+  const wr: Record<string, { ok: boolean; note: string }> = {};
+  for (const m of ["jp", "cn", "eu", "wus", "oil", "gold"] as const) wr[m] = await PR.runPrediction({ market: m, phase: "pre", now: new Date("2026-11-17T07:31:00Z") });
+  const eu = (await import("../src/lib/store")).getJSON;
+  const euSet = await eu<{ daily: { items: { ticker: string }[] } }>("pred:world:eu");
+  assert.deepEqual(euSet?.daily.items.map((o) => o.ticker), ["^STOXX50E"], "Europe's run calls only Europe");
+  const wc = await loadCalls(P.SHARED_CALLS.world);
+  assert.deepEqual([...new Set(wc.map((c) => c.ticker))].sort(), ["000001.SS", "CL=F", "GC=F", "^GSPC", "^HSI", "^N225", "^STOXX50E"].filter((x) => wc.some((c) => c.ticker === x)).sort());
+  // 07:31 UTC: Tokyo closed an hour ago, but no source here has its close yet: no prediction from older data.
+  assert.deepEqual([wr.jp.ok, /\^N225 no 2026-11-17 close/.test(wr.jp.note)], [false, true], `Japan unavailable without Tuesday's close (${wr.jp.note})`);
+  const jp = await eu<{ unavailable?: { gaps: { symbol: string; kind: string }[] } }>("pred:world:jp");
+  assert.deepEqual(jp?.unavailable?.gaps.map((g) => [g.symbol, g.kind]), [["^N225", "close"]], "the card can say why");
+  assert.ok(!wc.some((c) => c.ticker === "^N225"), "and nothing recorded");
+  assert.ok(wc.some((c) => c.ticker === "CL=F") && wc.some((c) => c.ticker === "GC=F"), "oil and gold each get their own run");
   const track = await import("../src/app/api/track/route");
   const tv = await (await track.GET(new Request("http://x/api/track?section=vn"))).json();
   assert.ok(tv.total >= 6, "track record API per shared section");
   const csv = await (await track.GET(new Request("http://x/api/track?section=world&format=csv"))).text();
   assert.ok(csv.includes("^STOXX50E"), "CSV export per section");
+
+  // ---- translated predictions: one call for a section's markets, cached per version
+  translateCalls = 0;
+  const trW = await PR.translatePredictions("world", "vi");
+  assert.equal(translateCalls, 1, "every World market in one go");
+  assert.ok(trW.every((x) => x.language === "vi" && (x.daily?.items ?? []).every((o) => o.rationale.startsWith("vi:"))));
+  assert.deepEqual(trW.flatMap((x) => x.daily?.items.map((o) => [o.ticker, o.confidence, o.action]) ?? []), (await PR.loadPredictions("world")).flatMap((x) => x.daily?.items.map((o) => [o.ticker, o.confidence, o.action]) ?? []), "numbers and tickers unchanged");
+  await PR.translatePredictions("world", "vi");
+  assert.equal(translateCalls, 1, "cached");
+  assert.equal((await PR.loadPredictions("world", "vi"))[0].language, "vi", "readers get the cached translation");
 
   // ---- translation instead of regeneration: one cheap call per briefing version and language
   const T = await import("../src/lib/translate");
@@ -239,8 +267,7 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   assert.equal(tv1!.language, "vi");
   assert.equal(tv1!.translatedFrom, "en");
   assert.equal(tv1!.analysis.headline, `vi:${base.analysis.headline}`);
-  assert.deepEqual(tv1!.analysis.outlook.map((o) => [o.ticker, o.direction, o.confidence, o.action]), base.analysis.outlook.map((o) => [o.ticker, o.direction, o.confidence, o.action]), "calls, numbers and tickers unchanged");
-  assert.ok(tv1!.analysis.outlook.every((o) => o.rationale.startsWith("vi:")), "call text translated");
+  assert.equal(tv1!.analysis.summary[0], `vi:${base.analysis.summary[0]}`, "briefing text translated");
   await P.translateLatest("us", "vi");
   assert.equal(translateCalls, 1, "cached: the second reader costs nothing");
   assert.equal((await P.loadDigest("us", undefined, "vi"))!.analysis.headline, tv1!.analysis.headline, "readers get the cached translation");

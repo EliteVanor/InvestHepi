@@ -1,6 +1,6 @@
 # InvestHepi
 
-Catch up on market news in a few minutes and see what it likely means: a short AI briefing per market with buy / hold / wait calls, the reasons and risks behind each, and a track record that grades every call against real prices.
+Catch up on market news in a few minutes and see what it likely means: a short AI briefing per market, separate graded predictions (buy / hold / wait calls made before each market opens and at mid-day, with the reasons and risks behind each), and a track record that grades every call against real closes.
 
 <p align="center">
   <img src="docs/screenshots/desktop-light.png" width="68%" alt="World section on a wide screen" />
@@ -30,7 +30,8 @@ World, US and Vietnam are the same for everyone and never include anyone's perso
 - **Movers**: the biggest moves, with a reason only when a cited headline names the company (otherwise "No clear news").
 - **Key events**: why each matters, a past example of how markets reacted to something similar, and what could go wrong.
 - **Up next**: earnings, FOMC, CPI, jobs and VN30 futures expiry, in the market's own time zone.
-- **Headlines**: new-since-last-visit dots, the stories the AI used, search, saved headlines, "Explain this".
+- **Headlines**: refreshed every 15 minutes without AI (your interests every 30 while you're reading, and right away when you come back), new-since-last-visit dots, the stories the AI used marked "Key", search, saved headlines, "Explain this".
+- **Your time zone**: every time is shown in your zone (automatic, or pick one) and says which zone it is; charts and the open/closed pill stay in the exchange's own time.
 
 <p align="center">
   <img src="docs/screenshots/desktop-dark.png" width="68%" alt="US section, dark mode" />
@@ -39,6 +40,7 @@ World, US and Vietnam are the same for everyone and never include anyone's perso
 ## Read faster, decide better
 
 - **Catch-up mode** (`C`): the whole briefing as full-screen cards, one idea each. Tap, swipe or use the arrow keys.
+- **Predictions** under each briefing: per market, the latest daily calls ("Before market" or "Mid-day", with the time on the market's clock and yours) and the weekly calls, each with when it's graded.
 - **Since you were last here**: calls that flipped, the biggest moves since then, new key events.
 - **Live prices and charts**: the strip and the stock page show the same numbers (1D · 5D · 1M · 6M · 1Y, candles, averages, past AI calls marked green/red), with technicals: 20/50/200-day averages, RSI, ranges, typical daily move.
 - **Market mood gauge**: a transparent 0-100 composite you can open to see each part.
@@ -61,11 +63,11 @@ World, US and Vietnam are the same for everyone and never include anyone's perso
 
 <img src="docs/screenshots/track-record.png" width="58%" align="right" alt="Track record" />
 
-A confidence number means nothing unless you know how often it's right. Every call is logged against the **next session on its own exchange that hasn't opened yet**, so the AI never sees the market's reaction, then graded against the real close ("today" on the next close, "this week" on the 5th). Each section keeps its own record.
+A confidence number means nothing unless you know how often it's right. Predictions are their own job, run twice each weekday per market on that market's clock: **before market** (graded at that day's close on the ticker's own exchange, from the previous close) and **mid-day** (same close, measured from the price at that moment, so the morning's move doesn't count). Only the before-market run makes **weekly** calls, graded at the close of the 5th trading day (a holiday there: the previous session). A weekday the market is closed is "market closed, not graded". Each section keeps its own record, and every row says when the call was made and when it's graded.
 
-The headline is the hit rate on up/down calls with its likely range, next to how often "always up" would have been right on the same calls: markets rise more days than not, so the edge over that is what counts. Flat calls must stay inside the ticker's usual daily range. The calibration chart compares what the AI claimed with how often it was right, the equity curve shows what acting on every call would have returned next to just holding, and each action (Buy, Wait, Sell...) shows what it earned.
+The headline is the hit rate on up/down calls with its likely range, next to how often "always up" would have been right on the same calls: markets rise more days than not, so the edge over that is what counts. Calls on the same ticker and day share one outcome, so the range and the baseline count each ticker-day once. Flat calls must stay inside the ticker's usual daily range. The calibration chart compares what the AI claimed with how often it was right, the equity curve shows what acting on every call would have returned next to just holding, and each action (Buy, Wait, Sell...) shows what it earned.
 
-The record feeds back in: every briefing's prompt gets it, each call shows "Right x of y at this confidence", and once a confidence level has 20+ graded calls the shown confidence is pulled toward its real hit rate (the AI's own number stays visible). Give it a few weeks before trusting any of it; the sheet says "Early data" until then.
+The record feeds back in: every prediction prompt gets it, each call shows "Right x of y at this confidence", and once a confidence level has 20+ graded calls the shown confidence is pulled toward its real hit rate (the AI's own number stays visible). Give it a few weeks before trusting any of it; the sheet says "Early data" until then.
 
 Other guards against invented facts:
 - Every level, % and mover number is overwritten from real price data after the AI answers; tickers it can't back are dropped.
@@ -89,14 +91,14 @@ CNBC, BBC, NPR, Al Jazeera, VnExpress, CafeF,           Vietnam: DNSE → Vietca
 Vietstock, Tuổi Trẻ, optional Finnhub                   world closes: VNDirect, US Treasury
      │  dedupe near-duplicates, tag by interest
      ▼
-AI: each job has its own model order (shared sections: Groq gpt-oss-120b → Gemini Flash-Lite → …),
-token budgets tracked per model per day; rule-based fallback when nothing answers
+AI: predictions on Groq gpt-oss-120b, briefings on Gemini Flash-Lite first (each job has its own model order),
+token budgets tracked per model per day; briefings fall back to rules, predictions are retried once, never invented
      │
      ▼
 Upstash Redis (briefings, interests, calls) ──► the page, translated per reader (cached per version)
 ```
 
-- **Schedule** (UTC). Weekdays: World 4×, US 2× (12:30, before the open: the graded call), Vietnam 5× (01:15, before HOSE: the graded call); the admin's interests 6×, other users' 4×. Sunday: each shared section twice. Saturday: nothing. Users' sets are refreshed only if they were seen in the last day; someone back after longer gets a fresh briefing when they open the app. Runs are idempotent (anything written since 30 min before a slot is skipped), and a slot more than an hour late is reported.
+- **Schedule.** Briefings (UTC, every day): World 4×, US 5×, Vietnam 5×; the admin's interests 6×, other users' 4×. Predictions (weekdays, each market's local time): two runs per market, Vietnam, US and each World market (Japan, China & Hong Kong, Europe, US stocks, oil, gold); each interest set's US and Vietnam parts on their own clocks. Users' sets are refreshed only if they were seen in the last day; someone back after longer gets a fresh briefing when they open the app. Runs are idempotent (anything written since 30 min before a slot is skipped), and a slot more than an hour late is reported.
 - **One language to write, many to read.** Every briefing is written once in English and translated for readers, cached per version, so switching language never re-runs an analysis.
 - **Free-tier budget.** Groq allows 200K tokens a day per model, Gemini Flash-Lite 500 requests a day each. The app records real use per model, cools a model down after a 429, and reserves the best model's tokens for the shared and admin briefings still due today.
 
@@ -128,7 +130,7 @@ Then: visitors read World, US and Vietnam without signing in; My Interests, hold
 
 ### Adding Claude later
 
-Set `ANTHROPIC_API_KEY` and redeploy: Claude then goes first in every job (default `claude-opus-5-5`; `CLAUDE_MODEL=claude-sonnet-5-5` or `claude-haiku-5-5` costs less). Count the calls before you do: about 17 shared and admin briefings on a weekday, plus users' sets, translations and Ask AI. Check that against Anthropic's current pricing, and let the track record decide whether it's worth it.
+Set `ANTHROPIC_API_KEY` and redeploy: Claude then goes first in every job (default `claude-opus-5-5`; `CLAUDE_MODEL=claude-sonnet-5-5` or `claude-haiku-5-5` costs less). Count the calls before you do: about 20 shared and admin briefings a day and 20 prediction runs on a weekday, plus users' sets, translations and Ask AI. Check that against Anthropic's current pricing, and let the track record decide whether it's worth it.
 
 ### Where prices come from
 

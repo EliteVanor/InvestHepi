@@ -3,27 +3,34 @@
  * likes: Vercel Schedules, cron-job.org, GitHub, or the tick itself. Each tick:
  *   1. takes a lock (overlapping pokes do nothing),
  *   2. runs price alerts if they're due (every 20 min, 13:00-22:00 UTC weekdays, no AI),
- *   3. runs ONE unit of work from the oldest open slot: a shared section (English, then the
- *      Vietnamese translation) or one interest set, at least 65 s after the previous unit (Groq's
- *      tokens-per-minute limit),
- *   4. calls the tick again if it ran a unit, so a slot finishes without waiting for the next poke.
+ *   3. grades calls whose session closed (at most hourly) and refreshes headlines that are due (no AI),
+ *   4. runs ONE unit of work: a prediction run (a market, or one interest set's part on that market's
+ *      clock) or a briefing (a shared section, English then the Vietnamese translation, or one
+ *      interest set). Predictions and briefings are two lanes with different first models
+ *      (gpt-oss-120b vs Gemini Flash-Lite); each lane keeps 65 s between its units (Groq's
+ *      tokens-per-minute limit), and the lane that can go first goes,
+ *   5. calls the tick again if it ran a unit, so a slot finishes without waiting for the next poke.
  * Every unit records an attempt, so the chain always ends.
  *
- * Idempotent: a section or set already written since 30 min before the slot is skipped (a manual
- * refresh counts), and a unit whose AI failed is retried once, 20 min later. A slot stays open until
- * the next slot starts (max 6 h). Progress lives in `sched:<date>:<slot>`.
+ * Idempotent: a briefing already written since 30 min before the slot is skipped (a manual refresh
+ * counts), and a unit whose AI failed is retried once, 20 min later; a prediction that still fails is
+ * missed (no rule-based predictions). Each item stops at its own deadline (timetable.ts itemEnd): a
+ * before-market prediction at the market's open. Progress lives in `sched:<date>:<slot>`.
  */
 import { checkPriceAlerts, loadAlertSettings } from "./alerts";
 import { OWNER, withUser } from "./context";
 import { appUrl } from "./email";
 import { translateLatest } from "./briefings";
+import { refreshHeadlines } from "./headlines";
 import { interestGroups, loadInterests, withHoldings } from "./interests";
+import { interestPart, type Phase, type SlotMarket } from "./markets";
 import { refreshInterestSet, refreshShared, SHARED_CALLS } from "./pipeline";
+import { runPrediction, translatePredictions } from "./predictions";
 import { gradeCalls } from "./track";
 import { loadHoldings } from "./portfolio";
 import { getJSON, releaseLock, setJSON, takeLock } from "./store";
-import { LATE_AFTER_MIN, occurrences, openOccurrences, runKey, type Occurrence, type SlotItem } from "./timetable";
-import type { SectionId } from "./types";
+import { LATE_AFTER_MIN, isPred, itemEnd, occurrences, openOccurrences, predParts, runKey, type Occurrence, type SlotItem } from "./timetable";
+import type { Interest, SectionId } from "./types";
 import { activeUsers } from "./users";
 
 const MIN = 60_000;
@@ -48,11 +55,21 @@ export interface SlotRun {
   done?: string;
 }
 
-type Unit = { occ: Occurrence; run: SlotRun; item: SlotItem; set?: { hash: string; interests: Parameters<typeof refreshInterestSet>[0]; lang: string; uids: string[]; admin: boolean } };
+export type Lane = "pred" | "brief";
+interface SetRef {
+  hash: string;
+  interests: Interest[];
+  lang: string;
+  uids: string[];
+  admin: boolean;
+}
+type Unit = { occ: Occurrence; run: SlotRun; item: SlotItem; lane: Lane; set?: SetRef };
 
 const final = (a?: Attempt) => !!a && (a.ok || a.n >= MAX_ATTEMPTS);
 const waiting = (a: Attempt | undefined, now: number) => !!a && !final(a) && now < new Date(a.at).getTime() + RETRY_AFTER_MIN * MIN;
 const iso = (ms: number) => new Date(ms).toISOString();
+/** Where an interest set's attempt is kept: plain hash for briefings, "<item>#<hash>" for predictions. */
+const setKey = (item: SlotItem, hash: string) => (isPred(item) ? `${item}#${hash}` : hash);
 
 async function loadRun(o: Occurrence): Promise<SlotRun> {
   return (await getJSON<SlotRun>(runKey(o))) ?? { items: {}, sets: {} };
@@ -64,76 +81,106 @@ function fresh(last: { at: string; ok?: boolean; provider?: string } | null, o: 
   return !!last && last.ok !== false && last.provider !== "rules" && new Date(last.at).getTime() >= o.start - FRESH_BEFORE_MIN * MIN;
 }
 
+/** The interest sets an item works on: all active sets, the admin's only, or each set's part on a market. */
+function setsFor(item: SlotItem, groups: Awaited<ReturnType<typeof interestGroups>>): SetRef[] {
+  const all = [...groups.entries()].map(([hash, g]) => ({ hash, ...g, admin: g.uids.includes(OWNER) }));
+  if (item === "interests:admin") return all.filter((s) => s.admin);
+  if (item === "interests:all") return all;
+  const { market } = predParts(item as `p:${SlotMarket}:${Phase}`);
+  const part = market === "ius" ? "us" : "vn";
+  return all.map((s) => ({ ...s, interests: interestPart(s.interests, part) })).filter((s) => s.interests.length);
+}
+
 /**
- * The next unit of work, oldest slot first. Marks items that need nothing (already fresh, no sets
- * due) and slots that are finished, so later ticks skip them cheaply.
+ * The next unit of each lane, oldest slot first. Marks items that need nothing (already fresh, no sets
+ * due), items past their deadline (missed), and slots that are finished, so later ticks skip them cheaply.
  */
-export async function nextUnit(now: number): Promise<Unit | null> {
+export async function nextUnits(now: number): Promise<Record<Lane, Unit | null>> {
   let groups: Awaited<ReturnType<typeof interestGroups>> | null = null;
+  const found: Record<Lane, Unit | null> = { pred: null, brief: null };
   for (const occ of openOccurrences(now)) {
     const run = await loadRun(occ);
     if (run.done) continue;
     let dirty = false;
     let open = false;
     for (const item of occ.slot.items) {
+      const lane: Lane = isPred(item) ? "pred" : "brief";
       const a = run.items[item];
       if (final(a)) continue;
-      if (waiting(a, now)) {
+      if (now >= itemEnd(occ, item)) {
+        // Too late: a before-market call after the open, a mid-day call 90 min on, a briefing whose next run started.
+        run.items[item] = { at: iso(now), n: MAX_ATTEMPTS, ok: false, note: a ? `gave up: ${a.note ?? "failed"}` : "missed: too late" };
+        dirty = true;
+        continue;
+      }
+      if (waiting(a, now) || found[lane]) {
         open = true;
         continue;
       }
-      if (!item.startsWith("interests")) {
-        if (fresh(await getJSON(`digest:${item}:en:last`), occ)) {
+      const sets = !isPred(item) ? item.startsWith("interests") : predParts(item).market === "ius" || predParts(item).market === "ivn";
+      if (!sets) {
+        if (!isPred(item) && fresh(await getJSON(`digest:${item}:en:last`), occ)) {
           run.items[item] = { at: iso(now), n: 0, ok: true, note: "fresh" };
           dirty = true;
           continue;
         }
-        if (dirty) await saveRun(occ, run);
-        return { occ, run, item };
+        found[lane] = { occ, run, item, lane };
+        open = true;
+        continue;
       }
-      // Interest sets: the admin's first, then the stalest.
+      // Interest sets: the admin's first, then the stalest (briefings) or in a fixed order (predictions).
       groups ??= await interestGroups();
-      const sets = [...groups.entries()]
-        .map(([hash, g]) => ({ hash, ...g, admin: g.uids.includes(OWNER) }))
-        .filter((s) => item === "interests:all" || s.admin);
-      let due: (typeof sets)[number] | null = null;
+      let due: SetRef | null = null;
       let dueAt = "";
-      for (const s of sets) {
-        const sa = run.sets[s.hash];
+      let pending = false;
+      for (const s of setsFor(item, groups)) {
+        const sa = run.sets[setKey(item, s.hash)];
         if (final(sa)) continue;
         if (waiting(sa, now)) {
-          open = true;
+          pending = true;
           continue;
         }
-        const last = await getJSON<{ at: string; ok?: boolean; provider?: string }>(`ib:${s.hash}:last`);
-        if (fresh(last, occ)) continue;
-        const at = last?.at ?? "";
+        let at = s.hash;
+        if (!isPred(item)) {
+          const last = await getJSON<{ at: string; ok?: boolean; provider?: string }>(`ib:${s.hash}:last`);
+          if (fresh(last, occ)) continue;
+          at = last?.at ?? "";
+        }
         if (!due || (s.admin && !due.admin) || (s.admin === due.admin && at < dueAt)) [due, dueAt] = [s, at];
       }
       if (due) {
-        if (dirty) await saveRun(occ, run);
-        return { occ, run, item, set: { hash: due.hash, interests: due.interests, lang: due.lang, uids: due.uids, admin: due.admin } };
+        found[lane] = { occ, run, item, lane, set: due };
+        open = true;
+        continue;
       }
-      if (!open) {
-        run.items[item] = { at: iso(now), n: 0, ok: true, note: "no sets due" };
-        dirty = true;
+      if (pending) {
+        open = true;
+        continue;
       }
+      run.items[item] = { at: iso(now), n: 0, ok: true, note: "no sets due" };
+      dirty = true;
     }
     if (!open) run.done = iso(now);
     if (dirty || run.done) await saveRun(occ, run);
   }
-  return null;
+  return found;
+}
+
+/** The next unit of either lane (tests and tools; the tick picks between lanes by their wait). */
+export async function nextUnit(now: number): Promise<Unit | null> {
+  const u = await nextUnits(now);
+  return u.pred ?? u.brief;
 }
 
 async function record(u: Unit, a: Attempt) {
   const run = await loadRun(u.occ); // re-read: a slow unit shouldn't overwrite newer marks
-  if (u.set) run.sets[u.set.hash] = a;
+  if (u.set) run.sets[setKey(u.item, u.set.hash)] = a;
   else run.items[u.item] = a;
   await saveRun(u.occ, run);
 }
 
 async function runUnit(u: Unit, now: Date): Promise<Attempt> {
-  const prev = u.set ? u.run.sets[u.set.hash] : u.run.items[u.item];
+  const prev = u.set ? u.run.sets[setKey(u.item, u.set.hash)] : u.run.items[u.item];
   const n = (prev?.n ?? 0) + 1;
   // Counted before it runs: if the function is cut off at its time limit, this stays a failed try
   // (retried once, 20 min later) instead of being re-run, and paid for, on every poke.
@@ -141,13 +188,22 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
   let ok = false;
   let note: string | undefined;
   try {
-    const d = u.set
-      ? await refreshInterestSet(u.set.interests, u.set.lang, u.set.uids, now, u.set.admin ? "adminAuto" : "userAuto")
-      : await refreshShared(u.item as SectionId, "en", now, "shared");
-    ok = !d.keptAi && d.provider !== "rules";
-    note = d.provider;
-    // Shared sections are pre-translated into Vietnamese only; other languages on first read.
-    if (!u.set) await translateLatest(u.item as SectionId, "vi").catch(() => null);
+    if (isPred(u.item)) {
+      const { market, phase } = predParts(u.item);
+      const r = await runPrediction({ market, phase, now, set: u.set ? { hash: u.set.hash, interests: u.set.interests, uids: u.set.uids, admin: u.set.admin } : undefined });
+      ok = r.ok;
+      note = r.note;
+      // Vietnam's predictions are pre-translated into Vietnamese (its main readers); others on first read.
+      if (ok && market === "vn") await translatePredictions("vn", "vi").catch(() => null);
+    } else {
+      const d = u.set
+        ? await refreshInterestSet(u.set.interests, u.set.lang, u.set.uids, now, u.set.admin ? "adminAuto" : "userAuto")
+        : await refreshShared(u.item as SectionId, "en", now, "shared");
+      ok = !d.keptAi && d.provider !== "rules";
+      note = d.provider;
+      // Shared sections are pre-translated into Vietnamese only; other languages on first read.
+      if (!u.set) await translateLatest(u.item as SectionId, "vi").catch(() => null);
+    }
   } catch (e) {
     note = (e as Error).message.slice(0, 200);
   }
@@ -205,6 +261,7 @@ export interface TickResult {
   busy?: boolean;
   alerts?: number;
   graded?: number;
+  headlines?: number;
   unit?: { slot: string; item: SlotItem; set?: string; ok: boolean; note?: string };
   chained?: boolean | string;
 }
@@ -226,18 +283,28 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
       }
     }
     // Grade calls whose session has closed, at most hourly (no AI; prices only when something is due),
-    // so results show up within the hour after each market closes, not at the next briefing.
+    // so results show up within the hour after each market closes, not at the next run.
     const lastGrade = await getJSON<{ at: string }>(GRADE_KEY);
     if (!lastGrade || now.getTime() - new Date(lastGrade.at).getTime() >= 55 * MIN) {
       await setJSON(GRADE_KEY, { at: now.toISOString() });
       out.graded = await gradeAll(now).catch(() => 0);
     }
-    const u = await nextUnit(clock().getTime());
-    if (!u) return out;
-    const lastUnit = (await getJSON<number>("sched:lastUnit")) ?? 0;
-    const wait = lastUnit + GAP_MS - clock().getTime();
+    // Headlines (no AI): shared sections every 15 minutes, active interest sets every 30.
+    out.headlines = await refreshHeadlines(now).catch(() => 0);
+    const units = await nextUnits(clock().getTime());
+    const t0 = clock().getTime();
+    const waitOf = async (lane: Lane) => {
+      if (!units[lane]) return Infinity;
+      const last = (await getJSON<number>(`sched:lastUnit:${lane}`)) ?? (await getJSON<number>("sched:lastUnit")) ?? 0;
+      return Math.max(0, last + GAP_MS - t0);
+    };
+    const [wp, wb] = await Promise.all([waitOf("pred"), waitOf("brief")]);
+    if (wp === Infinity && wb === Infinity) return out;
+    const lane: Lane = wp <= wb ? "pred" : "brief";
+    const u = units[lane]!;
+    const wait = Math.min(wp, wb);
     if (wait > 0) await sleep(wait);
-    await setJSON("sched:lastUnit", clock().getTime());
+    await setJSON(`sched:lastUnit:${lane}`, clock().getTime());
     const a = await runUnit(u, clock());
     out.unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8), ok: a.ok, note: a.note };
   } finally {

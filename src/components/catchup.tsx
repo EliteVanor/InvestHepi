@@ -3,7 +3,7 @@
 /** "Since your last visit" and the full-screen catch-up mode. */
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type MsgKey, relTime } from "@/lib/i18n";
-import { type Action, type CalendarEvent, type Digest, type Direction, type Quote } from "@/lib/types";
+import { type Action, type CalendarEvent, type Digest, type Direction, type Outlook, type Quote } from "@/lib/types";
 import { IconAlert, IconHistory, IconSparkles, IconX } from "./Icons";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { arrow, fmtPct, openOverlay, Ring } from "./primitives";
@@ -23,23 +23,23 @@ const LAST_KEY = "ih-last";
 
 const MIN_GAP_MS = 30 * 60_000;
 
-function snapshot(d: Digest, quotes: Quote[]): Snapshot {
+function snapshot(d: Digest, quotes: Quote[], outlook: Outlook[]): Snapshot {
   return {
     at: new Date().toISOString(),
     digestAt: d.generatedAt,
-    calls: Object.fromEntries(d.analysis.outlook.map((o) => [o.ticker, { action: o.action, direction: o.direction, confidence: o.confidence }])),
+    calls: Object.fromEntries(outlook.filter((o) => o.horizon === "today").map((o) => [o.ticker, { action: o.action, direction: o.direction, confidence: o.confidence }])),
     prices: Object.fromEntries(quotes.map((q) => [q.symbol, q.price])),
     events: d.analysis.events.map((e) => e.title),
   };
 }
 
 /** What changed on this device since the previous visit: flipped calls, price moves, new key events. */
-export function SinceLastVisit({ digest, quotes, newCount, onTicker }: { digest: Digest; quotes: Quote[]; newCount: number; onTicker: (s: string) => void }) {
+export function SinceLastVisit({ digest, calls: outlook = [], quotes, newCount, onTicker }: { digest: Digest; calls?: Outlook[]; quotes: Quote[]; newCount: number; onTicker: (s: string) => void }) {
   const { t, lang } = usePrefs();
   const [prev, setPrev] = useState<Snapshot | null>(null);
   const [dismissed, setDismissed] = useState(false);
-  const latest = useRef({ digest, quotes });
-  latest.current = { digest, quotes };
+  const latest = useRef({ digest, quotes, outlook });
+  latest.current = { digest, quotes, outlook };
   const loaded = useRef(false);
 
   useEffect(() => {
@@ -48,13 +48,14 @@ export function SinceLastVisit({ digest, quotes, newCount, onTicker }: { digest:
     const p = lsGet<Snapshot | null>(LAST_KEY, null);
     if (p && Date.now() - new Date(p.at).getTime() > MIN_GAP_MS) setPrev(p);
     // Record this visit once the page has been on screen for a moment.
-    const id = setTimeout(() => lsSet(LAST_KEY, snapshot(latest.current.digest, latest.current.quotes)), 6000);
+    const id = setTimeout(() => lsSet(LAST_KEY, snapshot(latest.current.digest, latest.current.quotes, latest.current.outlook)), 6000);
     return () => clearTimeout(id);
   }, []);
 
   const diff = useMemo(() => {
     if (!prev) return null;
-    const calls = digest.analysis.outlook
+    const calls = outlook
+      .filter((o) => o.horizon === "today")
       .map((o) => ({ o, p: prev.calls[o.ticker] }))
       .filter(({ o, p }) => p && (p.action !== o.action || p.direction !== o.direction));
     const moves = quotes
@@ -64,7 +65,7 @@ export function SinceLastVisit({ digest, quotes, newCount, onTicker }: { digest:
       .slice(0, 4);
     const events = digest.generatedAt !== prev.digestAt ? digest.analysis.events.filter((e) => !prev.events.includes(e.title)).slice(0, 3) : [];
     return { calls, moves, events };
-  }, [prev, digest, quotes]);
+  }, [prev, digest, quotes, outlook]);
 
   if (!prev || !diff || dismissed) return null;
   if (!diff.calls.length && !diff.moves.length && !diff.events.length && !newCount) return null;
@@ -124,7 +125,7 @@ export function SinceLastVisit({ digest, quotes, newCount, onTicker }: { digest:
 }
 
 /** Full-screen, one-idea-per-card walk through the briefing. Tap, swipe or use the arrow keys. */
-export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; calendar: CalendarEvent[]; onClose: () => void; onAsk: () => void }) {
+export function CatchUp({ digest, calls: outlook = [], calendar, onClose, onAsk }: { digest: Digest; calls?: Outlook[]; calendar: CalendarEvent[]; onClose: () => void; onAsk: () => void }) {
   const { t, lang } = usePrefs();
   const a = digest.analysis;
   const fmtDay = useMemo(() => new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }), [lang]);
@@ -146,10 +147,10 @@ export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; 
         </>
       ),
     });
-    a.outlook.forEach((o, i) =>
+    outlook.forEach((o, i) =>
       list.push({
         key: `call-${i}`,
-        kicker: t("calls.title"),
+        kicker: `${t("pred.title")} · ${o.horizon === "today" ? t(o.phase === "mid" ? "pred.mid" : "pred.pre") : t("pred.weekly")}`,
         body: (
           <>
             <div className="cu-call">
@@ -275,7 +276,7 @@ export function CatchUp({ digest, calendar, onClose, onAsk }: { digest: Digest; 
       ),
     });
     return list;
-  }, [a, calendar, t, fmtDay, onAsk, onClose]);
+  }, [a, outlook, calendar, t, fmtDay, onAsk, onClose]);
 
   const [i, setI] = useState(0);
   const last = cards.length - 1;

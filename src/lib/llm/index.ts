@@ -7,7 +7,8 @@
  */
 import type { Analysis } from "../types";
 import { CLAUDE_MODEL, analyzeWithClaude, completeWithClaude } from "./claude";
-import { analyzeWithCompat, completeWithCompat, estimateTokens, outputTokens, tokenBudget, ProviderError, type CompatProvider } from "./openai-compat";
+import { analyzeWithCompat, completeWithCompat, estimateTokens, jsonWithCompat, outputTokens, tokenBudget, ProviderError, type CompatProvider } from "./openai-compat";
+import { extractJSON } from "./schema";
 import { available, chainFor, recordRefusal, recordUsage, type ModelDef, type Route } from "./models";
 import { SCHEMA_HINT } from "./schema";
 import { buildSystemPrompt, buildUserPrompt, type PromptInput } from "./prompt";
@@ -115,6 +116,56 @@ export async function analyze(input: PromptInput, route: Route = "shared"): Prom
       ? `All AI providers failed: ${failures.join("; ")}`
       : "No AI key configured. Add a free GROQ_API_KEY or GEMINI_API_KEY for real analysis.",
   };
+}
+
+export interface JsonJob<T> {
+  /** Build the prompt; `maxHeadlines` shrinks it for providers with a request-size limit. */
+  build: (maxHeadlines?: number) => { system: string; user: string };
+  hint: string;
+  parse: (raw: unknown) => T;
+  maxTokens: number;
+}
+
+/**
+ * A JSON job through a route's chain, with the same budget checks and bookkeeping as briefings. No
+ * rule-based fallback: if every model fails, this throws (a prediction is then missed, not invented).
+ */
+export async function generateJSON<T>(route: Route, job: JsonJob<T>): Promise<{ value: T; provider: string; note?: string }> {
+  const failures: string[] = [];
+  const steps: { id: string; def?: ModelDef; provider?: CompatProvider; run: (p: { system: string; user: string }) => Promise<{ value: T; tokens: number }> }[] = [];
+  if (process.env.ANTHROPIC_API_KEY) {
+    steps.push({ id: `claude:${CLAUDE_MODEL}`, run: async (p) => ({ value: job.parse(extractJSON(await completeWithClaude(`${p.system}\n\n${job.hint}`, [{ role: "user", content: p.user }], job.maxTokens + 2000))), tokens: 0 }) });
+  }
+  for (const def of chainFor(route)) {
+    const pr = def.provider;
+    steps.push({
+      id: `${pr.id}:${pr.model}`,
+      def,
+      provider: pr,
+      run: async (p) => {
+        const r = await jsonWithCompat(pr, p.system, p.user, job.hint, job.parse, job.maxTokens);
+        return { value: r.value, tokens: r.usage.tokens };
+      },
+    });
+  }
+  for (const step of forcedOrder(steps)) {
+    try {
+      const budget = step.provider ? tokenBudget(step.provider) : undefined;
+      let prompt = job.build();
+      if (budget) {
+        const limit = budget * 0.94 - job.maxTokens;
+        for (const n of [20, 14, 10, 6, 3]) {
+          prompt = job.build(n);
+          if (estimateTokens(prompt.system + job.hint + prompt.user) <= limit) break;
+        }
+      }
+      const value = await guarded(step.def, route, () => step.run(prompt));
+      return { value, provider: step.id, note: failures.length ? `Fell back after: ${failures.join("; ")}` : undefined };
+    } catch (e) {
+      failures.push(`${step.id}: ${(e as Error).message.slice(0, 200)}`);
+    }
+  }
+  throw new Error(steps.length ? `All AI providers failed: ${failures.join("; ")}` : "NO_PROVIDER");
 }
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
