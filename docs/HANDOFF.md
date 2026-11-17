@@ -39,7 +39,7 @@ The working rules (session start, stress testing, research and ideas, delivering
 
 ## Current state
 
-- `main` = v17, deployed on Vercel at `investhepi.vercel.app`.
+- `main` = v18, deployed on Vercel at `investhepi.vercel.app` (Nov 17 ~02:52 UTC).
 - Scheduler fully set up (Nov 16): Vercel Schedules from `vercel.json`, the owner's cron-job.org job (`TICK_SECRET` in Vercel, failure emails on), GitHub backup every 3 h. Watch it at `/api/status?schedule=1`.
 - Multi-user mode is on (Google sign-in via Auth.js). Vercel env vars in use: AI keys (`GROQ_API_KEY`, `GEMINI_API_KEY`), Upstash (`KV_REST_API_*`), `APP_PASSWORD`, `CRON_SECRET`, `AUTH_SECRET`, `AUTH_GOOGLE_ID`, `AUTH_GOOGLE_SECRET`, `OWNER_EMAIL`, optionally `CONTACT_EMAIL` (shown on `/privacy` and `/terms`). GitHub repo secrets `APP_URL`, `CRON_SECRET` drive the GitHub backup poker.
 - Optional knobs: `TRANSLATE_DAILY_LIMIT` (80), `AUTOGEN_DAILY_LIMIT` (6), `REFRESH_DAILY_LIMIT` (admin, 10), `USER_REFRESH_DAILY_LIMIT` (5), `USER_REFRESH_GAP_MIN` (90), `RULES_DAILY_LIMIT` (30), `ASK_DAILY_LIMIT`, `TICK_SECRET` (lets cron-job.org poke the scheduler and nothing else), model overrides `GROQ_MODEL`, `GROQ_SMALL_MODEL`, `GROQ_TRANSLATE_MODEL`, `GEMINI_MODEL`, `GEMINI_FALLBACK_MODEL`, limits `GROQ_TPD`, `GEMINI_RPD`.
@@ -242,8 +242,13 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 - Track record on production's real records (public CSV for VN, US, World) through v18 grading with real prices: old grades unchanged, all labeled before market; Monday's US and World calls had been pending 5+ hours after the close (daily sources post late), breaking "graded within the hour". Fixed: provisional grades from the intraday close (S&P, Nasdaq 100, Dow, SPY, QQQ, DIA, Nikkei, Hang Seng, oil graded at once), re-graded from the official close when it posts. Only Shanghai and gold wait for the official close.
 - Mid-day for US-hours benchmarks without a live level (e.g. gold): the same-hours ETF's move today (GLD, SPY, DIA, QQQ, IWM, USO).
 
-**Not verified**
-- **Eastmoney from Vercel.** If Vercel can't reach it, Japan, China/HK and Europe before-market runs will mostly show "unavailable" (VNDirect posts their closes the next morning, after those runs), and their mid-day runs will too. Check right after the merge: `/api/chart?symbol=%5EN225&range=1d` should say `"source":"eastmoney"`.
+**Verified on production after the merge (read-only, Nov 17 02:52 UTC)**
+- The new build answered `/api/predictions` 2 minutes after the push.
+- Eastmoney reaches Vercel: `/api/chart?range=1d` for Nikkei, Hang Seng, DAX, S&P 500 and WTI all came back with `"source":"eastmoney"`, live levels and the right previous closes (e.g. Nikkei 58,956.67 vs 59,662.02).
+- Found: the schedule report listed the past 24 h of new slot ids as late/missed (they never existed) and the tick would answer 503 for an hour; fixed with `TIMETABLE_SINCE` (slots before the cut-over aren't reported).
+
+**Not verified (at merge time)**
+- ~~Eastmoney from Vercel~~ (works, see above). If Vercel can't reach it, Japan, China/HK and Europe before-market runs will mostly show "unavailable" (VNDirect posts their closes the next morning, after those runs), and their mid-day runs will too. Check right after the merge: `/api/chart?symbol=%5EN225&range=1d` should say `"source":"eastmoney"`.
 - A real AI prediction (no AI keys in the sandbox): check the first production runs (prompt rules, calls per market, the action/direction fix) at the first slot after the merge.
 - Mid-day live prices in production: Vietnam (DNSE 1-day chart), US ETFs (Nasdaq intraday), and Japan/China/Europe/S&P/Dow/WTI through Eastmoney if Vercel reaches it; otherwise those runs are "unavailable".
 - The tick's headline refresh and the two lanes on Vercel (check `/api/status?schedule=1` and that `news:*` lists move every 15 min).

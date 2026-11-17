@@ -86,6 +86,7 @@ const MIN = 60_000;
   await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
   const TT = await import("../src/lib/timetable");
   const S = await import("../src/lib/scheduler");
+  S.setTimetableSince(0); // these tests replay mid-November 2026, before the v18 timetable went live
   const M = await import("../src/lib/llm/models");
   const { getJSON, setJSON, takeLock, releaseLock } = await import("../src/lib/store");
   /** Mark every slot that started before `ms` as done (a clean start without old catch-up work). */
@@ -246,6 +247,12 @@ const MIN = 60_000;
   const rep2 = await S.scheduleReport(T("2026-11-20T04:00:00Z"));
   assert.ok(rep2.late.includes("b-2120"), "the report keeps it for 24 h");
   assert.equal(rep2.slots.find((x) => x.slot === "b-2120")!.state, "missed", "its window closed");
+
+  /* ---------------- slots from before the timetable went live aren't reported (they never existed) */
+  S.setTimetableSince(T("2026-11-20T00:00:00Z"));
+  assert.ok(!(await S.scheduleReport(T("2026-11-20T04:00:00Z"))).late.includes("b-2120"), "Thursday's 21:20 predates the cut-over: not reported");
+  assert.deepEqual(await S.lateNow(T("2026-11-19T22:25:00Z")), [], "and doesn't page the watchdog");
+  S.setTimetableSince(0);
 
   /* ---------------- price alerts: weekdays 13:00-22:00 UTC, every 20 min, inside the tick */
   assert.equal(S.alertsWindow(new Date("2026-11-16T13:05:00Z")), true);

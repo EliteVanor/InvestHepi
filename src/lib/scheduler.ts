@@ -331,6 +331,14 @@ async function chainTick(): Promise<boolean | string> {
 
 export type SlotState = "done" | "partial" | "running" | "late" | "missed";
 
+/**
+ * When this timetable went live (v18's deploy). Slots before it never existed under their ids, so they
+ * aren't reported as late or missed (that would page the watchdog for slots nobody scheduled).
+ */
+let TIMETABLE_SINCE = Date.parse("2026-11-17T02:50:00Z");
+/** Tests only: report slots from an earlier date. */
+export const setTimetableSince = (ms: number) => void (TIMETABLE_SINCE = ms);
+
 export interface SlotReport {
   slot: string;
   start: string;
@@ -356,14 +364,14 @@ function stateOf(o: Occurrence, run: SlotRun | null, now: number): SlotReport {
  * twice, not for hours.
  */
 export async function lateNow(now: number): Promise<SlotReport[]> {
-  const recent = occurrences(now - 2 * LATE_AFTER_MIN * MIN, now - LATE_AFTER_MIN * MIN);
+  const recent = occurrences(now - 2 * LATE_AFTER_MIN * MIN, now - LATE_AFTER_MIN * MIN).filter((o) => o.start >= TIMETABLE_SINCE);
   const reports = await Promise.all(recent.map(async (o) => stateOf(o, await getJSON<SlotRun>(runKey(o)), now)));
   return reports.filter((r) => r.state === "late" || r.state === "missed");
 }
 
 /** Everything that was due in the last 24 h, for the admin's Status panel and `/api/status?schedule=1`. */
 export async function scheduleReport(now = Date.now()) {
-  const recent = occurrences(now - 24 * 60 * MIN, now);
+  const recent = occurrences(now - 24 * 60 * MIN, now).filter((o) => o.start >= TIMETABLE_SINCE);
   const slots = await Promise.all(recent.map(async (o) => stateOf(o, await getJSON<SlotRun>(runKey(o)), now)));
   const [lastTick, alerts] = await Promise.all([getJSON<{ at: string; src: string }>("sched:tick"), getJSON<{ at: string }>(ALERTS_KEY)]);
   return {
