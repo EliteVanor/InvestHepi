@@ -1,6 +1,6 @@
 # Handoff: goals, rules and state (Nov 2026)
 
-Read this with `CLAUDE.md` (architecture, commands, technical rules). This file holds the *why*: product goals, decisions the owner made, how they like to work, and what's open.
+Read this with `CLAUDE.md` (summary, commands, code map, working rules) and `docs/ARCHITECTURE.md` (how the code works). This file holds the *why*: product goals, decisions the owner made, how they like to work, and what's open.
 
 ## Goal
 
@@ -35,7 +35,7 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 
 ## How the owner likes to work
 
-The working rules (session start, stress testing, research and ideas, delivering, lines not to cross) are in `CLAUDE.md` under "Working with the owner", so they load in every session. The owner answers questions by number ("1 A, 2 yes"), says "go" to start a planned round and "merge" to merge it; anything that can only be checked later (a deploy, a close, the next tick) is a scheduled check-in, never a wait inside the session (owner, Nov 17); when busy they ask for the plan and then the whole job without check-ins. In short: direct, concise writing with no em dashes or jargon; stress-test ideas and give other perspectives; research before building; short branch names; ask before merging to `main`.
+The general working habits are in the owner's `how-i-work` and `how-i-think` skills; the InvestHepi-specific rules (stress testing, research, delivering, lines not to cross) are in `CLAUDE.md` under "Working with the owner", so they load in every session. The owner answers questions by number ("1 A, 2 yes"), says "go" to start a planned round and "merge" to merge it; anything that can only be checked later (a deploy, a close, the next tick) is a scheduled check-in, never a wait inside the session (owner, Nov 17); when busy they ask for the plan and then the whole job without check-ins. In short: direct, concise writing with no em dashes or jargon; stress-test ideas and give other perspectives; research before building; short branch names; ask before merging to `main`.
 
 ## Current state
 
@@ -46,44 +46,6 @@ The working rules (session start, stress testing, research and ideas, delivering
 - Google OAuth consent screen: branding filled in, privacy/terms pages exist; publishing needs no logo (a logo triggers brand verification).
 - A personal Claude cloud environment named `invest-helper` exists with network access to the market-data hosts (Yahoo, Nasdaq, DNSE, Vietcap, VNDirect, ...) for live testing. Node needs `NODE_USE_ENV_PROXY=1` there.
 - Tests: 19 offline suites (`npm test`), all passing (v18test added Nov 17).
-
-## Stress test, Nov 16 2026 (branch `claude/stoic-davinci-nncgqw`)
-
-Checked against production. Fixed on the branch (not deployed yet):
-- Vietnam briefing could not be translated into Vietnamese (reply cut off at 1,500 tokens). Translation is now chunked with a per-chunk output budget, falls through to the next provider on a malformed reply, and a failed briefing isn't retried for 10 minutes (it was burning the daily cap).
-- Yahoo refuses Vercel, so indexes, oil, gold, dollar and VIX are ETF stand-ins in production. The AI was given those ETF prices as levels and wrote "oil below $144", "Hang Seng support 22.8", "USD/VND above 29.6". The prompt now gets "level unknown, % moves only" for proxied rows, distances instead of levels in technicals, and "unavailable" for missing macro rows. The mood gauge no longer scores the VIXY price as the VIX.
-- VNDirect history used unadjusted prices (FPT's stock dividend looked like a crash). Now uses the adjusted columns.
-- US/global search found only a built-in list in production (no Coca-Cola, Costco, Walmart, Berkshire). Falls back to Nasdaq's autocomplete when Yahoo fails; Yahoo-only symbols (Tencent HK, Samsung, LVMH, US 10Y) aren't offered then. BRK-B style share classes now chart via Nasdaq.
-- Nasdaq intraday charts were 4-5 hours off (Nasdaq sends New York wall time as UTC).
-- Track record graded Vietnam and Asian calls on sessions that were already open or closed when the call was made. Calls now target the next session on their own exchange.
-- Analogs: the prompt padded every day with three US entries, so a China slowdown got "hot CPI 2022" and the raw tag showed in the UI. Only matching entries now, plain descriptions, China and Vietnam entries added, Vietnamese keywords added.
-- Untranslated UI: market group names, calendar titles and notes, mood details, macro labels, a few aria labels. VN30 futures expiry (third Thursday) added to the calendar.
-
-## Budget round, Nov 16 2026 (same branch)
-
-- Groq limits are per model (gpt-oss-120b, gpt-oss-20b, qwen3.8-27b: 200K tokens/day each). Gemini free tier on this project: Flash models 20 requests/day (the old default `gemini-flash-latest` was at 23/20), Flash-Lite 3.5 and 3.1 500/day each. Defaults now use Flash-Lite.
-- Translation now includes headlines (cited ones + top 20, skipping ones already in the reader's language) and runs on qwen, so it no longer competes with briefings.
-- Yahoo returns 429 to GitHub Actions runners too (tested Nov 16 with a Yahoo-only workflow run), so the planned price relay was dropped.
-- The admin can see per-model use today in `/api/status` (`aiUsage`).
-
-## Prices and layout round, Nov 16 2026 (same branch)
-
-- Owner reported the Vietnam strip disagreeing with the chart (UPCoM green +0.12% on the strip, red on the chart). Cause: DNSE's daily series has no bar for today during the session, so live quotes showed Friday's close and change all day. Live VN quotes now come from the chart's own 1-day data; strip and chart match by construction (verified live for all symbols).
-- The HNX/UPCoM spikes and steps in the 1-day charts are real exchange prints (DNSE and Vietcap identical to the minute); HNX's 52-week high of 339.91 (Jun 18 2026) is confirmed by three sources.
-- Real world levels without Yahoo: VNDirect's public data API (world indexes, commodities, FX) and the US Treasury's daily yield file. Briefings now quote real levels with dates; ETF stand-ins remain only for Euro Stoxx 50, DXY, VIX and Bitcoin. World strip: Sensex replaced by Nifty 50 (real data available).
-- Owner's idea of asking Yahoo in small chunks doesn't help (Yahoo refuses Vercel and GitHub on the first request) and would be rate-limit dodging, which the rules exclude.
-- Wide-screen layout (left sidebar, Ask AI docked right), saved chat history per account, briefing-based suggestions.
-
-## v11 (branch `v11`, Nov 16 2026)
-
-- Phone sheets fit the visible screen (iOS `vh` counted the area behind the browser bars, so the stock sheet's title/close/follow slid off the top). Overlays track `visualViewport` (`--app-h`), keep the header outside the scrolling body, and lock the page the iOS way (`openOverlay` in `primitives.tsx`).
-- Wide sidebar: "Headlines" item jumps to the news list (also `N`), top-5 headlines open articles; sidebar folds to an icon rail (`[`), Ask AI dock hides (`]`), both saved per device.
-- Feeds from `.vn` sites that stamp Hanoi time as UTC (Tuổi Trẻ, 7 h in the future) are shifted back (`fixFeedTimes` in `news.ts`).
-- Audit of the first v10 briefing (VN, 07:20 UTC, Groq 120b): levels, RSI, ranges and movers' numbers all matched the data. Fixed: movers' reasons now need a cited headline that names the company (`alignMovers`/`headlineMentions`), Vietnam rules explain SBV dollar buying/selling, names copied exactly. Gemini 3.5/3.1 Flash-Lite model ids confirmed working (they wrote World/US when Groq 120b hit its daily limit).
-- Design polish: header News button (phones too), the briefing's story count links to the headlines, sidebar accent bar, focus rings, card hover only on pointer devices; jumping to `#headlines` lands below the sticky bar.
-- Movers carry `source_ids` (schema + prompt); a mover's reason is kept only if a cited headline names the stock.
-- GitHub's scheduler is unreliable: since Nov 15 only one scheduled run fired (01:15 slot ran at 02:22); the Sunday 22:35 slot never ran; the Monday 08:10 slot hadn't started by 08:41. **Most urgent fix:** move the timetable to an external free scheduler (cron-job.org or Upstash QStash) calling `/api/refresh` with `Authorization: Bearer $CRON_SECRET`, keep GitHub as backup.
-- Competitor and AI-for-stocks report (private artifact, owner's account): https://claude.ai/artifact/KNXDbKGgFtLiGQ7iBVHw1S. Main takeaways: make the graded track record the front door (with a do-nothing baseline), get a Vietnamese legal read on publishing buy/hold/wait calls (the SSC warned about unlicensed recommendations in 2026), add fundamentals and foreign flows for VN tickers, web push; don't build order books, screeners, community or trading.
 
 ## Session summary, Nov 17 2026 (v18)
 
@@ -104,119 +66,6 @@ One long session; the details are in the v18 section below.
 **What changed:** v18-docs merged; v18 built (predictions job, local-time timetable with per-item deadlines and two lanes, track record phases/weekly/closed/provisional/by-day stats, live headlines, time zones, Predictions card, AI use in the Status panel); latest-data layer (Eastmoney intraday for Nikkei, Hang Seng, DAX, FTSE, Euro Stoxx, S&P, Dow, oil; `freshenQuotes` for late closes; same-hours ETF moves for US-hours mid-day starts); stress-test fixes (Nasdaq fills, caps, Eastmoney reliability, futures dating, provisional grades); production fixes (phantom late slots, stored audit inputs, headline guard for extra tickers).
 
 **State at the end:** `main` = v18 (c0b9d72) live; headlines refresh every 15 min; first real predictions ran (Japan, China & HK, Vietnam mid-day) from live prices; scheduled check-ins at 08:35 UTC (first graded closes, Europe's before-market run) and 22:20 UTC (US runs and grading). Open items are listed at the end of this file.
-
-## Session summary, Nov 16 2026 (v13 to v17)
-
-One long session; each round has its own section below.
-
-| Round | What it did | Key files |
-|---|---|---|
-| v13 | Scheduled refreshes didn't run (GitHub dropped the schedules; the legacy Vercel cron never fired). Replaced by one timetable in code and a tick endpoint that any poker can call; Vercel Schedules (every 15 min), cron-job.org (every 30 min, emails on a late slot) and GitHub (every 3 h) poke it. Idempotent slots, late-slot 503s, public schedule report. | `timetable.ts`, `scheduler.ts`, `api/cron/tick`, `vercel.json`, `refresh.yml` |
-| v14 | Scheduled interest refreshes only for users seen in the last day, with a catch-up briefing for returning users. Refactor for readers: `pipeline.ts` split into `interests.ts` / `briefings.ts` / `pipeline.ts`, `v3.tsx`/`v4.tsx` into feature files, `i18n.ts` into one file per language, one date helper, dead code removed, `.env.example` rewritten and guarded by a test. | `interests.ts`, `briefings.ts`, `dates.ts`, `i18n/`, `.env.example` |
-| v15 | `page.tsx` (883 lines) split into hooks and frame components, pixel-identical to before; README rewritten with fresh production screenshots; stock-page range tiles fixed. | `components/shell/*`, `README.md` |
-| v16 | Track record that teaches the model: grading on each exchange's own close (hourly in the tick), volatility-scaled flat band, skill vs "always up" with a Wilson range, Brier, results by action, calibrated confidence with the raw number recorded, redesigned sheet. Sidebar and Ask AI dock slide and fold to rails; dark-mode native controls; account menu no longer clipped. | `track.ts`, `components/track.tsx`, `globals.css` |
-| v17 | Up/down moves inside the band are "no result" (also retroactively); actions must agree with directions (prompt rule + `alignAction`). | `track.ts`, `pipeline.ts`, `prompt.ts` |
-
-Production at the end of the session: v17 live; the scheduler ran every slot since the v13 deploy (Vercel ticks every ~15 min, cron-job.org every 30 min); the first real grades came in (7 Vietnam calls for Nov 16: up/down 2/5, "always up" 2/5, flat 1/2).
-
-## v13 (branch `v13`, Nov 16 2026): a scheduler that runs
-
-**Why scheduled refreshes didn't run.** GitHub dropped them: since Nov 15 only one of about 12 refresh slots fired (67 min late) and the price-alert workflow never ran (0 of 8 weekday slots by 15:25 UTC Nov 16), although both workflows were "active", the cron lines were valid and manual runs worked. Not a bot-actor issue (alerts.yml was last edited by the owner; the one scheduled run's actor was the owner) and not billing. It matches many 2026 GitHub community reports of schedules never or rarely firing on new private repos on the Free plan; GitHub documents that scheduled runs can be delayed or dropped under load. The legacy Vercel cron (10:30 admin interests) showed no invocations either, and Vercel now marks Cron Jobs "Legacy" in favor of Schedules.
-
-**What changed (and what was removed).**
-- One timetable in code (`timetable.ts`); `scheduledPerDay` counts from it, so the 120b reserve can't drift from the schedule again.
-- `GET /api/cron/tick` (`scheduler.ts`): lock, alerts if due, one unit, chain to the next tick. Idempotent (skip anything written since 30 min before the slot, manual refreshes included), one retry 20 min after an AI failure, slots open until the next slot (max 6 h). 503 for an hour after a slot goes late.
-- Pokers only poke on an interval: Vercel Schedules every 15 min Sun-Fri (`vercel.json`, about 2,500 of Hobby's 5,000 runs a month), cron-job.org every 30 min (owner sets it up, it's also the watchdog that emails), GitHub every 3 h (about 200 Action minutes a month instead of about 1,500).
-- Removed: `refreshScheduled`, `AUTO_MIN_AGE_MIN`, `INTEREST_BATCH`, `INTEREST_ROUNDS`, the shell loop in refresh.yml, alerts.yml and `/api/alerts/check` (alerts run in the tick), the cron branch of `/api/refresh`, the legacy `crons` entry.
-- Monitoring: `/api/status?schedule=1` (public, no secrets: last tick and its source, last 24 h of slots as done / partial / running / late / missed); a "Scheduler" row in the admin's Status panel (8 languages).
-
-**Rejected:** an external cron dispatching the GitHub workflow (a third party holding a repo-write token, still GitHub's queue and minutes); QStash (works, but no failure emails and an unverified free schedule count, and Vercel Schedules does the same without a new account); one Vercel schedule per slot (15-min jitter would collide sections on Groq's per-minute limit, and the times would be duplicated); making the repo public (doesn't make GitHub's scheduler reliable, would publish the prompts and these notes).
-
-**Verified on production (Nov 16):** the first Vercel Schedule tick fired at 16:35:02 UTC (the 16:30 run, 5 min of jitter) and, through the chain alone, wrote US 16:35:14, World 16:36:20, Vietnam 16:37:25 (all 120b, 65 s apart), then the interest set(s); the slot was marked done at 16:38:43. Only one set ran there (others fresh or not active); the report now shows set counts to confirm on the next slot.
-
-**Verified offline:** `npm test` (new `v13test.ts`: timetable math, order, 65 s gap, skip rules, retry and give-up, lock, late/missed, alerts window, route auth and 503, public report), v5test now runs the multi-user grouping through the tick; typecheck; build with and without `AUTH_*`. A production build run locally: the tick answered in 36 ms, then one poke ran a whole slot (us, world, vn, the interest set) 65 s apart through the self-chain and stopped on its own.
-
-**Not verified yet:** Vercel accepting the `schedules` block on Hobby and the chain on Vercel (checked after the merge with `/api/status?schedule=1`); cron-job.org until the owner sets it up.
-
-**Owner setup (once):**
-1. Make a long random secret (e.g. a password manager's generator, 40+ characters). This is `TICK_SECRET`. Don't reuse `CRON_SECRET`: `TICK_SECRET` can only poke the scheduler, which never spends AI twice.
-2. Vercel → the project → Settings → Environment Variables → add `TICK_SECRET` (Production) → Save. Then Deployments → the latest production deployment → ⋯ → Redeploy (env vars apply on the next deploy).
-3. cron-job.org → sign up (free) → Create cronjob:
-   - URL: `https://investhepi.vercel.app/api/cron/tick?src=cron-job.org`
-   - Schedule: every 30 minutes
-   - Advanced → Headers → add `Authorization` with the value `Bearer ` followed by the secret (one space after Bearer). Method GET.
-   - Notifications: on for "execution fails" and "succeeds after failure".
-   - Save, then "Test run": expect HTTP 200 and `{"ok":true,"late":[]}`. 401 means the header or the Vercel variable doesn't match (or the redeploy hasn't happened).
-4. Vercel → the project → Schedules: `tick` should be listed and active; the old Cron Jobs entry is gone. Its history shows each run.
-5. Optional clean-up: delete the GitHub repo variable `INTEREST_ROUNDS` and any `INTEREST_BATCH` env var (both unused now). GitHub secrets `APP_URL` and `CRON_SECRET` stay.
-
-## v14 (branch `v14`, Nov 16 2026): 1-day cutoff, refactor for readers
-
-**Owner decision:** scheduled interest refreshes only for users seen in the last day (was 14). The failure case is a user back after 2+ days seeing an old briefing, so `/api/me` now refreshes it in the background when it's over 12 h old (one AI call, counted against `AUTOGEN_DAILY_LIMIT`) and the page waits for the new version. Price alerts still reach users seen in the last 30 days (no AI).
-
-**Refactor (behavior unchanged, pinned by `v14test` first):**
-- `pipeline.ts` (576 lines, four jobs) split into `interests.ts` (who follows what), `briefings.ts` (key layout, reading, saving) and `pipeline.ts` (build and refresh). Moved by declaration with a script; dependencies go one way (interests → briefings → pipeline).
-- `v3.tsx`/`v4.tsx` (named after releases) split into feature files: `live`, `cards`, `alerts-tab`, `palette`, `setup`, `toast`, `catchup`, `portfolio`, `track`; `Toggle` joined `primitives`.
-- `i18n.ts` (3,941 lines) became `i18n/<lang>.ts`; `en.ts` defines the keys.
-- One `dayIn(timeZone, at)` in `dates.ts` replaced 8 copies of the same formatter (cached per zone). `ictDay` stays as a fast fixed-offset shortcut, and a test proves it agrees.
-- One `background()` helper (run after the response) replaced two copies; model defaults live only in `models.ts` (`openai-compat.ts` had dead copies).
-- Removed dead code: unused exports (`IconClock`, `IconInfo`, `playbookFor`, `isCron`, `vnPriceName`, `VN_CALLS`, `SECTIONS`, `getQuote`, `sharedLanguages`), unused imports, the unused language parameter of `currentInterestSet`/`currentCallsKey`/`loadHistory`, the legacy `lastRefresh:<s>` read.
-- `.env.example` rewritten from the code (it still listed removed knobs and a wrong default, and missed 12 variables); `v14test` fails if code reads an undocumented variable (checked by removing one).
-- CLAUDE.md: code map and a map of what each test suite covers.
-
-**Bugs found on the way:** `vntest` failed every evening between 17:00 and 24:00 UTC: its mock put "today's session" in the 30 minutes before now, which crosses Hanoi midnight. Real sessions never do; the mock now ends sessions at 07:00 UTC. The setup checklist still told admins to add GitHub secrets for the scheduler (8 languages fixed). The Status panel showed slot ids (`wd-0115`); it shows times now.
-
-**Verified:** `npm test` (15 suites), typecheck, `tsc --noUnusedLocals` clean, build with and without `AUTH_*`; local production build in Chromium (wide and phone): home, command palette, Settings → Alerts / Holdings / Status, tab switches, no console errors (the only 404 is Vercel Analytics' script, which exists only on Vercel).
-
-**Not verified:** the catch-up on production (needs a signed-in user who was away); the new files on Vercel until merged.
-
-**Later (not done, ranked):** split `page.tsx` state (878 lines) into hooks (high UI risk, wants a visual check with the owner); split `chart.ts` (554 lines) by source; rename test suites by feature instead of round (the test map covers it for now).
-
-## v15 (branch `v15`, Nov 16 2026): page.tsx split, README rewritten
-
-**page.tsx (883 → 518 lines).** Its ~30 pieces of state and 20 effects now live in named hooks in `src/components/shell/hooks.ts` (viewport and wide layout, saved tab, collapsing title, briefing polling, rule-based copies, translate-on-read, new-headline dots, refresh-button state, shortcuts). The frame (top bar, sidebar, tab bar, footer, skeleton) moved to `shell/chrome.tsx`, the price strip's merge logic to `shell/strip.ts`. Removed duplication: the section-icon mapping (2×), the "99+" badge (5×), the refresh button (2×), the side cards (written once for phones, once for the desktop rail). Shortcuts read the latest handlers through a ref instead of a 12-item dependency list.
-
-**Verified:**
-- Pixel comparison against the old page: 15 views (phone: 4 sections; wide: 4 sections, track record, palette, folded sidebar, hidden dock, shortcuts), same seeded data, frozen clock, animations off. 14 identical, 1 differs by 4 pixels, the same as two runs of the old code.
-- Interactions in a real browser: theme toggle (D), dock hide/reopen (] and A), catch-up (C), "/" focuses the headline search, the phone's Ask tab, the phone title collapsing to the section name on scroll. No console errors.
-- `v15test` pins the extracted logic: which symbols the strip shows, live vs snapshot (an ETF's live price never replaces a real index level), chart symbols, who sees Refresh and what it says (left, limit, wait).
-- `npm test` (16 suites), typecheck, unused-code check, both builds.
-
-**README** rewritten around what the app does instead of release history. Corrected stale facts: the scheduler (was GitHub calling `/api/refresh`), per-job model routing (was "Claude → Groq → Gemini"), real world levels from VNDirect and the Treasury (said indexes fall back to ETFs and US 10Y had no source), Nifty 50 (said Sensex), one language setting (said a separate briefing language), 5 Vietnam runs (said 2). New screenshots taken from production as a signed-out visitor (real AI briefings); the four that need sign-in (alerts, Ask AI, morning email, watchlist) were removed rather than kept with the old "Invest Helper" name.
-
-**Bug found and fixed:** the stock page's 52-week (and day) range overflowed its tile into "Volume" on wide screens (a `white-space: nowrap` rule from v4). Ranges may now wrap at the dash; previewed on the production page with the rule injected.
-
-Signed-in views checked too (multi-user build, fake sessions): the admin and a regular user on wide and phone get My Interests, the holdings card, Ask AI and the Refresh button (the user's shows 5 presses left), no console errors.
-
-**Not verified:** a real Google sign-in after the refactor (production, after merge).
-
-## v16 (branch `v16`, Nov 16 2026): track record that teaches the model, panels that slide, dark-safe controls
-
-**Owner decisions:** macOS-style toggles (sidebar top-left, chat top-right, always in the same place), keep the icon rail, refine the glass look; flat calls graded on a band from each ticker's typical move; the track record must improve predictions over time (richer prompt record, "right x of y" on each call, confidence pulled toward the record once a level has 20+ graded calls, the model's own number kept); Hold/Wait scored apart from the up/down hit rate; grade within the hour after each close.
-
-**Why everything showed Pending:** no session had closed since calls started on Nov 16 (US calls for Nov 16 need the official close VNDirect posts the next morning; the VN calls on screen were for Nov 17). Fixed on the way: grading used New York's clock for every market, so a HOSE close was graded ~12 h late; now each exchange's own close (+15 min), and the tick grades hourly.
-
-**Track record:**
-- Grading: exchange closes, ETF stand-ins on New York hours (grading one at the European close would have used a live price), volatility-scaled flat band, `band` stored.
-- Stats: up/down hit rate with a 90% Wilson range, "always up" baseline and skill (research: directional accuracy alone overstates skill because markets rise more often than not), flat calls apart, Brier score, per horizon, per action (positive = the action paid off; Wait/Sell/Trim/Avoid earn the drop avoided), per ticker, pending with "graded in ...".
-- Learning loop: the prompt gets all of the above plus an instruction to lower confidence where the record is weak; each call card shows "Right x of y at this confidence"; from 20 graded calls at a level the shown confidence moves toward the real hit rate (n/(n+20)), "AI said 75%, adjusted by its record"; the model's raw number is recorded so calibration keeps learning from the model.
-- Sheet redesigned (summary card with range, skill and "Early data" under 30 calls; tiles; faded thin calibration buckets; result by action; waiting list; graded list). CSV export filename fixed (it was literally `investhepi-calls${...}.csv`).
-
-**UI:** both side panels slide with a spring (0.45 s, off with reduced motion): the shell keeps three columns, the dock stays mounted and folds to a 56px rail with its reopen button where the close button was, the sidebar's toggle moved top-left and icons don't move while labels fade; no floating Ask button on wide screens. Dark-mode native controls: `<option>` colors (the owner's white language menu), themed thin scrollbars (the sidebar's light Windows scrollbar), autofill. The sidebar account menu opens upward and floats above the page (it was cut off).
-
-**Verified:** `npm test` (17 suites, new `v16test`), typecheck, unused-code check, both builds; in Chromium: dark mode on a light system (option colors computed as #1C1C1E / #F5F5F7, scrollbar color), a sidebar mid-animation frame, both rails folded, the dock reopen button in place and working, the account menu inside the window, the track sheet with seeded calls in English and Vietnamese, wide and phone, light and dark; the CSV header.
-
-**Not verified:** Windows' native select popup itself (headless Chromium can't screenshot OS popups; the computed option colors are what Chrome on Windows uses); real graded calls (the first arrive after the Nov 16 US close is posted and the Nov 17 HOSE close).
-
-## v17 (branch `v17`, Nov 16 2026): no-result moves, actions that match the call
-
-From the first real grades (7 Vietnam calls, Nov 16): HPG "up" moved exactly 0.00% and was marked wrong; VHM was called "down" with the action "Hold".
-- An up/down call whose move stays inside the ticker's flat band is now graded as **no result** (`noResult`): not a hit, not a miss, not pending. The sheet shows "–" and "{n} moved less than the ticker's usual range: not counted"; the prompt is told the count. Calls graded before v17 are converted on the next grading pass (production's HPG call included).
-- **Actions must agree with the direction.** Prompt rule: up → Buy/Add/Hold/Wait, down → Sell/Trim/Avoid/Wait (Hold only for a position the investor holds), flat → Hold/Wait. Code backstop `alignAction` in `pipeline.ts`: up + Sell/Trim/Avoid → Hold, down + Buy/Add → Wait, down + Hold → Wait unless positions were given; the model's own action is kept in `aiAction`, and the shown action is what gets recorded and graded.
-
-**Verified:** `npm test` (18 suites, new `v17test`: no result for a 0.00% move, the retroactive fix, never stuck pending, stats and prompt text, `alignAction` cases, a full refresh where the mocked model answers "down + Buy" and readers see Wait), typecheck, unused-code check, both builds.
-
-**Not verified:** on production until merged (the HPG call should flip to no result at the first hourly grading after deploy).
 
 ## v18 (branch `v18`, Nov 17 2026): predictions apart from briefings, time zones, weekend briefings, live headlines
 
@@ -283,6 +132,15 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 - Mid-day live prices in production: Vietnam (DNSE 1-day chart), US ETFs (Nasdaq intraday), and Japan/China/Europe/S&P/Dow/WTI through Eastmoney if Vercel reaches it; otherwise those runs are "unavailable".
 - The tick's headline refresh and the two lanes on Vercel (check `/api/status?schedule=1` and that `news:*` lists move every 15 min).
 - Real graded weekly calls (the first weekly grades come 5 trading days after the merge).
+
+
+## Docs reorganized, Nov 17 2026 (branch `setup`)
+
+- **Changed:** `CLAUDE.md` went from about 40 KB to 12 KB. The architecture section and the test-suite map moved unchanged to `docs/ARCHITECTURE.md`; the generic working habits now point to the owner's `how-i-work` and `how-i-think` skills, with the InvestHepi-specific rules kept in full; a line on what to keep when compacting was added. Round sections v11 and v13-v17 (and the Nov 16 rounds) moved unchanged to `docs/HANDOFF-archive.md`. The repo copy of the `product-rounds` skill was removed: the owner's account copy has all of it plus a section on picking the next round, and two skills with one name made routing unpredictable.
+- **Verified:** every line of the old `CLAUDE.md` and `HANDOFF.md` exists in the new files except the reworded pointers (checked by script); no code changed, so tests and builds are unaffected.
+- **Not verified:** how a fresh Claude Code session on this repo behaves with the shorter file (watch the first session).
+
+Older round sections (stress test, budget, prices, v11, v13-v17 and their session summary) are in `docs/HANDOFF-archive.md`.
 
 ## Open items / known gaps
 

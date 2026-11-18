@@ -177,7 +177,7 @@ npm test                     # 16 offline suites (no network)
 npm run typecheck
 ```
 
-[`CLAUDE.md`](CLAUDE.md) has the code map, the architecture and what each test suite covers; [`docs/HANDOFF.md`](docs/HANDOFF.md) has the product decisions and the history of each round.
+[`CLAUDE.md`](CLAUDE.md) has the commands, code map and working rules; [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) has the architecture and what each test suite covers; [`docs/HANDOFF.md`](docs/HANDOFF.md) has the product decisions and the history of each round.
 
 ## Customizing
 
