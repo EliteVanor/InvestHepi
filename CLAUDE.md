@@ -57,7 +57,7 @@ Which test suite covers what, and where a round's regression tests go: see "Test
 | `src/lib/pipeline.ts` | building a briefing (`coverage`, market data, `buildDigest`) and refreshing one |
 | `src/lib/timetable.ts`, `scheduler.ts` | when refreshes happen, and the tick that runs them |
 | `src/lib/llm/` | prompts, model routing and budgets, schema, rule-based fallback; `predict.ts` is the prediction prompt and schema |
-| `src/lib/market.ts`, `chart.ts`, `yahoo.ts`, `vnmarket.ts`, `worldmarket.ts` | prices (see Prices below) |
+| `src/lib/market.ts`, `chart.ts`, `yahoo.ts`, `vnmarket.ts`, `worldmarket.ts` | prices (see Prices in `docs/ARCHITECTURE.md`) |
 | `src/lib/dates.ts` | `dayIn(timeZone, at)`: calendar dates in a zone; use it instead of a new `Intl` formatter |
 | `src/lib/i18n/` | UI strings, one file per language (`en.ts` defines the keys) |
 | `src/app/page.tsx` | the single page: loads data, wires actions, lays out a section; its state lives in `components/shell/hooks.ts` (one hook per concern), the frame (top bar, sidebar, tab bar) in `shell/chrome.tsx`, the strip logic in `shell/strip.ts` |
@@ -72,7 +72,7 @@ Which test suite covers what, and where a round's regression tests go: see "Test
 
 ## Working with the owner
 
-The owner's general working habits are in the `how-i-work` and `how-i-think` skills in their account. In short: read `docs/HANDOFF.md` and restate the goal and the rules that apply; ask every question in one numbered list with lettered options and a recommendation (the owner answers "1 B, 2 yes"); give a plan (steps, files and services, tests, AI and free-tier cost, risks, what needs the owner) and wait for "go"; then build without check-ins and say so if the plan changes; push back on ideas and give one recommendation. "Use all of the token" means: keep working through the whole task list without stopping for approval. If those skills aren't loaded, follow this paragraph.
+The owner's general working habits are in the `how-i-work` and `how-i-think` skills in their account. In short: read `docs/HANDOFF.md` and restate the goal and the rules that apply; ask every question in one numbered list with lettered options and a recommendation (the owner answers "1 B, 2 yes"); give a plan (steps, files and services, tests, AI and free-tier cost, risks, what needs the owner) and wait for "go"; then build without check-ins and say so if the plan changes; push back on ideas and give one recommendation. "Use all of the token" means: keep working through the whole task list without stopping for approval. If those skills aren't loaded, follow this paragraph. Where a rule in this file differs from those skills, this file wins.
 
 In this repo, always ask the question list before a round, even when the task looks clear, and cover models, schedule and UX as well as scope, behavior, edge cases, limits and what "done" looks like.
 

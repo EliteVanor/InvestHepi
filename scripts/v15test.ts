@@ -1,7 +1,7 @@
 /**
  * v15: the page's logic pulled out of page.tsx, pinned. The price strip (which symbols, live vs
  * snapshot, the ETF rule), the chart's symbol list, and who sees Refresh and what it says.
- * The UI itself was checked pixel for pixel against the old page (see HANDOFF, v15).
+ * The UI itself was checked pixel for pixel against the old page (see docs/HANDOFF-archive.md, v15).
  * `npx tsx scripts/v15test.ts`
  */
 import assert from "node:assert/strict";

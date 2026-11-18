@@ -137,8 +137,9 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 ## Docs reorganized, Nov 17 2026 (branch `setup`)
 
 - **Changed:** `CLAUDE.md` went from about 40 KB to 12 KB. The architecture section and the test-suite map moved unchanged to `docs/ARCHITECTURE.md`; the generic working habits now point to the owner's `how-i-work` and `how-i-think` skills, with the InvestHepi-specific rules kept in full; a line on what to keep when compacting was added. Round sections v11 and v13-v17 (and the Nov 16 rounds) moved unchanged to `docs/HANDOFF-archive.md`. The repo copy of the `product-rounds` skill was removed: the owner's account copy has all of it plus a section on picking the next round, and two skills with one name made routing unpredictable.
-- **Verified:** every line of the old `CLAUDE.md` and `HANDOFF.md` exists in the new files except the reworded pointers (checked by script); no code changed, so tests and builds are unaffected.
+- **Verified:** every line of the old `CLAUDE.md` and `HANDOFF.md` exists in the new files except the reworded pointers (checked by script); cross-references to moved sections updated. Typecheck and both builds pass; every suite passes except `vntest`, which fails the same way on `main` (Nov 18 06:58 UTC): "Japan unavailable without Tuesday's close" depends on the day it runs. Only a comment in `v15test.ts` changed in code.
 - **Not verified:** how a fresh Claude Code session on this repo behaves with the shorter file (watch the first session).
+- **Open:** `vntest` line ~238 assumes a Tuesday close; make it date-independent (freeze the clock) in the next round.
 
 Older round sections (stress test, budget, prices, v11, v13-v17 and their session summary) are in `docs/HANDOFF-archive.md`.
 
