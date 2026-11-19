@@ -8,6 +8,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "fs";
 
 process.env.VERCEL = "1";
+process.env.GROQ_TPM = "1000000"; // this suite checks chunking, not the per-minute pacing (v19 row05 covers that)
 delete process.env.KV_REST_API_URL;
 delete process.env.ANTHROPIC_API_KEY;
 process.env.GROQ_API_KEY = "test";

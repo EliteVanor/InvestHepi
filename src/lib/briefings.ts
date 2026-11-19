@@ -11,7 +11,9 @@
  */
 import { OWNER, currentUid } from "./context";
 import { isLang } from "./languages";
-import { TranslateError, translateDigest } from "./translate";
+import { dayIn } from "./dates";
+import { chainFor, loadUsage } from "./llm/models";
+import { TRANSLATE_ROUTE_BUDGET_MS, TranslateError, chunkSlots, headlineSlots, textSlots, translateClock, translateDigest, translateWorstCaseMs } from "./translate";
 import { delJSON, getJSON, releaseLock, setJSON, takeLock } from "./store";
 import type { Digest, DigestMeta, SectionId } from "./types";
 import { currentInterestSet, followerLanguages } from "./interests";
@@ -81,64 +83,67 @@ export async function translateLatest(section: SectionId, lang: string, onSpend?
 /** Back-off after a translation that finished nothing, and after one that finished some chunks (a retry is cheap then). */
 const FAIL_BACKOFF_MS = 10 * 60_000;
 const PARTIAL_BACKOFF_MS = 2 * 60_000;
-/** The lock held while one instance pays for a translation; it expires on its own if that instance dies. */
-const LOCK_TTL_SEC = 90;
 
 export interface TranslateOpts {
   onSpend?: () => Promise<boolean>;
   /** How long to wait for another instance's translation of the same briefing (0 = don't wait). */
   waitMs?: number;
   pollMs?: number;
+  /** No new chunk starts after this long (default: the translate route's budget). */
+  budgetMs?: number;
 }
 
 /**
  * Translate stored digest `d` (stored at `prefix`) into `lang`, cached at tr:<prefix>:<lang>. One call
- * per briefing version: concurrent requests in this instance share a promise, other instances share a
- * store lock (the loser waits for the winner's cached copy), and a failure is remembered so readers
- * don't each trigger another AI call: 10 minutes after a total failure, 2 after a partial one (finished
- * chunks are kept, so the retry is cheap).
+ * per briefing version: concurrent requests in this instance share one promise (registered before the
+ * first await), other instances share a store lock whose lifetime comes from the translation's own
+ * worst case (the loser waits for the winner's cached copy), and a failure is remembered so readers
+ * don't each trigger another AI call: 10 minutes after a total failure, 2 after a partial one
+ * (finished chunks are kept, so the retry is cheap).
  */
-async function translateStored(prefix: string, d: Digest, lang: string, opts: TranslateOpts = {}): Promise<Digest> {
+function translateStored(prefix: string, d: Digest, lang: string, opts: TranslateOpts = {}): Promise<Digest> {
   const key = trKey(prefix, lang);
   const pending = translating.get(key);
   if (pending) return pending;
+  const job = translateOnce(key, d, lang, opts).finally(() => translating.delete(key));
+  translating.set(key, job);
+  return job;
+}
+
+async function translateOnce(key: string, d: Digest, lang: string, opts: TranslateOpts): Promise<Digest> {
   const failKey = `${key}:failed`;
   const failed = await getJSON<{ at: number; v: string; backoff?: number }>(failKey).catch(() => null);
   if (failed && failed.v === d.generatedAt && Date.now() - failed.at < (failed.backoff ?? FAIL_BACKOFF_MS)) throw new Error("translation unavailable, retrying later");
+  const budgetMs = opts.budgetMs ?? TRANSLATE_ROUTE_BUDGET_MS;
+  const chunks = chunkSlots([...textSlots(d.analysis), ...headlineSlots(d.news ?? [], d.analysis, lang)]).length;
   const lockKey = `${key}:lock`;
-  const token = await takeLock(lockKey, LOCK_TTL_SEC);
+  const token = await takeLock(lockKey, Math.ceil(translateWorstCaseMs(chunks, budgetMs) / 1000) + 10);
   if (!token) {
     // Another instance is paying for this translation: wait for its result instead of paying again.
-    const until = Date.now() + (opts.waitMs ?? 45_000);
+    const waitStart = Date.now();
+    const until = waitStart + (opts.waitMs ?? 45_000);
     while (Date.now() < until) {
       await new Promise((r) => setTimeout(r, opts.pollMs ?? 1000));
       const t = await getJSON<Digest>(key);
       if (t && t.generatedAt === d.generatedAt) return t;
-      const f = await getJSON<{ v: string }>(failKey).catch(() => null);
-      if (f && f.v === d.generatedAt) throw new Error("translation unavailable, retrying later"); // the other instance failed
+      const f = await getJSON<{ at: number; v: string }>(failKey).catch(() => null);
+      // Only a failure recorded while we waited counts (an older marker is from before this attempt).
+      if (f && f.v === d.generatedAt && f.at >= waitStart) throw new Error("translation unavailable, retrying later");
     }
     throw new Error("translation in progress elsewhere, retrying later");
   }
-  if (opts.onSpend && !(await opts.onSpend().catch(() => false))) {
-    await releaseLock(lockKey, token);
-    return d;
+  try {
+    if (opts.onSpend && !(await opts.onSpend().catch(() => false))) return d;
+    const t = await translateDigest(d, lang, budgetMs);
+    await setJSON(key, t);
+    return t;
+  } catch (e) {
+    const partial = e instanceof TranslateError && e.done > 0;
+    await setJSON(failKey, { at: Date.now(), v: d.generatedAt, backoff: partial ? PARTIAL_BACKOFF_MS : FAIL_BACKOFF_MS }).catch(() => {});
+    throw e;
+  } finally {
+    await releaseLock(lockKey, token).catch(() => {});
   }
-  const job = translateDigest(d, lang)
-    .then(async (t) => {
-      await setJSON(key, t);
-      return t;
-    })
-    .catch(async (e) => {
-      const partial = e instanceof TranslateError && e.done > 0;
-      await setJSON(failKey, { at: Date.now(), v: d.generatedAt, backoff: partial ? PARTIAL_BACKOFF_MS : FAIL_BACKOFF_MS }).catch(() => {});
-      throw e;
-    })
-    .finally(async () => {
-      translating.delete(key);
-      await releaseLock(lockKey, token).catch(() => {});
-    });
-  translating.set(key, job);
-  return job;
 }
 
 /** Translate an interest set's current briefing (no caller context needed: the scheduler and catch-up use this). */
@@ -150,15 +155,39 @@ export async function translateSet(hash: string, lang: string, opts: TranslateOp
   return translateStored(`ib:${hash}`, d, lang, opts);
 }
 
+/** Pre-translation spends at most this many tokens a day (UTC), counted from the models' real usage; the rest is translated on read. */
+export const pretranslateDailyTokens = () => Number(process.env.PRETRANSLATE_DAILY_TOKENS) || 50_000;
+/** All of one set's pre-translation together stops starting chunks after this long (the tick holds a 310 s lock). */
+export const PRETRANSLATE_BUDGET_MS = 120_000;
+const spentKey = () => `pretr:tokens:${dayIn("UTC")}`;
+
+/** Tokens the translate models have used today (all callers), from llm:usage:<model>. */
+async function translateTokensToday(): Promise<number> {
+  let n = 0;
+  for (const def of chainFor("translate")) n += (await loadUsage(def)).tokens;
+  return n;
+}
+
 /**
  * After a set's briefing is written: translate it into the languages of its followers seen in the last
  * day, so they open it already translated (English readers and long-absent followers cost nothing).
- * Returns the languages now cached. A failure on one language doesn't stop the others.
+ * Stops when the daily pre-translation budget is spent or `budgetMs` (default 120 s) runs out; whatever
+ * is left is translated on first read. Returns the languages now cached. A failure on one language
+ * doesn't stop the others.
  */
 export async function pretranslateSet(hash: string, uids: string[], opts: TranslateOpts = {}): Promise<string[]> {
   const done: string[] = [];
+  const end = translateClock.now() + (opts.budgetMs ?? PRETRANSLATE_BUDGET_MS);
+  const cap = pretranslateDailyTokens();
   for (const lang of await followerLanguages(uids)) {
-    const t = await translateSet(hash, lang, { waitMs: 0, ...opts }).catch(() => null);
+    const left = end - translateClock.now();
+    if (left <= 0) break;
+    const spent = (await getJSON<number>(spentKey())) ?? 0;
+    if (spent >= cap) break;
+    const before = await translateTokensToday();
+    const t = await translateSet(hash, lang, { waitMs: 0, ...opts, budgetMs: left, onSpend: async () => ((await getJSON<number>(spentKey())) ?? 0) < cap }).catch(() => null);
+    const used = (await translateTokensToday()) - before;
+    if (used > 0) await setJSON(spentKey(), spent + used, 2 * 86400);
     if (t?.language === lang) done.push(lang);
   }
   return done;
