@@ -45,29 +45,64 @@ export async function delJSON(key: string): Promise<void> {
 
 /**
  * A lock that expires on its own: returns a token if taken, null if someone else holds it.
- * Atomic on Redis (SET NX EX); the local file version is good enough for one dev server.
+ * Atomic on Redis (SET NX EX). Files (local dev): create-exclusive, and an expired lock is taken over by
+ * moving it aside (rename is atomic), so two callers can't both delete-and-recreate it.
  */
 export async function takeLock(key: string, ttlSec: number): Promise<string | null> {
   const token = Math.random().toString(36).slice(2);
   if (redis) return (await redis.set(key, token, { nx: true, ex: ttlSec })) === "OK" ? token : null;
-  // Files: create-exclusive ("wx"), so two callers in one process (or two dev servers) can't both win.
   await fs.mkdir(dir, { recursive: true });
   const file = fileFor(key);
-  for (let tries = 0; tries < 2; tries++) {
+  for (let tries = 0; tries < 3; tries++) {
     try {
       await fs.writeFile(file, JSON.stringify({ token, until: Date.now() + ttlSec * 1000 }), { flag: "wx" });
       return token;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
-      const held = await getJSON<{ token: string; until: number }>(key);
-      if (held && held.until > Date.now()) return null;
-      await fs.rm(file, { force: true }); // expired (or unreadable): take over
     }
+    const taken = await moveAside(file);
+    if (!taken) continue; // it vanished: try to create it
+    const held = taken.value as { until?: number } | null;
+    if (held && (held.until ?? 0) > Date.now()) {
+      await restore(taken.tmp, file); // still valid: put it back
+      return null;
+    }
+    await fs.rm(taken.tmp, { force: true }); // expired: gone, try again
   }
   return null;
 }
 
+async function moveAside(file: string): Promise<{ tmp: string; value: unknown } | null> {
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  try {
+    await fs.rename(file, tmp);
+  } catch {
+    return null;
+  }
+  let value: unknown = null;
+  try {
+    value = JSON.parse(await fs.readFile(tmp, "utf8"));
+  } catch {}
+  return { tmp, value };
+}
+
+async function restore(tmp: string, file: string): Promise<void> {
+  try {
+    await fs.link(tmp, file); // fails if someone created a new lock meanwhile: theirs stays
+  } catch {}
+  await fs.rm(tmp, { force: true });
+}
+
+const RELEASE_SCRIPT = `if redis.call("get", KEYS[1]) == ARGV[1] then return redis.call("del", KEYS[1]) else return 0 end`;
+
+/** Delete the lock only if `token` still holds it: one step on Upstash (a server-side script), an atomic move on files. */
 export async function releaseLock(key: string, token: string): Promise<void> {
-  const held = redis ? await redis.get<string>(key) : (await getJSON<{ token: string }>(key))?.token;
-  if (held === token) await delJSON(key);
+  if (redis) {
+    await redis.eval(RELEASE_SCRIPT, [key], [token]);
+    return;
+  }
+  const taken = await moveAside(fileFor(key));
+  if (!taken) return;
+  if ((taken.value as { token?: string } | null)?.token === token) await fs.rm(taken.tmp, { force: true });
+  else await restore(taken.tmp, fileFor(key)); // someone else's lock (ours expired): put it back
 }
