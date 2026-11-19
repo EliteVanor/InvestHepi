@@ -29,7 +29,7 @@ import assert from "node:assert/strict";
   assert.ok(first.includes("digest:vn") && first.includes("news:interests") && first.includes("predictions:us"));
   assert.equal(ask({ now: T0, last: all(T0) }).length, 0, "just loaded: nothing due");
   assert.equal(ask({ now: T0 + MIN, last: all(T0) }).length, 0, "1 minute later: still nothing");
-  assert.equal(ask({ now: T0, last: empty(), visible: false }).length, 12, "a page opened in a background tab still does its first load");
+  assert.equal(ask({ now: T0, last: empty(), visible: false }).length, 0, "a hidden page loads nothing, not even first loads");
 
   /* visible tab: news and predictions at 5 min, other tabs not polled */
   assert.deepEqual(ask({ now: T0 + 4 * MIN + 59_000, last: all(T0) }), [], "just under 5 min");
@@ -64,7 +64,8 @@ import assert from "node:assert/strict";
   assert.deepEqual(ask({ now: T0 + 60 * MIN, last: all(T0), visible: false, hiddenSince: T0 + MIN }), [], "hidden: no return reload either");
   const part = all(T0);
   delete part.news.vn;
-  assert.deepEqual(ask({ now: T0 + MIN, last: part, visible: false }), ["news:vn"], "hidden but never loaded: only the missing first load");
+  assert.deepEqual(ask({ now: T0 + MIN, last: part, visible: false }), [], "hidden and never loaded: still nothing");
+  assert.deepEqual(ask({ now: T0 + MIN, last: part, visible: true }), ["news:vn"], "visible: the missing first load is picked up");
 
   /* helpers that moved with the module */
   assert.notEqual(D.translateKey("us", "vi", "2026-11-17T01:00:00Z", false), D.translateKey("us", "vi", "2026-11-17T01:00:00Z", true));
@@ -85,6 +86,18 @@ import assert from "node:assert/strict";
   assert.equal(last.news.us, T0, "marked at once, so a slow answer isn't asked for twice");
   assert.equal(await slow, "ok");
   assert.equal(last.news.us, T0, "success: stays marked");
+
+  /* back-off: 30 s, 60 s, 2 min, capped at 5 min, reset on success */
+  assert.deepEqual([1, 2, 3, 4, 5, 9].map(D.retryDelay), [30_000, 60_000, 120_000, 240_000, 300_000, 300_000]);
+  const L = empty();
+  const F: import("../../src/components/shell/section-data").Failures = { digest: {}, news: {}, predictions: {} };
+  const dueVn = (now: number) => D.dueLoads({ now, last: L, tab: "vn", visible: true, hiddenSince: null, failed: F }).some((l) => l.kind === "digest" && l.section === "vn");
+  await assert.rejects(D.tracked(L, "digest", "vn", T0, async () => { throw new Error("x"); }, F));
+  assert.deepEqual([dueVn(T0 + 29_000), dueVn(T0 + 30_000)], [false, true], "first retry after 30 s");
+  await assert.rejects(D.tracked(L, "digest", "vn", T0 + 30_000, async () => { throw new Error("x"); }, F));
+  assert.deepEqual([dueVn(T0 + 89_000), dueVn(T0 + 90_000)], [false, true], "second after 60 s more");
+  await D.tracked(L, "digest", "vn", T0 + 90_000, async () => 1, F);
+  assert.equal(F.digest.vn, undefined, "success resets the back-off");
 
   /* a translation that arrives after the reader switched language is dropped; a same version keeps its object */
   assert.equal(D.stillWanted("vi", "fr"), false, "a vi reply must not overwrite fr");

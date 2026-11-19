@@ -31,22 +31,32 @@ export type Load = { kind: LoadKind; section: SectionId };
 /** When each (kind, section) was last requested, in ms; absent = never. */
 export type LastLoaded = Record<LoadKind, Partial<Record<SectionId, number>>>;
 
+/** Failed attempts since the last success: when the latest one was and how many in a row. */
+export type Failures = Record<LoadKind, Partial<Record<SectionId, { at: number; n: number }>>>;
+
 const KINDS: LoadKind[] = ["digest", "news", "predictions"];
 
+/** Wait before retrying a failing load: 30 s, 60 s, 2 min, 4 min, then 5 min at most. */
+export const retryDelay = (failures: number) => Math.min(30_000 * 2 ** Math.max(0, failures - 1), 5 * 60_000);
+
 /**
- * What to load now. Never-loaded items are always due, even in a background tab (a page opened
- * behind others should still paint when shown). Everything else needs a visible page and concerns
- * the visible tab only; `hiddenSince` is when the page was hidden, if it just came back.
+ * What to load now. Nothing is due while the page is hidden (a server outage must not make
+ * background tabs hammer it; on return the rules below pick everything up). Never-loaded items are
+ * due for every section, except a failed one waits out its back-off. Loaded items are due only for
+ * the visible tab; `hiddenSince` is when the page was hidden, if it just came back.
  */
-export function dueLoads(o: { now: number; last: LastLoaded; tab: SectionId; visible: boolean; hiddenSince: number | null }): Load[] {
-  const { now, last, tab, visible, hiddenSince } = o;
+export function dueLoads(o: { now: number; last: LastLoaded; tab: SectionId; visible: boolean; hiddenSince: number | null; failed?: Failures }): Load[] {
+  const { now, last, tab, visible, hiddenSince, failed } = o;
+  if (!visible) return [];
   const returned = visible && hiddenSince !== null && now - hiddenSince >= RETURN_AFTER_MS;
   const out: Load[] = [];
   for (const kind of KINDS) {
     for (const section of SECTION_IDS) {
       const at = last[kind][section];
-      if (at === undefined) out.push({ kind, section });
-      else if (visible && section === tab && (returned || now - at >= (kind === "digest" ? BRIEFING_EVERY_MS : NEWS_EVERY_MS))) out.push({ kind, section });
+      if (at === undefined) {
+        const f = failed?.[kind][section];
+        if (!f || now - f.at >= retryDelay(f.n)) out.push({ kind, section });
+      } else if (section === tab && (returned || now - at >= (kind === "digest" ? BRIEFING_EVERY_MS : NEWS_EVERY_MS))) out.push({ kind, section });
     }
   }
   return out;
@@ -54,14 +64,17 @@ export function dueLoads(o: { now: number; last: LastLoaded; tab: SectionId; vis
 
 /**
  * Runs one load and records when it was asked for (so a slow answer isn't asked for twice). A load
- * that fails is forgotten, so the next check retries it instead of waiting out the interval.
+ * that fails is forgotten and retried after a growing delay (`retryDelay`), reset by a success.
  */
-export async function tracked<R>(last: LastLoaded, kind: LoadKind, section: SectionId, now: number, run: () => Promise<R>): Promise<R> {
+export async function tracked<R>(last: LastLoaded, kind: LoadKind, section: SectionId, now: number, run: () => Promise<R>, failed?: Failures): Promise<R> {
   last[kind][section] = now;
   try {
-    return await run();
+    const r = await run();
+    if (failed) delete failed[kind][section];
+    return r;
   } catch (e) {
     delete last[kind][section];
+    if (failed) failed[kind][section] = { at: now, n: (failed[kind][section]?.n ?? 0) + 1 };
     throw e;
   }
 }
@@ -119,6 +132,7 @@ export function useSectionData(o: Opts) {
   const [preds, setPreds] = useState<PredSets>({});
 
   const last = useRef<LastLoaded>({ digest: {}, news: {}, predictions: {} });
+  const failures = useRef<Failures>({ digest: {}, news: {}, predictions: {} });
   const hiddenSince = useRef<number | null>(null);
   // Async callbacks that outlive a render (answers, timers, listeners) read the latest props here.
   const cur = useRef(o);
@@ -133,7 +147,7 @@ export function useSectionData(o: Opts) {
   const loadDigest = useCallback(async (s: SectionId) => {
     const lang = cur.current.lang;
     // ?lang= lets signed-out visitors read shared sections in their language.
-    const j = await tracked(last.current, "digest", s, Date.now(), () => cur.current.api<{ digest: Digest | null; aiFailedAt?: string | null }>(`/api/digest?section=${s}&lang=${lang}`));
+    const j = await tracked(last.current, "digest", s, Date.now(), () => cur.current.api<{ digest: Digest | null; aiFailedAt?: string | null }>(`/api/digest?section=${s}&lang=${lang}`), failures.current);
     const at = j.digest?.generatedAt;
     if (at && seenAt.current[s] && seenAt.current[s] !== at) setRulesDigests((all) => (all[s] === undefined ? all : { ...all, [s]: undefined }));
     if (at) seenAt.current[s] = at;
@@ -141,7 +155,7 @@ export function useSectionData(o: Opts) {
     setAiFail((a) => (a[s] === (j.aiFailedAt ?? null) ? a : { ...a, [s]: j.aiFailedAt ?? null }));
   }, []);
   const loadNews = useCallback(function loadNews(s: SectionId, retry = 0): Promise<void> {
-    return tracked(last.current, "news", s, Date.now(), () => cur.current.api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`))
+    return tracked(last.current, "news", s, Date.now(), () => cur.current.api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`), failures.current)
       .then((j) => {
         if (j.at && j.items.length) setNews((n) => (n[s]?.at === j.at ? n : { ...n, [s]: { at: j.at!, items: j.items } }));
         // My Interests' list was stale (back after a while): the server is fetching it now, ask again soon.
@@ -157,7 +171,7 @@ export function useSectionData(o: Opts) {
   }, []);
   const loadPreds = useCallback(
     (s: SectionId) =>
-      tracked(last.current, "predictions", s, Date.now(), () => cur.current.api<{ sets: PredictionSet[] }>(`/api/predictions?section=${s}&lang=${cur.current.lang}`))
+      tracked(last.current, "predictions", s, Date.now(), () => cur.current.api<{ sets: PredictionSet[] }>(`/api/predictions?section=${s}&lang=${cur.current.lang}`), failures.current)
         .then((j) => setPreds((p) => ({ ...p, [s]: j.sets })))
         .catch(() => setPreds((p) => ({ ...p, [s]: p[s] ?? [] }))),
     [],
@@ -167,7 +181,7 @@ export function useSectionData(o: Opts) {
   const evaluate = useCallback(() => {
     if (!cur.current.enabled) return;
     const visible = document.visibilityState !== "hidden";
-    const loads = dueLoads({ now: Date.now(), last: last.current, tab: cur.current.tab, visible, hiddenSince: hiddenSince.current });
+    const loads = dueLoads({ now: Date.now(), last: last.current, tab: cur.current.tab, visible, hiddenSince: hiddenSince.current, failed: failures.current });
     if (visible) hiddenSince.current = null;
     for (const l of loads) {
       if (l.kind === "digest") {
@@ -180,7 +194,10 @@ export function useSectionData(o: Opts) {
 
   // Password prompt or prefs not ready: forget what was loaded, so everything loads again once allowed.
   useEffect(() => {
-    if (!enabled) last.current = { digest: {}, news: {}, predictions: {} };
+    if (!enabled) {
+      last.current = { digest: {}, news: {}, predictions: {} };
+      failures.current = { digest: {}, news: {}, predictions: {} };
+    }
     evaluate();
   }, [enabled, evaluate]);
   // A language change reloads the language-dependent copies (briefings, predictions), not the headlines.
@@ -328,7 +345,7 @@ export function useSectionData(o: Opts) {
   // What the current tab shows: the rule-based copy while the reader has chosen it, else the briefing.
   const rulesView = isRulesTab && !!rulesDigests[tab];
   const active = rulesView ? rulesDigests[tab] : digests[tab];
-  const failed = !viewingOld && !!active && translateFailed.has(translateKey(tab, lang, active.generatedAt, rulesView));
+  const translateFailedNow = !viewingOld && !!active && translateFailed.has(translateKey(tab, lang, active.generatedAt, rulesView));
 
-  return { active, digests, aiFail, liveNews: news, preds, rulesView, toggleRules, translatingTab, translateFailed: failed, translatingPreds, reloadDigest, waitForBriefing };
+  return { active, digests, aiFail, liveNews: news, preds, rulesView, toggleRules, translatingTab, translateFailed: translateFailedNow, translatingPreds, reloadDigest, waitForBriefing };
 }
