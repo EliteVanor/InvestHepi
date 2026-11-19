@@ -146,7 +146,9 @@ export async function nextUnits(now: number): Promise<Record<Lane, Unit | null>>
           if (fresh(last, occ)) continue;
           at = last?.at ?? "";
         }
-        if (!due || (s.admin && !due.admin) || (s.admin === due.admin && at < dueAt)) [due, dueAt] = [s, at];
+        // Briefings: the admin's set, then the sets with the most followers (they use the daily pre-translation budget first), then the stalest.
+        const more = !isPred(item) && !!due && s.uids.length !== due.uids.length ? s.uids.length > due.uids.length : null;
+        if (!due || (s.admin && !due.admin) || (s.admin === due.admin && (more ?? at < dueAt))) [due, dueAt] = [s, at];
       }
       if (due) {
         found[lane] = { occ, run, item, lane, set: due };

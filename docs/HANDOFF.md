@@ -125,6 +125,11 @@ Checked against production. Fixed on the branch (not deployed yet):
 **Audit (Nov 19)**: report https://claude.ai/artifact/PHWikthAG3dygy7usaAzEy (private), working notes with file:line in `docs/AUDIT-v19.md`. Baseline: typecheck passes; `selftest` and `vntest` fail on the real clock (test bugs), and `npm test` stops at the first failure so 17 suites don't run; no CI; `npm audit` highs not reachable (postcss build-time, nodemailer in an unused Auth.js provider).
 - Causes of the reported problems: (a) `black-translucent` + `viewport-fit: cover` in `layout.tsx` with no `env(safe-area-inset-top)` on `.topbar` (`globals.css:171-178`); (b) Nasdaq 1-day uses after-hours `lastSalePrice` and an unreliable previous close (`chart.ts:157-158`), the chart header follows the selected range (`LiveChart.tsx:342`), the strip overlay drops `stale` (`strip.ts:36`); (c) the page loads briefings only on mount (`page.tsx:126`), My Interests is never pre-translated (`scheduler.ts:205`).
 
+**Row 5 (translations, fix-plan items 4-5): what runs and what it costs (estimates, not measured on real briefings)**
+- My Interests briefings are pre-translated after each refresh into the languages of the set's followers seen in the last day (never English); the first 04:35 UTC slot reaches every user's set (5 a day).
+- Budget (recommended, owner decision pending): pre-translation may use `PRETRANSLATE_DAILY_TOKENS` (default 50,000, 25% of qwen's 200K) a day, counted from the models' real usage; the admin's set goes first, then the sets with the most followers; beyond it, the briefing is translated on first read. One translation is about 4 chunks, about 6.7k tokens and 4 requests, so the cap is about 7 translations (about 28 requests) a day. Shared sections' Vietnamese is about 14 translations (about 94k tokens, 56 requests) a day, so qwen runs at about 72% with the cap fully used; the rest spills to Flash-Lite only when qwen is cooled down.
+- Pacing: chunks are paced by reserved tokens per minute (`GROQ_TPM` x 0.94: two chunks of about 3k fit, a third waits for the minute), so a 4-chunk briefing needs about 60 s of waiting. The translate route stops starting chunks after 50 s (finished chunks are kept, retry after 2 min); the scheduler's pre-translation has 120 s in total.
+
 **Handoff**
 - Goal: v19 overhaul, news first, on `v19-overhaul`.
 - Decisions: above.
