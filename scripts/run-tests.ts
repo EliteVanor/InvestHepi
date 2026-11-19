@@ -28,6 +28,7 @@ const SUITES = [
   "v16test",
   "v17test",
   "v18test",
+  "v19test",
 ];
 
 const dir = __dirname;
