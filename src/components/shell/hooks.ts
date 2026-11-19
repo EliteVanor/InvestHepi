@@ -4,15 +4,12 @@
  * The page's state, one concern per hook (page.tsx composes them). Each hook owns its state and
  * the effects that keep it in sync; nothing here renders.
  */
-import { useCallback, useEffect, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { Account } from "@/components/account";
 import type { T } from "@/lib/i18n";
 import { SECTION_IDS, type Digest, type NewsItem, type SectionId } from "@/lib/types";
-import type { PredictionSet } from "@/lib/predictions-view";
 
 export type Api = <R = unknown>(url: string, init?: RequestInit) => Promise<R>;
-export type Digests = Partial<Record<SectionId, Digest | null>>;
-type SetDigests = Dispatch<SetStateAction<Digests>>;
 
 const TAB_KEY = "ih-tab";
 
@@ -103,124 +100,6 @@ export function useTitleHidden(ref: RefObject<HTMLElement | null>) {
     return () => io.disconnect();
   }, [ref]);
   return hidden;
-}
-
-/* ----------------------------------------------------------- briefings */
-
-/**
- * The server makes an interest briefing in the background (a new set's first one, or a catch-up for
- * an old one): poll until a version other than `since` shows up (or ~3 minutes pass).
- */
-export function useBriefingPoll(api: Api, lang: string, setDigests: SetDigests) {
-  const pollRef = useRef<number | null>(null);
-  const waitForBriefing = useCallback(
-    (since?: string) => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
-      let n = 0;
-      const tick = () => {
-        n++;
-        api<{ digest: Digest | null }>(`/api/digest?section=interests&lang=${lang}`)
-          .then((j) => {
-            setDigests((d) => ({ ...d, interests: j.digest }));
-            if (((j.digest && j.digest.generatedAt !== since) || n > 22) && pollRef.current) {
-              window.clearInterval(pollRef.current);
-              pollRef.current = null;
-            }
-          })
-          .catch(() => {});
-      };
-      tick();
-      pollRef.current = window.setInterval(tick, 8000);
-    },
-    [api, lang, setDigests],
-  );
-  useEffect(
-    () => () => {
-      if (pollRef.current) window.clearInterval(pollRef.current);
-    },
-    [],
-  );
-  return waitForBriefing;
-}
-
-/**
- * The rule-based copy readers can switch to while the AI briefing is behind (`aiFail`). The choice is
- * saved per device and only applies while the AI briefing is behind: a newer AI briefing shows again.
- * The copy is fetched when needed (the server caches it 15 minutes).
- */
-export function useRulesView(tab: SectionId, aiFail: Partial<Record<SectionId, string | null>>, api: Api, lang: string) {
-  const [rulesView, setRulesView] = useState<Set<SectionId>>(() => new Set());
-  const [rulesDigests, setRulesDigests] = useState<Digests>({});
-  useEffect(() => {
-    lsTry(() => {
-      const saved = JSON.parse(localStorage.getItem("ih-rules-view") ?? "[]") as SectionId[];
-      setRulesView(new Set(saved.filter((s) => SECTION_IDS.includes(s))));
-    });
-  }, []);
-  const isRulesTab = rulesView.has(tab) && !!aiFail[tab];
-  const loadRules = useCallback(
-    (s: SectionId) =>
-      api<{ digest: Digest | null }>(`/api/digest?section=${s}&lang=${lang}&variant=rules`)
-        .then((j) => setRulesDigests((all) => ({ ...all, [s]: j.digest })))
-        .catch(() => {}),
-    [api, lang],
-  );
-  useEffect(() => {
-    if (isRulesTab && rulesDigests[tab] === undefined) loadRules(tab);
-  }, [isRulesTab, tab, rulesDigests, loadRules]);
-  const toggleRules = useCallback(
-    (s: SectionId, on: boolean) => {
-      setRulesView((cur) => {
-        const next = new Set(cur);
-        if (on) next.add(s);
-        else next.delete(s);
-        lsTry(() => localStorage.setItem("ih-rules-view", JSON.stringify([...next])));
-        return next;
-      });
-      if (on) loadRules(s);
-    },
-    [loadRules],
-  );
-  return { rulesDigests, setRulesDigests, isRulesTab, toggleRules };
-}
-
-/** Identifies one translation attempt (section, language, briefing version, rule-based or not). */
-export const translateKey = (tab: SectionId, lang: string, generatedAt: string, rules: boolean) => `${tab}:${lang}:${generatedAt}:${rules ? "rules" : ""}`;
-
-/**
- * A briefing written in another language is translated, not regenerated: the server caches each
- * translation per briefing version, so only the first reader of a new briefing costs an AI call.
- */
-export function useTranslateOnRead(o: {
-  tab: SectionId;
-  lang: string;
-  api: Api;
-  digests: Digests;
-  setDigests: SetDigests;
-  rulesDigests: Digests;
-  setRulesDigests: SetDigests;
-  isRulesTab: boolean;
-  viewingOld: boolean;
-}) {
-  const { tab, lang, api, digests, setDigests, rulesDigests, setRulesDigests, isRulesTab, viewingOld } = o;
-  const tried = useRef(new Set<string>());
-  const [translatingTab, setTranslatingTab] = useState<SectionId | null>(null);
-  const [translateFailed, setTranslateFailed] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const rules = isRulesTab && !!rulesDigests[tab];
-    const d = rules ? rulesDigests[tab] : digests[tab];
-    if (!d || viewingOld || !d.language || d.language === lang) return;
-    const k = translateKey(tab, lang, d.generatedAt, rules);
-    if (tried.current.has(k)) return;
-    tried.current.add(k);
-    setTranslatingTab(tab);
-    const save = rules ? setRulesDigests : setDigests;
-    api<{ digest: Digest | null }>(`/api/translate?section=${tab}&lang=${lang}${rules ? "&variant=rules" : ""}`, { method: "POST" })
-      .then((j) => j.digest && save((all) => ({ ...all, [tab]: j.digest })))
-      .catch(() => setTranslateFailed((f) => new Set(f).add(k)))
-      .finally(() => setTranslatingTab((x) => (x === tab ? null : x)));
-  }, [digests, rulesDigests, isRulesTab, tab, lang, viewingOld, api, setDigests, setRulesDigests]);
-  return { translatingTab, translateFailed };
 }
 
 /* ----------------------------------------------------------- headlines */
@@ -370,91 +249,4 @@ export function useShortcuts(h: Shortcuts) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-}
-
-/* --------------------------------------------------------- predictions */
-
-export type PredSets = Partial<Record<SectionId, PredictionSet[]>>;
-
-/**
- * Each section's latest predictions (loaded with the page, again every 5 minutes while open), and
- * their notes translated on read: the server caches one translation per prediction version, so only
- * the first reader of a new run costs an AI call.
- */
-export function usePredictions(o: { ready: boolean; api: Api; lang: string; tab: SectionId }) {
-  const { ready, api, lang, tab } = o;
-  const [preds, setPreds] = useState<PredSets>({});
-  const [translating, setTranslating] = useState<SectionId | null>(null);
-  const tried = useRef(new Set<string>());
-  const load = useCallback(
-    (s: SectionId) =>
-      api<{ sets: PredictionSet[] }>(`/api/predictions?section=${s}&lang=${lang}`)
-        .then((j) => setPreds((p) => ({ ...p, [s]: j.sets })))
-        .catch(() => setPreds((p) => ({ ...p, [s]: p[s] ?? [] }))),
-    [api, lang],
-  );
-  useEffect(() => {
-    if (!ready) return;
-    SECTION_IDS.forEach((s) => load(s));
-    const id = setInterval(() => document.visibilityState === "visible" && SECTION_IDS.forEach((s) => load(s)), 5 * 60_000);
-    return () => clearInterval(id);
-  }, [ready, load]);
-  useEffect(() => {
-    const sets = preds[tab];
-    if (!sets?.length || lang === "en" || sets.every((s) => s.language === lang)) return;
-    const k = `${tab}:${lang}:${sets.map((s) => `${s.daily?.at}|${s.weekly?.at}`).join(",")}`;
-    if (tried.current.has(k)) return;
-    tried.current.add(k);
-    setTranslating(tab);
-    api<{ sets: PredictionSet[] }>(`/api/translate?section=${tab}&lang=${lang}&kind=predictions`, { method: "POST" })
-      .then((j) => j.sets?.length && setPreds((p) => ({ ...p, [tab]: j.sets })))
-      .catch(() => {})
-      .finally(() => setTranslating((x) => (x === tab ? null : x)));
-  }, [preds, tab, lang, api]);
-  return { preds, reloadPredictions: load, translatingPreds: translating };
-}
-
-/* ---------------------------------------------------------- live news */
-
-export type LiveNewsMap = Partial<Record<SectionId, { at: string; items: NewsItem[] }>>;
-
-/**
- * The live headline lists, polled every 5 minutes while the page is visible. Shared sections are
- * refreshed by the scheduler every 15 minutes; My Interests every 30 while someone reads it (these
- * polls are what says so), and at once when a reader comes back to a stale list.
- */
-export function useLiveNews(o: { ready: boolean; api: Api }) {
-  const { ready, api } = o;
-  const [news, setNews] = useState<LiveNewsMap>({});
-  const load = useCallback(
-    function load(s: SectionId, retry = 0): Promise<void> {
-      return api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`)
-        .then((j) => {
-          if (j.at && j.items.length) setNews((n) => (n[s]?.at === j.at ? n : { ...n, [s]: { at: j.at!, items: j.items } }));
-          // My Interests' list was stale (back after a while): the server is fetching it now, ask again soon.
-          if (j.refreshing && retry < 3) setTimeout(() => void load(s, retry + 1), 12_000);
-        })
-        .catch(() => {});
-    },
-    [api],
-  );
-  useEffect(() => {
-    if (!ready) return;
-    SECTION_IDS.forEach((s) => load(s));
-    const id = setInterval(() => document.visibilityState === "visible" && SECTION_IDS.forEach((s) => load(s)), 5 * 60_000);
-    return () => clearInterval(id);
-  }, [ready, load]);
-  return { liveNews: news, reloadNews: load };
-}
-
-/**
- * Headlines a reader sees for a section: the live list, with titles translated where the briefing's
- * translated copy has the same headline (by id); newer ones show as published. Falls back to the
- * briefing's own list.
- */
-export function newsFor(digest: Digest | null | undefined, live?: { at: string; items: NewsItem[] }): { at: string; items: NewsItem[] } | null {
-  if (!live?.items.length) return digest ? { at: digest.generatedAt, items: digest.news } : null;
-  if (!digest) return live;
-  const tr = new Map(digest.news.filter((n) => n.titleOrig).map((n) => [n.id, n]));
-  return { at: live.at > digest.generatedAt ? live.at : digest.generatedAt, items: live.items.map((n) => (tr.has(n.id) ? { ...n, title: tr.get(n.id)!.title, titleOrig: n.title } : n)) };
 }

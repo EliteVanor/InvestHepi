@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The single page. State lives in hooks (components/shell/hooks.ts), the frame (top bar, sidebar,
+ * The single page. State lives in hooks (components/shell/hooks.ts; the per-section briefing, headlines
+ * and predictions in components/shell/section-data.ts), the frame (top bar, sidebar,
  * tab bar) in components/shell/chrome.tsx; this file loads data, wires actions, and lays out the
  * section's content.
  */
@@ -23,25 +24,8 @@ import { SetupChecklist } from "@/components/setup";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, type Tab as SettingsTab } from "@/components/sheets";
 import { TrackSheet } from "@/components/track";
 import { Ambient, Footer, Sidebar, Skeleton, TabBar, TopBar, sectionName, type FrameActions } from "@/components/shell/chrome";
-import {
-  refreshState,
-  savedTab,
-  translateKey,
-  useBriefingPoll,
-  newsFor,
-  useLiveNews,
-  useNewHeadlines,
-  usePredictions,
-  useRulesView,
-  useSavedTab,
-  useShortcuts,
-  useTitleHidden,
-  useTranslateOnRead,
-  useViewport,
-  useWideLayout,
-  type Digests,
-  type RefreshUi,
-} from "@/components/shell/hooks";
+import { refreshState, savedTab, useNewHeadlines, useSavedTab, useShortcuts, useTitleHidden, useViewport, useWideLayout, type RefreshUi } from "@/components/shell/hooks";
+import { newsFor, translateKey, useSectionData } from "@/components/shell/section-data";
 import { chartSymbols as chartSymbolsFor, planSymbols, stripPlan, stripRows as buildStripRows } from "@/components/shell/strip";
 import { ToastProvider, useToast } from "@/components/toast";
 import { isLang, langInfo } from "@/lib/languages";
@@ -83,9 +67,6 @@ function App() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   /* ---------------------------------------------------------- data */
-  const [digests, setDigests] = useState<Digests>({});
-  // The last run couldn't use AI: per section, when (readers may switch to a rule-based copy).
-  const [aiFail, setAiFail] = useState<Partial<Record<SectionId, string | null>>>({});
   const [oldDigest, setOldDigest] = useState<{ section: SectionId; key: string; digest: Digest } | null>(null);
   const [calendar, setCalendar] = useState<{ events: CalendarEvent[]; notes: string[] }>({ events: [], notes: [] });
   const [interests, setInterests] = useState<Interest[]>([]);
@@ -105,16 +86,6 @@ function App() {
     return () => window.removeEventListener("ih-signin", on);
   }, []);
 
-  const loadDigest = useCallback(
-    async (s: SectionId) => {
-      // ?lang= lets signed-out visitors read shared sections in their language.
-      const j = await api<{ digest: Digest | null; aiFailedAt?: string | null }>(`/api/digest?section=${s}&lang=${lang}`);
-      setDigests((d) => ({ ...d, [s]: j.digest }));
-      setAiFail((a) => ({ ...a, [s]: j.aiFailedAt ?? null }));
-    },
-    [api, lang],
-  );
-  const waitForBriefing = useBriefingPoll(api, lang, setDigests);
   // The calendar follows the tab (shared tabs: their market groups, not personal earnings dates).
   const calTab = useRef<SectionId>("interests");
   const loadCalendar = useCallback(() => api<{ events: CalendarEvent[]; notes: string[] }>(`/api/calendar?section=${calTab.current}`).then(setCalendar).catch(() => {}), [api]);
@@ -123,9 +94,6 @@ function App() {
   // Initial load waits for prefs (read state) so "new" dots are computed correctly.
   useEffect(() => {
     if (!ready || needPassword) return;
-    Promise.all(SECTION_IDS.map((s) => loadDigest(s))).catch((e) => {
-      if (!["401", "signin"].includes((e as Error).message)) setError((e as Error).message);
-    });
     loadCalendar();
     loadInterests();
     Promise.all([api<Account>("/api/me").catch(() => null), api<{ role?: "owner" | "viewer" | null }>("/api/status").catch(() => null)]).then(([me, st]) => {
@@ -157,7 +125,7 @@ function App() {
       setReadOnly(viewer);
       if (!viewer) api<{ holdings: Holding[] }>("/api/portfolio").then((h) => setHoldings(h.holdings)).catch(() => {});
     });
-  }, [ready, needPassword, loadDigest, loadCalendar, loadInterests, api]);
+  }, [ready, needPassword, loadCalendar, loadInterests, api]);
 
   useEffect(() => {
     if (calTab.current === tab) return;
@@ -166,16 +134,23 @@ function App() {
   }, [tab, ready, loadCalendar]);
 
   /* ------------------------------------------- what the tab shows */
-  const { rulesDigests, setRulesDigests, isRulesTab, toggleRules } = useRulesView(tab, aiFail, api, lang);
+  const onDataError = useCallback((e: Error) => {
+    if (!["401", "signin"].includes(e.message)) setError(e.message);
+  }, []);
+  const { digests, aiFail, liveNews, preds, rulesDigests, isRulesTab, toggleRules, translatingTab, translateFailed, translatingPreds, reloadDigest, waitForBriefing } = useSectionData({
+    enabled: ready && !needPassword,
+    api,
+    lang,
+    tab,
+    viewingOld: !!oldDigest,
+    onError: onDataError,
+  });
   const active = isRulesTab && rulesDigests[tab] ? rulesDigests[tab] : digests[tab];
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
-  const { translatingTab, translateFailed } = useTranslateOnRead({ tab, lang, api, digests, setDigests, rulesDigests, setRulesDigests, isRulesTab, viewingOld: !!oldDigest });
   // Headlines: the live list (refreshed every 15/30 min without AI), titles translated where the briefing has them.
-  const { liveNews } = useLiveNews({ ready: ready && !needPassword, api });
   const lists = useMemo(() => Object.fromEntries(SECTION_IDS.map((s) => [s, newsFor(digests[s], liveNews[s])])), [digests, liveNews]);
   const activeList = useMemo(() => (oldDigest?.section === tab ? { at: oldDigest.digest.generatedAt, items: oldDigest.digest.news } : newsFor(active, liveNews[tab])), [oldDigest, tab, active, liveNews]);
   const { newIds, interestsNew, badge, markAllRead } = useNewHeadlines({ ready, seen, markSeen, lists, active: activeList, tab });
-  const { preds, translatingPreds } = usePredictions({ ready: ready && !needPassword, api, lang, tab });
   const allCalls = useMemo(() => SECTION_IDS.flatMap((s) => callsOf(preds[s] ?? [])), [preds]);
   // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
@@ -238,8 +213,7 @@ function App() {
         const failed = r.results?.find((x) => !x.ok);
         if (failed) setError(failed.error ?? "Refresh failed");
         setOldDigest(null);
-        setRulesDigests((all) => ({ ...all, [s]: undefined }));
-        await Promise.all([loadDigest(s), loadCalendar()]);
+        await Promise.all([reloadDigest(s), loadCalendar()]);
         // Users see how many presses they have left after each one.
         const left = r.quota && !account.admin ? { n: r.quota.left, limit: r.quota.limit } : null;
         if (!failed) toast(r.results?.[0]?.keptAi ? t("refresh.keptAi") + (left ? ` ${t("refresh.left", left)}.` : "") : left ? t("refresh.doneLeft", left) : t("toast.updated"));
@@ -252,7 +226,7 @@ function App() {
         setRefreshing(null);
       }
     },
-    [api, loadDigest, loadCalendar, toast, t, lang, account.admin, rs.waitText, rs.limitText, setRulesDigests],
+    [api, reloadDigest, loadCalendar, toast, t, lang, account.admin, rs.waitText, rs.limitText],
   );
   const refreshUi: RefreshUi | null = rs.can
     ? { busy: !!refreshing, disabled: !!refreshing || rs.blocked, title: rs.title, left: !account.admin && rs.quota ? rs.quota.left : undefined, run: () => refresh(tab) }

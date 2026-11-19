@@ -9,6 +9,7 @@ import assert from "node:assert/strict";
 (async () => {
   const S = await import("../src/components/shell/strip");
   const H = await import("../src/components/shell/hooks");
+  const SD = await import("../src/components/shell/section-data");
   const { makeT } = await import("../src/lib/i18n");
   const { SECTION_STRIPS, SECTION_MACRO } = await import("../src/lib/config");
   type Digest = import("../src/lib/types").Digest;
@@ -61,7 +62,7 @@ import assert from "node:assert/strict";
   assert.equal(H.refreshState({ mode: "multi", user: null, admin: false }, "interests", t, "en", now).can, false, "signed-out visitors: no button");
 
   /* ---------------- translation attempts are keyed per version and variant */
-  assert.notEqual(H.translateKey("us", "vi", "2026-11-17T01:00:00Z", false), H.translateKey("us", "vi", "2026-11-17T01:00:00Z", true));
+  assert.notEqual(SD.translateKey("us", "vi", "2026-11-17T01:00:00Z", false), SD.translateKey("us", "vi", "2026-11-17T01:00:00Z", true));
 
   console.log("V15 OK");
 })().catch((e) => {
