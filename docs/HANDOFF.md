@@ -4,7 +4,9 @@ Read this with `CLAUDE.md` (architecture, commands, technical rules). This file 
 
 ## Goal
 
-InvestHepi helps someone catch up on market news fast and act on it: a short AI briefing per section (summary, trend, events, movers, scenarios), separate AI predictions with buy / hold / wait calls, confidence, triggers and risks (twice a weekday per market), plus a track record that grades every call at its market's close. Audience: the owner first, then Vietnamese investors (the UI is in 8 languages, Vietnamese matters most).
+**Changed Nov 19 2026 (owner, v19): news is the main goal.** InvestHepi helps a curious reader (with or without a finance background, Vietnamese first) catch up on important and interesting news, understand it, see its effect on markets and the world, and learn general knowledge along the way. Price predictions stay as a side goal: they are the "impact" part of a story. The description below is the v18 product, which v19 reshapes (see the v19 section).
+
+v18 product: InvestHepi helps someone catch up on market news fast and act on it: a short AI briefing per section (summary, trend, events, movers, scenarios), separate AI predictions with buy / hold / wait calls, confidence, triggers and risks (twice a weekday per market), plus a track record that grades every call at its market's close. Audience: the owner first, then Vietnamese investors (the UI is in 8 languages, Vietnamese matters most).
 
 Hard constraint: **free plans only** (Vercel Hobby, Upstash free, Groq/Gemini free tiers, GitHub Actions). Every feature must keep AI token use and request volume low.
 
@@ -16,7 +18,7 @@ Design: Apple-like and quietly futuristic. Ambient light background tinted per s
 - **Shared sections never show personal stocks.** World = world indexes + global giants + macro. US = S&P 500, Dow, Nasdaq 100, Russell 2000 + mega caps. Vietnam = VN-Index, VN30, HNX, UPCoM + banks + large caps. The AI's calls in shared sections are on market groups, not users' stocks.
 - **World has no market open/closed pill** (it spans many exchanges).
 - **Refreshing (decided Nov 16, mechanism changed in v13):** briefings refresh on the app's own timetable (`src/lib/timetable.ts`), run by a tick that Vercel Schedules, cron-job.org and GitHub poke on a plain interval; a run that's late or duplicated never spends AI twice, and a slot more than an hour late is reported. Users' interest sets refresh automatically 4 times a weekday (01:15, 08:10, 12:30, 21:20 UTC), the admin's 6 times, **but only for users seen in the last day** (decided Nov 16, v14); someone back after longer gets one catch-up briefing in the background when they open the app (if theirs is over 12 h old). Signed-in users can also refresh their own My Interests by hand: 5 a day, 90 minutes apart, on a lighter model (Gemini Flash-Lite); every press writes a new briefing and tells them how many presses are left. The admin can refresh any section, 10 a day, on the best model. Shared sections can't be refreshed by users. A newly saved interest set gets its first briefing automatically, once.
-- **Schedule (v18):** briefings every day (weekends at the weekday rate): World 4, US 5 (02:15, 12:30, 15:30, 17:00, 21:20 UTC), Vietnam 5; the admin's set 6, users' sets 4. Predictions on weekdays only, two per market in the market's own local time (Japan 08:30/11:45 Tokyo, China & HK 09:00/12:15 HK, Vietnam 08:15/11:35 Hanoi, Europe 07:30/12:00 London, US, US stocks, oil and gold 07:30/12:00 New York; interest sets split into US and Vietnam parts on those clocks).
+- **Schedule (v18):** briefings every day (weekends at the weekday rate): World 4, US 5 (02:15, 12:30, 15:30, 17:00, 21:20 UTC), Vietnam 5; the admin's set 6, users' sets 4. Predictions on weekdays only, two per market in the market's own local time (Japan 07:30/11:45 Tokyo, China & HK 08:00/12:15 HK, Vietnam 07:45/11:35 Hanoi, Europe 06:30/12:00 London (the source of truth is `src/lib/timetable.ts`), US, US stocks, oil and gold 07:30/12:00 New York; interest sets split into US and Vietnam parts on those clocks).
 - **Predictions (decided Nov 17, v18):** a separate AI job from briefings; briefings make no calls. Daily calls before market and at mid-day, graded at that day's close on the ticker's own exchange (mid-day from the price at that moment); weekly calls only in the before-market run, graded at the 5th trading day's close counting the prediction day (holiday: the previous full session); a holiday weekday is "market closed, not graded"; no predictions on weekends; each run predicts only its own market (owner, Nov 17: "each market got 2 predictions and only predict its market"). A failed run is retried once, then missed: no rule-based predictions.
 - **Headlines (v18):** World, US and Vietnam refresh every 15 minutes with no AI. An interest set's headlines refresh every 30 minutes only while someone who follows it has the page open, and right away when a user signs in or comes back to a stale list (owner, Nov 17); nobody reading, no fetches.
 - **Latest data (owner, Nov 17):** every prediction must work from the latest data. A market whose benchmark lacks the latest close (or, during its session, a live price) gets "unavailable" instead of a prediction; no prediction is made from older prices, and none is kept as "not counted". Before-market runs must not be missed for lack of a poke: they start 75-120 minutes before each open.
@@ -84,6 +86,41 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Movers carry `source_ids` (schema + prompt); a mover's reason is kept only if a cited headline names the stock.
 - GitHub's scheduler is unreliable: since Nov 15 only one scheduled run fired (01:15 slot ran at 02:22); the Sunday 22:35 slot never ran; the Monday 08:10 slot hadn't started by 08:41. **Most urgent fix:** move the timetable to an external free scheduler (cron-job.org or Upstash QStash) calling `/api/refresh` with `Authorization: Bearer $CRON_SECRET`, keep GitHub as backup.
 - Competitor and AI-for-stocks report (private artifact, owner's account): https://claude.ai/artifact/KNXDbKGgFtLiGQ7iBVHw1S. Main takeaways: make the graded track record the front door (with a do-nothing baseline), get a Vietnamese legal read on publishing buy/hold/wait calls (the SSC warned about unlicensed recommendations in 2026), add fundamentals and foreign flows for VN tickers, web push; don't build order books, screeners, community or trading.
+
+## v19 (branch `v19-overhaul`, started Nov 19 2026): full overhaul, news first
+
+**Status: audit done, decisions settled, nothing built yet.** Next session starts at the design step.
+
+**Owner decisions (Nov 19)**
+- Overhaul scope: code health plus product direction (1B); deep audit (2B); Claude builds each fix itself, `plans/` optional as a record (3A); product rules are open to change (4B); split sessions at handoff points (5A); branch `v19-overhaul` (6); no reference apps (8).
+- Reported problems (7): (a) iPhone Safari home-screen app hides sign-in and the top bar; (b) stock prices disagree between screens; (c) briefings feel stale or slow to appear.
+- **New goal: news first** (see Goal). Story cards, all accepted as recommended:
+  1. A story is a group of headlines about one event from several outlets, explained once.
+  2. Explanations use titles and snippets from every outlet in the group plus our price and macro data; no full-article fetching; each part may say "not clear from the reports".
+  3. Ranking: outlet count + whether a touched market moved + the model's importance score; about 1 in 5 slots for "interesting" (science, culture).
+  4. Written for a curious reader with or without finance background; terms defined or linked.
+  5. Card: title + outlet count, what happened, why it matters, effect on markets (today's moves from our data), effect on the world, similar past events, concepts, sources.
+  6. Past events only from a curated library: expand `analogs.ts` to ~50 researched entries (date, what happened, measured market move, source link), owner reviews the list; the model cites only from it or says "no close precedent", and says what is different this time.
+  7. 6 stories per shared section per run (5 important, 1 interesting); My Interests up to 6 about followed stocks.
+  8. Cards at each briefing slot, plus a big new story (many outlets at once) gets a card within ~15-30 min via the headline tick, max 6 extra AI calls per section per day.
+  9. Page order: "The big picture" (3 lines), story cards, markets (strip, movers, mood), predictions. Summary/trend/events merge into cards; scenarios become a "what to watch" line in a card.
+  10. Concept cards: up to 3 concepts per story, written right after the story in the same tick (readers never wait), max 10 new a day, cached forever, translated once per language. Recall questions and a weekly recap are a later round.
+  11. Predictions keep running unchanged this round; the card moves below the news; each call links to the stories behind it.
+  12. News may use up to about half of the Flash-Lite and qwen free allowance.
+  13. Shared-section story and concept cards pre-translated into Vietnamese; other languages on first read.
+- v19 includes audit rows 1-29; row 30 (splitting large files) goes through the design step. Holidays: a holiday and early-close table for 2026-2027 (US, Vietnam, Japan, Hong Kong, Europe), dates checked on each exchange's official calendar. FOMC 2027 dates too.
+
+**Audit (Nov 19)**: report https://claude.ai/artifact/PHWikthAG3dygy7usaAzEy (private), working notes with file:line in `docs/AUDIT-v19.md`. Baseline: typecheck passes; `selftest` and `vntest` fail on the real clock (test bugs), and `npm test` stops at the first failure so 17 suites don't run; no CI; `npm audit` highs not reachable (postcss build-time, nodemailer in an unused Auth.js provider).
+- Causes of the reported problems: (a) `black-translucent` + `viewport-fit: cover` in `layout.tsx` with no `env(safe-area-inset-top)` on `.topbar` (`globals.css:171-178`); (b) Nasdaq 1-day uses after-hours `lastSalePrice` and an unreliable previous close (`chart.ts:157-158`), the chart header follows the selected range (`LiveChart.tsx:342`), the strip overlay drops `stale` (`strip.ts:36`); (c) the page loads briefings only on mount (`page.tsx:126`), My Interests is never pre-translated (`scheduler.ts:205`).
+
+**Handoff**
+- Goal: v19 overhaul, news first, on `v19-overhaul`.
+- Decisions: above.
+- Changed files: `CLAUDE.md` (goal line, compaction note), `docs/HANDOFF.md` (goal, prediction times fixed, this section), `docs/AUDIT-v19.md` (new). No code changed.
+- Ruled out: Next 16 upgrade this round (own round after CI); acting on the Upstash quota before measuring; timing-safe password compares; full-article fetching; past events from model memory.
+- Open items: none from the owner. The owner reviews the past-event library when it is drafted.
+- Next step: run `improve-codebase-architecture` (with `codebase-design`) to design module shapes for the story pipeline (group, rank, explain, concept cards, analog library) and for row 30, then build in phase order A → B → C → D → E (see the report), one fix per commit, pin behavior first, regression tests in `scripts/v19test.ts`, `review-code` + thermo-nuclear per fix. Count AI tokens and calls per day for the story and concept cards before building them. Stress test on real data (`invest-helper` environment for market hosts), docs, ask before merging.
+- Skills to load next: how-i-work, how-i-think, improve-codebase-architecture, codebase-design, review-code, thermo-nuclear-code-quality-review; debugging for bugs; better-interface for UI.
 
 ## Session summary, Nov 17 2026 (v18)
 
