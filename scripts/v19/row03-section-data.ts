@@ -41,9 +41,9 @@ import assert from "node:assert/strict";
   assert.ok(!ask({ now: T0 + 9 * MIN + 59_000, last: all(T0) }).includes("digest:world"), "briefing not reloaded before 10 min");
   assert.deepEqual(ask({ now: T0 + 10 * MIN, last: all(T0), tab: "world" }), ["digest:world", "news:world", "predictions:world"], "10 min: briefing too");
   const half = all(T0);
-  half.news.world = T0 + 5 * MIN;
-  half.predictions.world = T0 + 5 * MIN;
-  assert.deepEqual(ask({ now: T0 + 10 * MIN, last: half }), ["digest:world"], "headlines were polled at 5, so only the briefing is due at 10");
+  half.news.world = T0 + 6 * MIN;
+  half.predictions.world = T0 + 6 * MIN;
+  assert.deepEqual(ask({ now: T0 + 10 * MIN, last: half }), ["digest:world"], "headlines were polled at 6, so only the briefing is due at 10");
 
   /* switching to a tab whose data is old loads it at once; a fresh one doesn't */
   const mixed = all(T0 + 8 * MIN);
