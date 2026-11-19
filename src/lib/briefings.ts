@@ -91,6 +91,8 @@ export interface TranslateOpts {
   pollMs?: number;
   /** No new chunk starts after this long (default: the translate route's budget). */
   budgetMs?: number;
+  /** A chunk over the minute's tokens: "spill" to Flash-Lite (a reader waits, the default) or "wait" (the scheduler). */
+  onFull?: "spill" | "wait";
 }
 
 /**
@@ -134,7 +136,7 @@ async function translateOnce(key: string, d: Digest, lang: string, opts: Transla
   }
   try {
     if (opts.onSpend && !(await opts.onSpend().catch(() => false))) return d;
-    const t = await translateDigest(d, lang, budgetMs);
+    const t = await translateDigest(d, lang, budgetMs, opts.onFull);
     await setJSON(key, t);
     return t;
   } catch (e) {
@@ -185,7 +187,7 @@ export async function pretranslateSet(hash: string, uids: string[], opts: Transl
     const spent = (await getJSON<number>(spentKey())) ?? 0;
     if (spent >= cap) break;
     const before = await translateTokensToday();
-    const t = await translateSet(hash, lang, { waitMs: 0, ...opts, budgetMs: left, onSpend: async () => ((await getJSON<number>(spentKey())) ?? 0) < cap }).catch(() => null);
+    const t = await translateSet(hash, lang, { waitMs: 0, onFull: "wait", ...opts, budgetMs: left, onSpend: async () => ((await getJSON<number>(spentKey())) ?? 0) < cap }).catch(() => null);
     const used = (await translateTokensToday()) - before;
     if (used > 0) await setJSON(spentKey(), spent + used, 2 * 86400);
     if (t?.language === lang) done.push(lang);

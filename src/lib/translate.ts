@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import { langInfo } from "./languages";
 import { complete } from "./llm";
+import { modelDef } from "./llm/models";
 import { getJSON, setJSON } from "./store";
 import type { Analysis, Digest, NewsItem, Outlook } from "./types";
 
@@ -158,9 +159,11 @@ const paceLimit = () => Math.floor((Number(process.env.GROQ_TPM) || 8000) * 0.94
 
 /**
  * Wait until a chunk reserving `tokens` fits in the current minute (the window opens with its first
- * chunk and closes 60 s later). Returns false instead of waiting if the wait would pass `deadline`.
+ * chunk and closes 60 s later). A chunk that does not fit either waits (`spill` false: the scheduler, which has
+ * time and no reader) or is reported as "over" so the caller sends it to a provider with no per-minute limit
+ * (`spill`: a reader is waiting). "late" = the wait would pass `deadline`.
  */
-async function pacedStart(tokens: number, deadline: number): Promise<boolean> {
+async function pacedStart(tokens: number, deadline: number, spill: boolean): Promise<"ok" | "over" | "late"> {
   for (;;) {
     const now = translateClock.now();
     if (now - pace.start >= 60_000) {
@@ -169,10 +172,11 @@ async function pacedStart(tokens: number, deadline: number): Promise<boolean> {
     }
     if (pace.reserved === 0 || pace.reserved + tokens <= paceLimit()) {
       pace.reserved += tokens;
-      return true;
+      return "ok";
     }
+    if (spill) return "over";
     const until = pace.start + 60_000;
-    if (until > deadline) return false;
+    if (until > deadline) return "late";
     await translateClock.sleep(Math.max(1, until - now));
   }
 }
@@ -185,13 +189,14 @@ export class TranslateError extends Error {
 }
 
 /**
- * Translate text slots in place, in chunks, two at a time and paced to the minute's token limit,
+ * Translate text slots in place, in chunks, two at a time and paced to the minute's token limit (with a
+ * reader waiting, `onFull` "spill": the overflow goes to Flash-Lite at once; the scheduler uses "wait"),
  * through the translate route. Returns the provider id. No new chunk starts after `budgetMs`. When the
  * run fails (a chunk fails, or the budget ran out) nothing is written to the slots, the finished chunks
  * are stored (`trc:<hash of language, instructions and text>`, 24 h), and a TranslateError says how
  * many were done, so a retry only pays for the rest. Throws if no AI provider can do it.
  */
-export async function translateSlots(slots: { text: string; set: Setter }[], lang: string, what = "a stock-market briefing and news headlines", budgetMs = TRANSLATE_ROUTE_BUDGET_MS): Promise<string> {
+export async function translateSlots(slots: { text: string; set: Setter }[], lang: string, what = "a stock-market briefing and news headlines", budgetMs = TRANSLATE_ROUTE_BUDGET_MS, onFull: "spill" | "wait" = "spill"): Promise<string> {
   if (!slots.length) return "";
   const target = langInfo(lang).english;
   const system = `You translate ${what} into ${target}. You get a JSON array of strings. Return ONLY a JSON array with the same number of strings, in the same order, each translated into natural, concise ${target} as a financial journalist would write it. Keep tickers, numbers, percentages, dates, index and company names, and units exactly as they are. Do not add, merge, drop or explain anything.`;
@@ -212,7 +217,12 @@ export async function translateSlots(slots: { text: string; set: Setter }[], lan
         results[i] = kept;
         continue;
       }
-      if (translateClock.now() >= deadline || !(await pacedStart(Math.ceil((system.length + json.length) / 3) + translateBudget(json.length), deadline))) {
+      const reserve = Math.ceil((system.length + json.length) / 3) + translateBudget(json.length);
+      // With a reader waiting, a chunk that would pass the minute's tokens goes to Flash-Lite (no per-minute
+      // limit; counted in its usage) instead of waiting.
+      const canSpill = onFull === "spill" && (modelDef("gem35") != null || modelDef("gem31") != null);
+      const slot = translateClock.now() >= deadline ? "late" : await pacedStart(reserve, deadline, canSpill);
+      if (slot === "late") {
         stop ??= new Error("out of time");
         return;
       }
@@ -221,6 +231,7 @@ export async function translateSlots(slots: { text: string; set: Setter }[], lan
           route: "translate",
           maxTokens: translateBudget(json.length),
           timeoutMs: TRANSLATE_TIMEOUT_MS,
+          skip: slot === "over" ? ["qwen"] : undefined,
           accept: (t) => parseTranslations(t, texts.length) != null,
         });
         results[i] = { out: parseTranslations(text, texts.length)!, provider };
@@ -251,10 +262,10 @@ export function outlookSlots(list: Outlook[]): { text: string; set: Setter }[] {
 }
 
 /** A copy of `d` with its text (and its main headlines) in `lang`. Throws if no AI provider can do it. */
-export async function translateDigest(d: Digest, lang: string, budgetMs = TRANSLATE_ROUTE_BUDGET_MS): Promise<Digest> {
+export async function translateDigest(d: Digest, lang: string, budgetMs = TRANSLATE_ROUTE_BUDGET_MS, onFull: "spill" | "wait" = "spill"): Promise<Digest> {
   const copy: Digest = JSON.parse(JSON.stringify(d));
   const slots = [...textSlots(copy.analysis), ...headlineSlots(copy.news ?? [], copy.analysis, lang)];
   if (!slots.length) return { ...copy, language: lang };
-  const provider = await translateSlots(slots, lang, undefined, budgetMs);
+  const provider = await translateSlots(slots, lang, undefined, budgetMs, onFull);
   return { ...copy, language: lang, translatedFrom: d.language, translatedBy: provider.split(":")[0] };
 }

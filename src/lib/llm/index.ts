@@ -178,6 +178,8 @@ export interface CompleteOptions {
   timeoutMs?: number;
   /** Reject a reply (malformed, truncated) and move on to the next provider instead of failing. */
   accept?: (text: string) => boolean;
+  /** Models to leave out of the route's chain (e.g. a Groq model that is out of tokens this minute). */
+  skip?: string[];
 }
 
 /** Free-form text completion through a route's chain (no rule-based fallback). */
@@ -187,6 +189,7 @@ export async function complete(system: string, messages: ChatMessage[], opts: Co
   const chain: { id: string; def?: ModelDef; run: () => Promise<{ value: string; tokens: number }> }[] = [];
   if (process.env.ANTHROPIC_API_KEY) chain.push({ id: `claude:${CLAUDE_MODEL}`, run: async () => ({ value: await completeWithClaude(system, messages, opts.maxTokens), tokens: 0 }) });
   for (const def of chainFor(route)) {
+    if (opts.skip?.includes(def.key)) continue;
     const p = def.provider;
     chain.push({
       id: `${p.id}:${p.model}`,

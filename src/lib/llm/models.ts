@@ -99,12 +99,22 @@ export async function loadUsage(def: ModelDef, now = new Date()): Promise<ModelU
   return { day, tokens: 0, requests: 0, byRoute: {}, cooldownUntil: u?.cooldownUntil };
 }
 
-export async function recordUsage(def: ModelDef, route: Route, tokens: number, ok: boolean, now = new Date()): Promise<void> {
-  const u = await loadUsage(def, now);
-  u.tokens += Math.max(0, Math.round(tokens));
-  u.requests += 1;
-  if (ok) u.byRoute[route] = (u.byRoute[route] ?? 0) + 1;
-  await setJSON(usageKey(def.key), u).catch(() => {});
+/** Read-modify-write of a model's counters one at a time per instance (parallel translation chunks would lose counts). */
+const usageQueue = new Map<ModelKey, Promise<unknown>>();
+function serialized<T>(key: ModelKey, fn: () => Promise<T>): Promise<T> {
+  const run = (usageQueue.get(key) ?? Promise.resolve()).then(fn, fn);
+  usageQueue.set(key, run.catch(() => {}));
+  return run;
+}
+
+export function recordUsage(def: ModelDef, route: Route, tokens: number, ok: boolean, now = new Date()): Promise<void> {
+  return serialized(def.key, async () => {
+    const u = await loadUsage(def, now);
+    u.tokens += Math.max(0, Math.round(tokens));
+    u.requests += 1;
+    if (ok) u.byRoute[route] = (u.byRoute[route] ?? 0) + 1;
+    await setJSON(usageKey(def.key), u).catch(() => {});
+  });
 }
 
 /** After a refusal: back off for Retry-After, or an hour when the daily quota itself is spent. */

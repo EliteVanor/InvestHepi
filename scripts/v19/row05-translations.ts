@@ -20,7 +20,7 @@ delete process.env.ANTHROPIC_API_KEY;
 delete process.env.GEMINI_API_KEY;
 delete process.env.LLM_PROVIDER;
 
-const calls: { lang: string; n: number; at: number }[] = [];
+const calls: { lang: string; n: number; at: number; gemini: boolean }[] = [];
 let clockNow: () => number = () => Date.now();
 let inFlight = 0;
 let maxInFlight = 0;
@@ -28,10 +28,11 @@ let failMarker: string | null = null;
 let delayMs = 0;
 globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input);
-  if (!url.includes("api.groq.com")) return new Response("{}", { status: 404 });
+  const gemini = url.includes("generativelanguage.googleapis.com");
+  if (!url.includes("api.groq.com") && !gemini) return new Response("{}", { status: 404 });
   const msgs = JSON.parse(String(init?.body)).messages;
   const arr: string[] = JSON.parse(msgs[1].content);
-  calls.push({ lang: String(msgs[0].content.match(/into (\w+)\./)?.[1]), n: arr.length, at: clockNow() });
+  calls.push({ lang: String(msgs[0].content.match(/into (\w+)\./)?.[1]), n: arr.length, at: clockNow(), gemini });
   inFlight++;
   maxInFlight = Math.max(maxInFlight, inFlight);
   if (delayMs) await new Promise((r) => setTimeout(r, delayMs));
@@ -200,7 +201,7 @@ const digest = (generatedAt: string, strings = 3, len = 40) => ({
   calls.length = 0;
   vt += 2 * 60_000;
   const start = vt;
-  await B.translateSet(hp, "vi", { waitMs: 0, budgetMs: 10 * 60_000 });
+  await B.translateSet(hp, "vi", { waitMs: 0, budgetMs: 10 * 60_000, onFull: "wait" }); // the scheduler path
   const offs = calls.map((c) => c.at - start);
   assert.ok(calls.length >= 5, `several chunks (${calls.length})`);
   assert.deepEqual(offs.slice(0, 2), [0, 0], "two chunks start together");
@@ -276,6 +277,26 @@ const digest = (generatedAt: string, strings = 3, len = 40) => ({
   assert.ok(order.length >= 3, `all sets came up (${order.length})`);
   const rest = sizes.slice(1);
   assert.deepEqual(rest, [...rest].sort((a, b) => b - a), `after the admin's set, bigger sets first (${sizes})`);
+  // ---- a reader is waiting: chunks over the minute's tokens go to Flash-Lite at once, no waiting
+  process.env.GEMINI_API_KEY = "g";
+  const M = await import("../../src/lib/llm/models");
+  const hr = "reader01";
+  await setJSON(`ib:${hr}`, digest("2026-11-19T12:01:00Z", 8, 910));
+  const nChunks = TR.chunkSlots(TR.textSlots(digest("x", 8, 910).analysis as never)).length;
+  assert.ok(nChunks >= 4, `fixture makes several chunks (${nChunks})`);
+  vt += 2 * 60_000;
+  const rStart = vt;
+  const gemBefore = (await M.loadUsage(M.modelDef("gem35")!)).requests;
+  calls.length = 0;
+  const rd = await B.translateSet(hr, "vi", { waitMs: 0 }); // default: a reader
+  assert.equal(rd?.language, "vi", "one call finishes it");
+  assert.equal(vt - rStart, 0, "no waiting");
+  assert.equal(calls.length, nChunks);
+  assert.equal(calls.filter((c) => !c.gemini).length, 2, "two chunks on qwen (the minute's tokens)");
+  assert.equal(calls.filter((c) => c.gemini).length, nChunks - 2, "the rest on Flash-Lite");
+  assert.equal((await M.loadUsage(M.modelDef("gem35")!)).requests - gemBefore, nChunks - 2, "counted in Flash-Lite's usage");
+  delete process.env.GEMINI_API_KEY;
+
   // ---- same instance: the in-flight promise is registered before the first await (concurrent callers share one job)
   const h7 = "samei001";
   await setJSON(`ib:${h7}`, digest("2026-11-19T11:59:00Z", 2, 31));
