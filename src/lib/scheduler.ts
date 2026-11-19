@@ -20,7 +20,7 @@
 import { checkPriceAlerts, loadAlertSettings } from "./alerts";
 import { OWNER, withUser } from "./context";
 import { appUrl } from "./email";
-import { translateLatest } from "./briefings";
+import { pretranslateSet, translateLatest } from "./briefings";
 import { refreshHeadlines } from "./headlines";
 import { interestGroups, loadInterests, withHoldings } from "./interests";
 import { interestPart, type Phase, type SlotMarket } from "./markets";
@@ -202,7 +202,9 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
       ok = !d.keptAi && d.provider !== "rules";
       note = d.provider;
       // Shared sections are pre-translated into Vietnamese only; other languages on first read.
+      // An interest set is pre-translated into the languages of its followers seen in the last day.
       if (!u.set) await translateLatest(u.item as SectionId, "vi").catch(() => null);
+      else if (ok) await pretranslateSet(u.set.hash, u.set.uids).catch(() => []);
     }
   } catch (e) {
     note = (e as Error).message.slice(0, 200);

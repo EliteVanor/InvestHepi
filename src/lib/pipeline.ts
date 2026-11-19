@@ -29,7 +29,7 @@ import { symLabel } from "./symbols";
 import { ALIASES } from "./tickers";
 import type { Action, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
 import { callsKeyFor, currentCallsKey, currentInterestSet, interestHash, loadInterests, withHoldings } from "./interests";
-import { basePrefix, interestBriefingStale, loadDigest, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
+import { basePrefix, interestBriefingStale, loadDigest, pretranslateSet, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
 
 /** A returning user's briefing older than this is refreshed when they open the app. */
 export const CATCH_UP_AFTER_MS = 12 * 3600_000;
@@ -44,6 +44,7 @@ export async function ensureInterestBriefing(uid: string, allowed?: () => Promis
   if (!(await interestBriefingStale(hash, maxAgeMs))) return "fresh";
   if (allowed && !(await allowed())) return "capped";
   await refreshInterestSet(interests, "en", [uid]);
+  await pretranslateSet(hash, [uid]).catch(() => []); // opens already translated for a reader of another language
   return "refreshed";
 }
 
