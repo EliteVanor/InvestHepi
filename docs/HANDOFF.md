@@ -110,6 +110,18 @@ Checked against production. Fixed on the branch (not deployed yet):
   13. Shared-section story and concept cards pre-translated into Vietnamese; other languages on first read.
 - v19 includes audit rows 1-29; row 30 (splitting large files) goes through the design step. Holidays: a holiday and early-close table for 2026-2027 (US, Vietnam, Japan, Hong Kong, Europe), dates checked on each exchange's official calendar. FOMC 2027 dates too.
 
+**Fix-plan decisions (owner, Nov 19, second grilling round, all as recommended)**
+1. Two merges: **v19a** = phases A-C (tests and CI, the three reported problems, bugs, security); **v19b** = phases D-E (news-first build, cleanup). Ask before each merge.
+2. After the US close, the strip and chart show the regular-session close, with a small separate "after hours" figure.
+3. The page reloads the briefing when the reader comes back after 5+ min and every 10 min while open; only the visible tab polls news and predictions.
+4. Add the 04:35 UTC slot (11:35 Hanoi) to every user's My Interests (5 a day; +1 Flash-Lite request per active user per day).
+5. Pre-translate each My Interests refresh into the languages of that set's followers seen in the last day.
+6. Alert emails go only to the Google account's own address (the owner may set any).
+7. Daily AI ceiling: when a model passes ~70% of its free allowance, user-triggered AI work (catch-ups, manual refreshes, first briefings) pauses until the next day; shared and admin runs continue; users see "busy today".
+8. Predictions on phones sit below the markets, folded by default to each market's main call.
+9. Holiday dates live in a table in code; a test fails from Dec 1 if next year's dates are missing.
+10. v18 briefings keep showing until the first v19 run replaces them; history shows both formats.
+
 **Audit (Nov 19)**: report https://claude.ai/artifact/PHWikthAG3dygy7usaAzEy (private), working notes with file:line in `docs/AUDIT-v19.md`. Baseline: typecheck passes; `selftest` and `vntest` fail on the real clock (test bugs), and `npm test` stops at the first failure so 17 suites don't run; no CI; `npm audit` highs not reachable (postcss build-time, nodemailer in an unused Auth.js provider).
 - Causes of the reported problems: (a) `black-translucent` + `viewport-fit: cover` in `layout.tsx` with no `env(safe-area-inset-top)` on `.topbar` (`globals.css:171-178`); (b) Nasdaq 1-day uses after-hours `lastSalePrice` and an unreliable previous close (`chart.ts:157-158`), the chart header follows the selected range (`LiveChart.tsx:342`), the strip overlay drops `stale` (`strip.ts:36`); (c) the page loads briefings only on mount (`page.tsx:126`), My Interests is never pre-translated (`scheduler.ts:205`).
 
@@ -118,8 +130,8 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Decisions: above.
 - Changed files: `CLAUDE.md` (goal line, compaction note), `docs/HANDOFF.md` (goal, prediction times fixed, this section), `docs/AUDIT-v19.md` (new). No code changed.
 - Ruled out: Next 16 upgrade this round (own round after CI); acting on the Upstash quota before measuring; timing-safe password compares; full-article fetching; past events from model memory.
-- Open items: none from the owner. The owner reviews the past-event library when it is drafted.
-- Next step: run `improve-codebase-architecture` (with `codebase-design`) to design module shapes for the story pipeline (group, rank, explain, concept cards, analog library) and for row 30, then build in phase order A → B → C → D → E (see the report), one fix per commit, pin behavior first, regression tests in `scripts/v19test.ts`, `review-code` + thermo-nuclear per fix. Count AI tokens and calls per day for the story and concept cards before building them. Stress test on real data (`invest-helper` environment for market hosts), docs, ask before merging.
+- Open items: none from the owner (grilling finished: two rounds on the news design, one on the fix plan). The owner reviews the past-event library when it is drafted.
+- Next step: run `improve-codebase-architecture` (with `codebase-design`) to design module shapes for the story pipeline (group, rank, explain, concept cards, analog library) and for row 30, then build v19a (phases A → B → C, see the report), ask to merge, then v19b (D → E), one fix per commit, pin behavior first, regression tests in `scripts/v19test.ts`, `review-code` + thermo-nuclear per fix. Count AI tokens and calls per day for the story and concept cards before building them. Stress test on real data (`invest-helper` environment for market hosts), docs, ask before merging.
 - Skills to load next: how-i-work, how-i-think, improve-codebase-architecture, codebase-design, review-code, thermo-nuclear-code-quality-review; debugging for bugs; better-interface for UI.
 
 ## Session summary, Nov 17 2026 (v18)
