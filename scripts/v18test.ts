@@ -74,7 +74,7 @@ const T = (iso: string) => Date.parse(iso);
   assert.deepEqual(sat, { vn: 5, world: 4, us: 5, interests: 6 }, "World 4, US 5, Vietnam 5, the admin's set 6");
   const usTimes = TT.TIMETABLE.filter((s) => s.items.includes("us")).map((s) => s.at).sort();
   assert.deepEqual(usTimes, ["02:15", "12:30", "15:30", "17:00", "21:20"], "US briefings at the planned UTC times");
-  assert.equal(TT.TIMETABLE.filter((s) => s.items.includes("interests:all")).length, 4, "everyone else's set 4 a day");
+  assert.equal(TT.TIMETABLE.filter((s) => s.items.includes("interests:all")).length, 5, "everyone else's set 5 a day (owner decision v19, fix-plan item 4: 04:35 UTC added)");
 
   /* ---------------- each market's clock */
   assert.deepEqual(MK.dailyTarget(at("2026-11-17T01:16:00Z"), "^VNINDEX.VN"), { date: "2026-11-17", opened: false, tz: "Asia/Ho_Chi_Minh" }, "08:16 Hanoi: today's session, not open yet");

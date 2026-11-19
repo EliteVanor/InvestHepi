@@ -59,7 +59,7 @@ export const TIMETABLE: Slot[] = [
   // Briefings, every day.
   { id: "b-0115", days: EVERY_DAY, at: "01:15", items: ["vn", "world", "interests:all"] }, // before the HOSE open
   { id: "b-0215", days: EVERY_DAY, at: "02:15", items: ["us"] }, // US evening
-  { id: "b-0435", days: EVERY_DAY, at: "04:35", items: ["vn", "interests:admin"] }, // HOSE lunch break
+  { id: "b-0435", days: EVERY_DAY, at: "04:35", items: ["vn", "interests:all"] }, // HOSE lunch break; everyone's set (owner decision, v19)
   { id: "b-0810", days: EVERY_DAY, at: "08:10", items: ["vn", "world", "interests:all"] }, // after the HOSE close; Europe open
   { id: "b-1030", days: EVERY_DAY, at: "10:30", items: ["interests:admin"] },
   { id: "b-1230", days: EVERY_DAY, at: "12:30", items: ["us", "world", "vn", "interests:all"] }, // before the US open
