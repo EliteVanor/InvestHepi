@@ -76,6 +76,25 @@ import assert from "node:assert/strict";
   assert.equal(merged.at, "2026-11-19T08:00:00Z");
   assert.equal(D.newsFor(null, undefined), null);
 
+  /* a failed load is forgotten, so the next check retries it (no 10 minutes of skeleton after one 502) */
+  const last = empty();
+  await assert.rejects(D.tracked(last, "digest", "vn", T0, async () => { throw new Error("HTTP 502"); }), /502/);
+  assert.equal(last.digest.vn, undefined, "failure: not marked loaded");
+  assert.ok(D.dueLoads({ now: T0 + 30_000, last, tab: "vn", visible: true, hiddenSince: null }).some((l) => l.kind === "digest" && l.section === "vn"), "due again at the next 30 s check");
+  const slow = D.tracked(last, "news", "us", T0, async () => "ok");
+  assert.equal(last.news.us, T0, "marked at once, so a slow answer isn't asked for twice");
+  assert.equal(await slow, "ok");
+  assert.equal(last.news.us, T0, "success: stays marked");
+
+  /* a translation that arrives after the reader switched language is dropped; a same version keeps its object */
+  assert.equal(D.stillWanted("vi", "fr"), false, "a vi reply must not overwrite fr");
+  assert.equal(D.stillWanted("fr", "fr"), true);
+  const v = (generatedAt: string, language: string) => ({ generatedAt, language }) as never;
+  assert.equal(D.keepHeld(v("a", "vi"), v("a", "vi"), "vi"), true);
+  assert.equal(D.keepHeld(v("a", "en"), v("a", "en"), "vi"), false, "held copy not in the reader's language is replaced");
+  assert.equal(D.keepHeld(v("a", "vi"), v("b", "vi"), "vi"), false, "a newer version replaces");
+  assert.equal(D.keepHeld(undefined, v("a", "vi"), "vi"), false);
+
   console.log("ROW03 OK");
 })().catch((e) => {
   console.error(e);

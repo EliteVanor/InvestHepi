@@ -25,7 +25,7 @@ import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, type Tab as Se
 import { TrackSheet } from "@/components/track";
 import { Ambient, Footer, Sidebar, Skeleton, TabBar, TopBar, sectionName, type FrameActions } from "@/components/shell/chrome";
 import { refreshState, savedTab, useNewHeadlines, useSavedTab, useShortcuts, useTitleHidden, useViewport, useWideLayout, type RefreshUi } from "@/components/shell/hooks";
-import { newsFor, translateKey, useSectionData } from "@/components/shell/section-data";
+import { newsFor, useSectionData } from "@/components/shell/section-data";
 import { chartSymbols as chartSymbolsFor, planSymbols, stripPlan, stripRows as buildStripRows } from "@/components/shell/strip";
 import { ToastProvider, useToast } from "@/components/toast";
 import { isLang, langInfo } from "@/lib/languages";
@@ -137,7 +137,7 @@ function App() {
   const onDataError = useCallback((e: Error) => {
     if (!["401", "signin"].includes(e.message)) setError(e.message);
   }, []);
-  const { digests, aiFail, liveNews, preds, rulesDigests, isRulesTab, toggleRules, translatingTab, translateFailed, translatingPreds, reloadDigest, waitForBriefing } = useSectionData({
+  const { active, digests, aiFail, liveNews, preds, rulesView, toggleRules, translatingTab, translateFailed, translatingPreds, reloadDigest, waitForBriefing } = useSectionData({
     enabled: ready && !needPassword,
     api,
     lang,
@@ -145,7 +145,6 @@ function App() {
     viewingOld: !!oldDigest,
     onError: onDataError,
   });
-  const active = isRulesTab && rulesDigests[tab] ? rulesDigests[tab] : digests[tab];
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
   // Headlines: the live list (refreshed every 15/30 min without AI), titles translated where the briefing has them.
   const lists = useMemo(() => Object.fromEntries(SECTION_IDS.map((s) => [s, newsFor(digests[s], liveNews[s])])), [digests, liveNews]);
@@ -406,9 +405,9 @@ function App() {
               <Briefing
                 digest={shown}
                 translating={translatingTab === tab}
-                translateFailed={translateFailed.has(translateKey(tab, lang, shown.generatedAt, isRulesTab && !!rulesDigests[tab]))}
+                translateFailed={translateFailed}
                 aiFailedAt={oldDigest ? null : (aiFail[tab] ?? null)}
-                rulesView={isRulesTab && !!rulesDigests[tab]}
+                rulesView={rulesView}
                 onToggleRules={(on) => toggleRules(tab, on)}
                 viewingOld={!!oldDigest}
                 onBackToLatest={() => setOldDigest(null)}

@@ -11,7 +11,7 @@
  * fresh: headlines and predictions every 5 minutes, the briefing every 10, and all three when the
  * reader comes back after 5+ minutes away. A hidden page loads nothing.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Api } from "@/components/shell/hooks";
 import type { PredictionSet } from "@/lib/predictions-view";
 import { SECTION_IDS, type Digest, type NewsItem, type SectionId } from "@/lib/types";
@@ -51,6 +51,27 @@ export function dueLoads(o: { now: number; last: LastLoaded; tab: SectionId; vis
   }
   return out;
 }
+
+/**
+ * Runs one load and records when it was asked for (so a slow answer isn't asked for twice). A load
+ * that fails is forgotten, so the next check retries it instead of waiting out the interval.
+ */
+export async function tracked<R>(last: LastLoaded, kind: LoadKind, section: SectionId, now: number, run: () => Promise<R>): Promise<R> {
+  last[kind][section] = now;
+  try {
+    return await run();
+  } catch (e) {
+    delete last[kind][section];
+    throw e;
+  }
+}
+
+/** The same version again, already in the reader's language, keeps the object the page and translation hold. */
+export const keepHeld = (held: Digest | null | undefined, incoming: Digest | null, lang: string) =>
+  !!held && !!incoming && held.generatedAt === incoming.generatedAt && held.language === lang;
+
+/** A translation reply is saved only if the reader still wants that language (they may have switched while it ran). */
+export const stillWanted = (replyLang: string | undefined, current: string) => replyLang === current;
 
 /* ------------------------------------------------------------ helpers */
 
@@ -99,27 +120,28 @@ export function useSectionData(o: Opts) {
 
   const last = useRef<LastLoaded>({ digest: {}, news: {}, predictions: {} });
   const hiddenSince = useRef<number | null>(null);
-  // The loaders and timers below read the latest props through this, so they never go stale.
+  // Async callbacks that outlive a render (answers, timers, listeners) read the latest props here.
   const cur = useRef(o);
-  cur.current = o;
+  useLayoutEffect(() => {
+    cur.current = o;
+  });
+  // Which briefing version each section last showed: a newer one retires its rule-based copy.
+  const seenAt = useRef<Partial<Record<SectionId, string>>>({});
   const timers = useRef(new Set<number>());
 
   /* ---- loaders: each marks itself loaded when asked, so a slow answer isn't asked for twice */
-  const loadDigest = useCallback(
-    async (s: SectionId) => {
-      last.current.digest[s] = Date.now();
-      // ?lang= lets signed-out visitors read shared sections in their language.
-      const j = await cur.current.api<{ digest: Digest | null; aiFailedAt?: string | null }>(`/api/digest?section=${s}&lang=${cur.current.lang}`);
-      // The same version again (already translated here) keeps the object the page and translation hold.
-      setDigests((d) => (d[s] && j.digest && d[s]!.generatedAt === j.digest.generatedAt && d[s]!.language === cur.current.lang ? d : { ...d, [s]: j.digest }));
-      setAiFail((a) => (a[s] === (j.aiFailedAt ?? null) ? a : { ...a, [s]: j.aiFailedAt ?? null }));
-    },
-    [],
-  );
+  const loadDigest = useCallback(async (s: SectionId) => {
+    const lang = cur.current.lang;
+    // ?lang= lets signed-out visitors read shared sections in their language.
+    const j = await tracked(last.current, "digest", s, Date.now(), () => cur.current.api<{ digest: Digest | null; aiFailedAt?: string | null }>(`/api/digest?section=${s}&lang=${lang}`));
+    const at = j.digest?.generatedAt;
+    if (at && seenAt.current[s] && seenAt.current[s] !== at) setRulesDigests((all) => (all[s] === undefined ? all : { ...all, [s]: undefined }));
+    if (at) seenAt.current[s] = at;
+    setDigests((d) => (keepHeld(d[s], j.digest, lang) ? d : { ...d, [s]: j.digest }));
+    setAiFail((a) => (a[s] === (j.aiFailedAt ?? null) ? a : { ...a, [s]: j.aiFailedAt ?? null }));
+  }, []);
   const loadNews = useCallback(function loadNews(s: SectionId, retry = 0): Promise<void> {
-    last.current.news[s] = Date.now();
-    return cur.current
-      .api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`)
+    return tracked(last.current, "news", s, Date.now(), () => cur.current.api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`))
       .then((j) => {
         if (j.at && j.items.length) setNews((n) => (n[s]?.at === j.at ? n : { ...n, [s]: { at: j.at!, items: j.items } }));
         // My Interests' list was stale (back after a while): the server is fetching it now, ask again soon.
@@ -134,13 +156,10 @@ export function useSectionData(o: Opts) {
       .catch(() => {});
   }, []);
   const loadPreds = useCallback(
-    (s: SectionId) => {
-      last.current.predictions[s] = Date.now();
-      return cur.current
-        .api<{ sets: PredictionSet[] }>(`/api/predictions?section=${s}&lang=${cur.current.lang}`)
+    (s: SectionId) =>
+      tracked(last.current, "predictions", s, Date.now(), () => cur.current.api<{ sets: PredictionSet[] }>(`/api/predictions?section=${s}&lang=${cur.current.lang}`))
         .then((j) => setPreds((p) => ({ ...p, [s]: j.sets })))
-        .catch(() => setPreds((p) => ({ ...p, [s]: p[s] ?? [] })));
-    },
+        .catch(() => setPreds((p) => ({ ...p, [s]: p[s] ?? [] }))),
     [],
   );
 
@@ -227,15 +246,15 @@ export function useSectionData(o: Opts) {
   /* ---- the rule-based copy readers can switch to while the AI briefing is behind (`aiFail`).
      The choice is saved per device and only applies while the AI briefing is behind; the copy is
      fetched when needed (the server caches it 15 minutes). */
-  const [rulesView, setRulesView] = useState<Set<SectionId>>(() => new Set());
+  const [rulesChosen, setRulesChosen] = useState<Set<SectionId>>(() => new Set());
   const [rulesDigests, setRulesDigests] = useState<Digests>({});
   useEffect(() => {
     lsTry(() => {
       const saved = JSON.parse(localStorage.getItem("ih-rules-view") ?? "[]") as SectionId[];
-      setRulesView(new Set(saved.filter((s) => SECTION_IDS.includes(s))));
+      setRulesChosen(new Set(saved.filter((s) => SECTION_IDS.includes(s))));
     });
   }, []);
-  const isRulesTab = rulesView.has(tab) && !!aiFail[tab];
+  const isRulesTab = rulesChosen.has(tab) && !!aiFail[tab];
   const loadRules = useCallback(
     (s: SectionId) =>
       api<{ digest: Digest | null }>(`/api/digest?section=${s}&lang=${lang}&variant=rules`)
@@ -248,7 +267,7 @@ export function useSectionData(o: Opts) {
   }, [isRulesTab, tab, rulesDigests, loadRules]);
   const toggleRules = useCallback(
     (s: SectionId, on: boolean) => {
-      setRulesView((c) => {
+      setRulesChosen((c) => {
         const next = new Set(c);
         if (on) next.add(s);
         else next.delete(s);
@@ -276,7 +295,7 @@ export function useSectionData(o: Opts) {
     setTranslatingTab(tab);
     const save = rules ? setRulesDigests : setDigests;
     api<{ digest: Digest | null }>(`/api/translate?section=${tab}&lang=${lang}${rules ? "&variant=rules" : ""}`, { method: "POST" })
-      .then((j) => j.digest && save((all) => ({ ...all, [tab]: j.digest })))
+      .then((j) => j.digest && stillWanted(j.digest.language, cur.current.lang) && save((all) => ({ ...all, [tab]: j.digest })))
       .catch(() => setTranslateFailed((f) => new Set(f).add(k)))
       .finally(() => setTranslatingTab((x) => (x === tab ? null : x)));
   }, [digests, rulesDigests, isRulesTab, tab, lang, viewingOld, api]);
@@ -292,7 +311,7 @@ export function useSectionData(o: Opts) {
     triedPreds.current.add(k);
     setTranslatingPreds(tab);
     api<{ sets: PredictionSet[] }>(`/api/translate?section=${tab}&lang=${lang}&kind=predictions`, { method: "POST" })
-      .then((j) => j.sets?.length && setPreds((p) => ({ ...p, [tab]: j.sets })))
+      .then((j) => j.sets?.length && j.sets.every((x) => stillWanted(x.language, cur.current.lang)) && setPreds((p) => ({ ...p, [tab]: j.sets })))
       .catch(() => {})
       .finally(() => setTranslatingPreds((x) => (x === tab ? null : x)));
   }, [preds, tab, lang, api]);
@@ -306,5 +325,10 @@ export function useSectionData(o: Opts) {
     [loadDigest],
   );
 
-  return { digests, aiFail, liveNews: news, preds, rulesDigests, isRulesTab, toggleRules, translatingTab, translateFailed, translatingPreds, reloadDigest, waitForBriefing };
+  // What the current tab shows: the rule-based copy while the reader has chosen it, else the briefing.
+  const rulesView = isRulesTab && !!rulesDigests[tab];
+  const active = rulesView ? rulesDigests[tab] : digests[tab];
+  const failed = !viewingOld && !!active && translateFailed.has(translateKey(tab, lang, active.generatedAt, rulesView));
+
+  return { active, digests, aiFail, liveNews: news, preds, rulesView, toggleRules, translatingTab, translateFailed: failed, translatingPreds, reloadDigest, waitForBriefing };
 }
