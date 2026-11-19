@@ -4,8 +4,10 @@
  * of a full analysis, and every number, ticker and call stays identical across languages.
  * Translations are cached per briefing version and language, so each one is paid for once.
  */
+import { createHash } from "node:crypto";
 import { langInfo } from "./languages";
 import { complete } from "./llm";
+import { getJSON, setJSON } from "./store";
 import type { Analysis, Digest, NewsItem, Outlook } from "./types";
 
 type Setter = (v: string) => void;
@@ -123,29 +125,66 @@ export function headlineSlots(news: NewsItem[], a: Analysis, lang: string): { te
     }));
 }
 
+/** Chunks translated at once. Groq's free qwen allows ~8k tokens a minute and a chunk reserves ~3k (input plus output budget), so 2. */
+export const TRANSLATE_CONCURRENCY = 2;
+/** Finished chunks are kept this long, so a retry after a failure only redoes the failed ones. */
+const CHUNK_TTL_SEC = 24 * 3600;
+
+/** A translation that failed after `done` of `total` chunks were finished and kept. */
+export class TranslateError extends Error {
+  constructor(message: string, readonly done: number, readonly total: number) {
+    super(message);
+  }
+}
+
 /**
- * Translate text slots in place, chunk by chunk, through the translate route. Returns the provider id.
- * Throws if no AI provider can do it.
+ * Translate text slots in place, in chunks, two at a time, through the translate route. Returns the
+ * provider id. Each finished chunk is stored (keyed by a hash of its text, language and instructions),
+ * so when one chunk fails the rest are kept: nothing is written to the slots, a TranslateError says how
+ * many chunks were done, and a retry only pays for the failed and unstarted ones (`version` ties kept
+ * chunks to one briefing version, so a new briefing is always translated afresh). Throws if no AI
+ * provider can do it.
  */
-export async function translateSlots(slots: { text: string; set: Setter }[], lang: string, what = "a stock-market briefing and news headlines"): Promise<string> {
+export async function translateSlots(slots: { text: string; set: Setter }[], lang: string, what = "a stock-market briefing and news headlines", version = ""): Promise<string> {
   if (!slots.length) return "";
   const target = langInfo(lang).english;
   const system = `You translate ${what} into ${target}. You get a JSON array of strings. Return ONLY a JSON array with the same number of strings, in the same order, each translated into natural, concise ${target} as a financial journalist would write it. Keep tickers, numbers, percentages, dates, index and company names, and units exactly as they are. Do not add, merge, drop or explain anything.`;
-  // One chunk at a time: Groq counts tokens per minute, and parallel chunks would trip it.
-  const results: { chunk: typeof slots; out: string[]; provider: string }[] = [];
-  for (const chunk of chunkSlots(slots)) {
-    const texts = chunk.map((s) => s.text);
-    const json = JSON.stringify(texts);
-    const { text, provider } = await complete(system, [{ role: "user", content: json }], {
-      route: "translate",
-      maxTokens: translateBudget(json.length),
-      timeoutMs: 20_000,
-      accept: (t) => parseTranslations(t, texts.length) != null,
-    });
-    results.push({ chunk, out: parseTranslations(text, texts.length)!, provider });
+  const chunks = chunkSlots(slots);
+  const results: ({ out: string[]; provider: string } | undefined)[] = chunks.map(() => undefined);
+  let next = 0;
+  let firstError: Error | null = null;
+  const worker = async () => {
+    while (!firstError && next < chunks.length) {
+      const i = next++;
+      const texts = chunks[i].map((s) => s.text);
+      const json = JSON.stringify(texts);
+      const ck = `trc:${createHash("sha1").update(`${lang}\n${what}\n${version}\n${json}`).digest("hex")}`;
+      const kept = await getJSON<{ out: string[]; provider: string }>(ck).catch(() => null);
+      if (kept && kept.out?.length === texts.length) {
+        results[i] = kept;
+        continue;
+      }
+      try {
+        const { text, provider } = await complete(system, [{ role: "user", content: json }], {
+          route: "translate",
+          maxTokens: translateBudget(json.length),
+          timeoutMs: 20_000,
+          accept: (t) => parseTranslations(t, texts.length) != null,
+        });
+        results[i] = { out: parseTranslations(text, texts.length)!, provider };
+        await setJSON(ck, results[i], CHUNK_TTL_SEC).catch(() => {});
+      } catch (e) {
+        firstError ??= e as Error; // stop starting chunks; the ones in flight finish and are kept
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(TRANSLATE_CONCURRENCY, chunks.length) }, worker));
+  if (firstError || results.some((r) => !r)) {
+    const done = results.filter(Boolean).length;
+    throw new TranslateError(`translation incomplete (${done}/${chunks.length} chunks): ${(firstError as Error | null)?.message ?? "unknown"}`, done, chunks.length);
   }
-  for (const { chunk, out } of results) out.forEach((v, i) => chunk[i].set(v));
-  return results[0].provider;
+  chunks.forEach((chunk, i) => results[i]!.out.forEach((v, j) => chunk[j].set(v)));
+  return results.find((r) => r!.provider)!.provider;
 }
 
 /** The translatable text of prediction calls (trigger, rationale, risks). */
@@ -164,6 +203,6 @@ export async function translateDigest(d: Digest, lang: string): Promise<Digest> 
   const copy: Digest = JSON.parse(JSON.stringify(d));
   const slots = [...textSlots(copy.analysis), ...headlineSlots(copy.news ?? [], copy.analysis, lang)];
   if (!slots.length) return { ...copy, language: lang };
-  const provider = await translateSlots(slots, lang);
+  const provider = await translateSlots(slots, lang, undefined, d.generatedAt); // kept chunks belong to this version
   return { ...copy, language: lang, translatedFrom: d.language, translatedBy: provider.split(":")[0] };
 }

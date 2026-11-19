@@ -50,10 +50,21 @@ export async function delJSON(key: string): Promise<void> {
 export async function takeLock(key: string, ttlSec: number): Promise<string | null> {
   const token = Math.random().toString(36).slice(2);
   if (redis) return (await redis.set(key, token, { nx: true, ex: ttlSec })) === "OK" ? token : null;
-  const held = await getJSON<{ token: string; until: number }>(key);
-  if (held && held.until > Date.now()) return null;
-  await setJSON(key, { token, until: Date.now() + ttlSec * 1000 });
-  return token;
+  // Files: create-exclusive ("wx"), so two callers in one process (or two dev servers) can't both win.
+  await fs.mkdir(dir, { recursive: true });
+  const file = fileFor(key);
+  for (let tries = 0; tries < 2; tries++) {
+    try {
+      await fs.writeFile(file, JSON.stringify({ token, until: Date.now() + ttlSec * 1000 }), { flag: "wx" });
+      return token;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
+      const held = await getJSON<{ token: string; until: number }>(key);
+      if (held && held.until > Date.now()) return null;
+      await fs.rm(file, { force: true }); // expired (or unreadable): take over
+    }
+  }
+  return null;
 }
 
 export async function releaseLock(key: string, token: string): Promise<void> {
