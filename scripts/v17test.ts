@@ -6,6 +6,10 @@
 import assert from "node:assert/strict";
 import { promises as fs, readFileSync } from "fs";
 import path from "path";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T12:00:00Z");
 
 process.env.VERCEL = "1";
 delete process.env.KV_REST_API_URL;

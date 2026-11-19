@@ -4,6 +4,10 @@
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T12:00:00Z");
 
 process.env.RESEND_API_KEY = "re_test";
 process.env.APP_URL = "https://invest.example.app";
