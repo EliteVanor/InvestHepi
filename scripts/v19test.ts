@@ -10,10 +10,17 @@ import path from "node:path";
 
 const dir = path.join(__dirname, "v19");
 const parts = readdirSync(dir).filter((f) => f.endsWith(".ts")).sort();
+if (!parts.length) {
+  console.error("v19: no parts found in scripts/v19");
+  process.exit(1);
+}
 let failed = 0;
 for (const p of parts) {
-  const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, p)], { stdio: "inherit", env: process.env });
-  if (r.status !== 0) {
+  // A part passes only if it exits 0 AND prints its "<TOPIC> OK" line, so a part that quits early can't pass.
+  const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, p)], { encoding: "utf8", env: process.env, timeout: 120_000 });
+  process.stdout.write(r.stdout ?? "");
+  process.stderr.write(r.stderr ?? "");
+  if (r.status !== 0 || !/\bOK\b/.test(r.stdout ?? "")) {
     failed++;
     console.error(`v19 part ${p} FAILED`);
   }

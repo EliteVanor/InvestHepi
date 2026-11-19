@@ -32,6 +32,8 @@ const SUITES = [
 ];
 
 const dir = __dirname;
+// A suite that hangs (an unmocked fetch, a pending timer) fails after this instead of blocking CI.
+const SUITE_TIMEOUT_MS = 120_000;
 
 function main() {
   // A suite file that isn't in the list would never run in CI: fail loudly.
@@ -56,7 +58,7 @@ function main() {
   const results: { name: string; ok: boolean; secs: number }[] = [];
   for (const name of todo) {
     const t0 = Date.now();
-    const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, `${name}.ts`)], { stdio: "inherit", env: process.env });
+    const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, `${name}.ts`)], { stdio: "inherit", env: process.env, timeout: SUITE_TIMEOUT_MS });
     const ok = r.status === 0;
     results.push({ name, ok, secs: (Date.now() - t0) / 1000 });
     if (!ok) console.error(`\n>>> ${name} FAILED (${r.signal ?? `exit ${r.status}`})\n`);
