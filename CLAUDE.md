@@ -25,12 +25,12 @@ When compacting, keep the list of modified files, the test commands and open dec
 npm run dev                    # http://localhost:3000, data in .data/ as JSON
 npm run build                  # must pass with AND without the AUTH_* env vars
 npm run typecheck              # tsc --noEmit (there is no linter)
-npm test                       # all offline suites, chained with &&
+npm test                       # all offline suites via scripts/run-tests.ts: runs every one, prints a summary, exits 1 if any failed
 npx tsx scripts/vntest.ts      # run one suite (each script is standalone)
 npm run refresh -- world       # run the pipeline once from the terminal
 ```
 
-Tests are plain `tsx` scripts using `node:assert`, not a framework. They mock `globalThis.fetch` (no network), set env vars at the top, then dynamically `import()` modules and route handlers and call `GET/PUT/POST` directly with `Request` objects. A suite prints `<NAME> OK` on success. New suites must be added to the `test` script in `package.json`.
+Tests are plain `tsx` scripts using `node:assert`, not a framework. They mock `globalThis.fetch` (no network), set env vars at the top, then dynamically `import()` modules and route handlers and call `GET/PUT/POST` directly with `Request` objects. A suite prints `<NAME> OK` on success. New suites must be added to the `SUITES` list in `scripts/run-tests.ts` (the one place; the runner fails if a `*test.ts` file is not listed, and `npx tsx scripts/run-tests.ts v18test` runs a subset). A suite that reads the clock calls `pinClock("<ISO time>")` from `scripts/clock.ts` before importing `src/` so it passes on any day and hour; never build fixtures from the real clock. CI (`.github/workflows/ci.yml`) runs typecheck, tests and both builds on every push and pull request.
 
 Gotcha: the store is `.data/` locally and `/tmp/invest-helper` when `VERCEL` is set. Caches persist between runs (e.g. `market:*` for 10 min, `px:last`, `vnlist`), so tests that need a clean store set `VERCEL=1` and `rm -rf /tmp/invest-helper` first. Stale `.data/` can make a test fail for reasons unrelated to the code, and some suites (v4btest) delete `.data/`, so re-seed before manual browser checks.
 
