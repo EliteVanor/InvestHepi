@@ -89,7 +89,7 @@ Checked against production. Fixed on the branch (not deployed yet):
 
 ## v19 (branch `v19-overhaul`, started Nov 19 2026): full overhaul, news first
 
-**Status (Nov 20): design step done for the quote module; v19a being built (see Progress).**
+**Status (Nov 21): v19a built, reviewed and stress-tested on `v19-overhaul`; waiting for the owner's merge decision. v19b next.**
 
 **Owner decisions (Nov 19)**
 - Overhaul scope: code health plus product direction (1B); deep audit (2B); Claude builds each fix itself, `plans/` optional as a record (3A); product rules are open to change (4B); split sessions at handoff points (5A); branch `v19-overhaul` (6); no reference apps (8).
@@ -129,6 +129,12 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Q11 My Interests headlines also polled every 30 min while its tab isn't visible (2 small requests per reader per hour) so its list and dots stay fresh.
 
 **Progress (Nov 20)**: on `v19-overhaul`: phase A (clock-pinned tests, one runner `scripts/run-tests.ts`, CI `.github/workflows/ci.yml`, v19 parts in `scripts/v19/`), row 2 (safe areas), row 3 (`shell/section-data.ts`), row 5 + fix-plan items 4, 5 (translations, 04:35 slot). Each reviewed with review-code + thermo-nuclear; findings fixed before merge. Not verified yet: real iPhone, Upstash lock-release script, real translation token counts.
+
+**v19a summary (Nov 20-21, branch `v19-overhaul`, not merged to `main`)**
+- Changed (each fix reviewed with review-code + thermo-nuclear before merge, findings fixed, regression tests in `scripts/v19/`): phase A (clock-pinned suites, one runner, CI, per-run `STORE_DIR`); rows 2, 3, 5 (safe areas, `shell/section-data.ts`, translations + 04:35 slot + pre-translation cap); rows 4/6/7/15 (`src/lib/quote.ts` + `quote-view.ts`: one current quote everywhere, regular close vs after hours, lunch breaks, early closes, per-symbol polling, per-currency portfolio, ETF stand-ins never shown as levels, same-hours ETF estimate only one session ahead); row 9 (`holidays.ts` 2026-2027 incl. CME, year guard); rows 8/10/12/13/14 + Q11 (grading failures visible, failed runs reported, outages expire instead of "closed", 120b hold-off); rows 11, 16-20 (empty AI replies rejected, alert emails to own address, AI ceiling per model, per-IP limits, headers, generic errors); row 23 partial (`analogs.ts` figures without an opened source removed); row 28 tests.
+- Verified: `npm test` (20 suites) twice per merge, typecheck, both builds; stress test on real prices (10 symbols agree across strip, chart 1D/5D/1M, watchlist; production agrees), fresh-briefing timing, injected iPhone safe areas, Thanksgiving / Nov 27 / Japan Nov 23 clocks, 6 of 8 languages in the UI (all 8 have the keys), phone + wide, light + dark, no console errors; production World briefing audited line by line (no invented numbers).
+- Not verified: a real iPhone; Upstash-specific paths (Lua lock release, pipelined counters) against live Redis; real AI calls and translation token counts (no keys in the sandbox); multi-user UI (blocked-email note, busy toast, expired label); official exchange holiday pages (unreachable; dates from search results quoting them, provisional ones flagged); when Nasdaq corrects its evening daily row.
+- Open: owner reviews the verified past-event list (64 entries) before story cards cite it; owner decides the v19a merge to `main`; then v19b (rows 21-22, 24-27, 29-30, story pipeline Q12-Q19, page order).
 
 **Story design decisions (owner, Nov 20, grilling round 2, all as recommended unless noted)**
 - Q12 grouping: word matching with no AI, Unicode-aware (Vietnamese accents) plus character trigrams, within one language only.
