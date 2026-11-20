@@ -35,7 +35,18 @@ import assert from "node:assert/strict";
   assert.deepEqual(ask({ now: T0 + 4 * MIN + 59_000, last: all(T0) }), [], "just under 5 min");
   assert.deepEqual(ask({ now: T0 + 5 * MIN, last: all(T0), tab: "world" }), ["news:world", "predictions:world"], "5 min: the visible tab's headlines and predictions only");
   assert.deepEqual(ask({ now: T0 + 5 * MIN, last: all(T0), tab: "vn" }), ["news:vn", "predictions:vn"], "follows the tab");
-  assert.deepEqual(ask({ now: T0 + 30 * MIN, last: all(T0), tab: "us" }).filter((k) => !k.endsWith(":us")), [], "other tabs are never polled, however old");
+  assert.deepEqual(ask({ now: T0 + 30 * MIN, last: all(T0), tab: "us" }).filter((k) => !k.endsWith(":us") && k !== "news:interests"), [], "other tabs are never polled, however old (My Interests headlines aside, below)");
+
+  /* Q11: My Interests headlines every 30 min behind another tab, nothing else, nothing while hidden */
+  assert.deepEqual(ask({ now: T0 + 29 * MIN + 59_000, last: all(T0), tab: "world" }).filter((k) => k === "news:interests"), [], "just under 30 min: not yet");
+  assert.deepEqual(ask({ now: T0 + 30 * MIN, last: all(T0), tab: "world" }).filter((k) => k === "news:interests"), ["news:interests"], "30 min behind another tab: its headlines are polled");
+  assert.deepEqual(ask({ now: T0 + 30 * MIN, last: all(T0), tab: "us" }), ["digest:us", "news:interests", "news:us", "predictions:us"], "only the headlines of My Interests, not its briefing or predictions");
+  assert.deepEqual(ask({ now: T0 + 6 * MIN, last: all(T0), tab: "vn" }), ["news:vn", "predictions:vn"], "at 6 min nothing extra");
+  const ib = all(T0 + 20 * MIN);
+  assert.deepEqual(ask({ now: T0 + 40 * MIN, last: ib, tab: "world" }).filter((k) => k.endsWith(":interests")), [], "the 30 min counts from the last load of that list");
+  assert.deepEqual(ask({ now: T0 + 30 * MIN, last: all(T0), tab: "interests" }).filter((k) => k.endsWith(":interests")), ["digest:interests", "news:interests", "predictions:interests"], "on its own tab it follows the normal 5/10 min rules");
+  assert.deepEqual(ask({ now: T0 + 90 * MIN, last: all(T0), tab: "world", visible: false }), [], "page hidden: nothing, interests included");
+  assert.deepEqual(ask({ now: T0 + 30 * MIN, last: all(T0), tab: "world", hiddenSince: T0 + MIN }).filter((k) => k.endsWith(":interests")), ["news:interests"], "returning after a long time: the interests list is refreshed too");
 
   /* the briefing: 10 min open */
   assert.ok(!ask({ now: T0 + 9 * MIN + 59_000, last: all(T0) }).includes("digest:world"), "briefing not reloaded before 10 min");

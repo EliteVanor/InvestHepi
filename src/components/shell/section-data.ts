@@ -9,7 +9,9 @@
  * Rules (owner, v19): the first paint loads every section once, so switching tabs is instant and the
  * strip, catch-up and "new" dots have data for all four. After that only the visible tab is kept
  * fresh: headlines and predictions every 5 minutes, the briefing every 10, and all three when the
- * reader comes back after 5+ minutes away. A hidden page loads nothing.
+ * reader comes back after 5+ minutes away. My Interests headlines are also polled every 30 minutes
+ * while another tab is showing (owner decision Q11), so its list and new-headline dot stay fresh.
+ * A hidden page loads nothing.
  */
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Api } from "@/components/shell/hooks";
@@ -25,6 +27,8 @@ export type LiveNewsMap = Partial<Record<SectionId, { at: string; items: NewsIte
 export const NEWS_EVERY_MS = 5 * 60_000; // headlines and predictions
 export const BRIEFING_EVERY_MS = 10 * 60_000;
 export const RETURN_AFTER_MS = 5 * 60_000;
+/** My Interests headlines while another tab is visible (the server refreshes an open set's list every 30 min). */
+export const INTERESTS_BACKGROUND_MS = 30 * 60_000;
 
 export type LoadKind = "digest" | "news" | "predictions";
 export type Load = { kind: LoadKind; section: SectionId };
@@ -43,7 +47,8 @@ export const retryDelay = (failures: number) => Math.min(30_000 * 2 ** Math.max(
  * What to load now. Nothing is due while the page is hidden (a server outage must not make
  * background tabs hammer it; on return the rules below pick everything up). Never-loaded items are
  * due for every section, except a failed one waits out its back-off. Loaded items are due only for
- * the visible tab; `hiddenSince` is when the page was hidden, if it just came back.
+ * the visible tab, plus My Interests headlines every 30 min behind another tab; `hiddenSince` is when
+ * the page was hidden, if it just came back.
  */
 export function dueLoads(o: { now: number; last: LastLoaded; tab: SectionId; visible: boolean; hiddenSince: number | null; failed?: Failures }): Load[] {
   const { now, last, tab, visible, hiddenSince, failed } = o;
@@ -57,6 +62,7 @@ export function dueLoads(o: { now: number; last: LastLoaded; tab: SectionId; vis
         const f = failed?.[kind][section];
         if (!f || now - f.at >= retryDelay(f.n)) out.push({ kind, section });
       } else if (section === tab && (returned || now - at >= (kind === "digest" ? BRIEFING_EVERY_MS : NEWS_EVERY_MS))) out.push({ kind, section });
+      else if (kind === "news" && section === "interests" && now - at >= INTERESTS_BACKGROUND_MS) out.push({ kind, section });
     }
   }
   return out;
