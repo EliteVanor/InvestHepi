@@ -30,10 +30,13 @@ process.env.GEMINI_API_KEY = "m";
 const closes: Record<string, [string, number][]> = {};
 const chartBars: Record<string, [string, number][]> = {};
 let sparkHits = 0;
+/** A price request that never answers (the function being cut off at its time limit). */
+let hangSpark = false;
 globalThis.fetch = (async (input: string | URL | Request) => {
   const url = String(input instanceof Request ? input.url : input);
   if (url.includes("/spark?")) {
     sparkHits++;
+    if (hangSpark) return new Promise<Response>(() => {});
     const syms = decodeURIComponent(url.match(/symbols=([^&]+)/)![1]).split(",");
     const out: Record<string, unknown> = {};
     for (const s of syms) {
@@ -56,11 +59,11 @@ const at = (s: string) => new Date(s);
 const MIN = 60_000;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const TT = await import("../../src/lib/timetable");
   const S = await import("../../src/lib/scheduler");
   const TR = await import("../../src/lib/track");
-  const { getJSON, setJSON, takeLock, releaseLock } = await import("../../src/lib/store");
+  const { getJSON, setJSON, delJSON, takeLock, releaseLock } = await import("../../src/lib/store");
   type Call = import("../../src/lib/types").Call;
   S.setTimetableSince(0);
   const doneBefore = async (ms: number) => {
@@ -99,10 +102,33 @@ const MIN = 60_000;
   rep = await S.scheduleReport(t);
   assert.equal(rep.grading.failing, null);
 
+  // A pass that never finishes (cut off at the time limit) leaves its mark first, so chained ticks don't rerun it.
+  await TR.recordCalls([{ interest: "X", ticker: "AAA", direction: "up" as const, confidence: 62, horizon: "today" as const, action: "HOLD" as const, actionTrigger: "", rationale: "", risks: "" }], [{ id: "x", name: "X", query: "x", tickers: ["AAA"] }], "groq", at("2026-11-16T12:30:00Z"), "calls:world", { phase: "pre" });
+  await delJSON("sched:graded");
+  await doneBefore(T("2026-11-17T18:00:00Z")); // no units to run: only grading matters here
+  hangSpark = true;
+  sparkHits = 0;
+  t = T("2026-11-17T16:00:00Z");
+  void S.runTick(opts); // never resolves
+  await new Promise((r) => setTimeout(r, 300));
+  assert.ok(sparkHits > 0, "the pass started and is stuck");
+  const stuck = await getJSON<{ n: number; retryAt: string }>("sched:gradeFail");
+  assert.equal(Date.parse(stuck!.retryAt) - t, 5 * MIN, "marked before the pass: retry in 5 min");
+  await delJSON("sched:lock"); // the killed function's lock has expired
+  const hitsBefore = sparkHits;
+  t += 60_000;
+  await S.runTick(opts);
+  assert.equal(sparkHits, hitsBefore, "the next tick doesn't start the same pass again");
+  hangSpark = false;
+  t += 5 * MIN;
+  await S.runTick(opts);
+  assert.ok(sparkHits > hitsBefore, "after the delay it tries again");
+  assert.equal(await getJSON("sched:gradeFail"), null, "and clears the mark on success");
+
   /* ---------------- row 10 + TIME-T3 lateNow: a slot with an item that failed for good is reported like late/missed */
   const occ = TT.occurrences(T("2026-11-17T12:30:00Z"), T("2026-11-17T12:30:00Z")).find((o) => o.slot.id === "p-us-pre")!;
   const key = TT.runKey(occ);
-  await setJSON(key, { items: { "p:us:pre": { at: "2026-11-17T12:50:00Z", n: 2, ok: false, note: "unavailable" }, "p:wus:pre": { at: "2026-11-17T12:31:00Z", n: 1, ok: true } }, sets: {}, done: "2026-11-17T12:51:00Z" });
+  await setJSON(key, { items: { "p:us:pre": { at: "2026-11-17T12:50:00Z", n: 2, ok: false, note: "Groq 503" }, "p:wus:pre": { at: "2026-11-17T12:31:00Z", n: 1, ok: true } }, sets: {}, done: "2026-11-17T12:51:00Z" });
   const start = occ.start;
   assert.deepEqual(await S.lateNow(start + 30 * MIN), [], "30 min in: not in the window yet");
   const lateIds = async (ms: number) => (await S.lateNow(ms)).map((r) => `${r.slot}:${r.state}`);
@@ -111,9 +137,21 @@ const MIN = 60_000;
   assert.ok((await S.scheduleReport(start + 70 * MIN)).late.includes("p-us-pre"), "and listed as late in the report");
   await setJSON(key, { items: { "p:us:pre": { at: "2026-11-17T12:31:00Z", n: 1, ok: true } }, sets: {}, done: "2026-11-17T12:51:00Z" });
   assert.ok(!(await lateIds(start + 70 * MIN)).includes("p-us-pre:done"), "a clean slot is not reported");
+  await setJSON(key, { items: { "p:us:pre": { at: "2026-11-17T12:50:00Z", n: 2, ok: false, note: "unavailable: SPY no live price" }, "p:oil:pre": { at: "2026-11-17T13:00:00Z", n: 2, ok: false, note: "gave up: unavailable: CL=F no 2026-11-16 close" } }, sets: {}, done: "x" });
+  assert.ok(!(await lateIds(start + 70 * MIN)).includes("p-us-pre:partial"), "a data gap ('unavailable', shown on the card) is not a missed run");
+  assert.ok(!(await S.scheduleReport(start + 70 * MIN)).late.includes("p-us-pre"));
+  await setJSON(key, { items: { "p:us:pre": { at: "2026-11-17T12:50:00Z", n: 2, ok: false, note: "unavailable: x" }, "p:oil:pre": { at: "2026-11-17T13:00:00Z", n: 2, ok: false, note: "Groq 503" } }, sets: {}, done: "x" });
+  assert.ok((await lateIds(start + 70 * MIN)).includes("p-us-pre:partial"), "a real failure next to a data gap still counts");
   await setJSON(key, { items: {}, sets: {} });
   assert.ok((await lateIds(start + 70 * MIN)).includes("p-us-pre:late"), "not done 60 min after its time: late");
   assert.ok(!(await lateIds(start + 150 * MIN)).includes("p-us-pre:late"), "outside the window");
+
+  /* ---------------- holidays: no slot, so no late or partial report can come from a closed market */
+  const hasSlot = (id: string, day: string) => TT.occurrences(T(day + "T00:00:00Z"), T(day + "T23:59:00Z")).some((o) => o.slot.id === id);
+  assert.equal(hasSlot("p-us-pre", "2026-11-26"), false, "Thanksgiving: no US prediction slot");
+  assert.equal(hasSlot("p-us-pre", "2026-11-27"), true, "the day after: there is");
+  assert.deepEqual(await S.lateNow(T("2026-11-26T13:45:00Z")).then((r) => r.filter((x) => x.slot.startsWith("p-us"))), [], "nothing to report for it");
+  assert.equal((await S.scheduleReport(T("2026-11-26T20:00:00Z"))).slots.some((x) => x.slot === "p-us-pre" && x.start.startsWith("2026-11-26")), false);
 
   /* ---------------- TIME-T3: summer-time switch moves a prediction slot, not its meaning */
   const usPre = (from: string) => TT.occurrences(T(from + "T00:00:00Z"), T(from + "T23:59:00Z")).find((o) => o.slot.id === "p-us-pre");
@@ -138,7 +176,7 @@ const MIN = 60_000;
   assert.ok(await takeLock("t:lock", 5), "released by its owner: free");
 
   /* ---------------- row 14: the deadline is checked after the lane's wait */
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   await doneBefore(T("2026-11-16T12:29:00Z"));
   const pre = TT.occurrences(T("2026-11-16T12:30:00Z"), T("2026-11-16T12:30:00Z")).find((o) => o.slot.id === "p-us-pre")!;
   assert.equal(TT.itemEnd(pre, "p:us:pre"), T("2026-11-16T14:30:00Z"));
@@ -152,11 +190,24 @@ const MIN = 60_000;
   assert.ok(u1.unit?.item.startsWith("p:"), "a before-market run goes first");
   assert.equal(sleeps.length, 0, "no 64 s wait that would carry it past the open");
   assert.ok(!/too late/.test(u1.unit?.note ?? ""), "it was tried before the open");
+  const cool = (await getJSON<{ cooldownUntil?: number }>("llm:usage:groq120"))?.cooldownUntil ?? 0;
+  assert.ok(cool > T("2026-11-16T14:29:30Z") && cool <= T("2026-11-16T14:29:30Z") + 65_000, "the previous unit may have used 120b: it sits out the rest of the gap, the run starts on the next model");
+  const mark = await getJSON<{ at: number; used120: boolean }>("sched:lastUnit:pred");
+  assert.equal(typeof mark?.used120, "boolean", "the lane's mark records whether the unit used 120b");
+  // The previous unit did not use 120b: no reason to hold it off.
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
+  await doneBefore(T("2026-11-16T12:29:00Z"));
+  t = T("2026-11-16T14:29:30Z");
+  await setJSON("sched:lastUnit:pred", { at: t - 1000, used120: false });
+  await setJSON("sched:lastUnit:brief", { at: t - 1000, used120: false });
+  const u1b = await S.runTick(o2);
+  assert.ok(u1b.unit?.item.startsWith("p:") && sleeps.length === 0, "run at once");
+  assert.equal((await getJSON<{ cooldownUntil?: number }>("llm:usage:groq120"))?.cooldownUntil ?? 0, 0, "120b isn't held off when it wasn't used just before");
   // A wait that fits but whose sleep overshoots the deadline: not started, marked missed.
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   await doneBefore(T("2026-11-16T12:29:00Z"));
   t = T("2026-11-16T14:29:50Z");
-  await setJSON("sched:lastUnit:pred", t - 60_000); // 5 s left of the gap, 10 s left to the open
+  await setJSON("sched:lastUnit:pred", { at: t - 60_000, used120: false }); // 5 s left of the gap, 10 s left to the open
   await setJSON("sched:lastUnit:brief", t - 1000);
   const o3 = { now: () => new Date(t), sleep: async (ms: number) => { sleeps.push(ms); t += 20_000; } };
   const u2 = await S.runTick(o3);
@@ -166,7 +217,7 @@ const MIN = 60_000;
   assert.ok(Object.values(run.items).some((x) => x.n === 2 && !x.ok && /missed/.test(x.note ?? "")), "recorded as missed so the chain ends");
 
   /* ---------------- row 12: closed needs proof; an outage stays pending, then expires */
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const I = [{ id: "x", name: "X", query: "x", tickers: ["AAA"] }];
   const out = (ticker: string, horizon: "today" | "this week" = "today") => ({ interest: "X", ticker, direction: "up" as const, confidence: 62, horizon, action: "HOLD" as const, actionTrigger: "", rationale: "", risks: "" });
   await TR.recordCalls([out("AAA")], I, "groq", at("2026-11-18T12:30:00Z"), "calls:o", { phase: "pre" });
@@ -187,7 +238,15 @@ const MIN = 60_000;
   await TR.gradeCalls(at("2026-11-21T14:00:00Z"), "calls:o");
   c = (await load())[0];
   assert.equal(c.closed, true, "a later bar is proof the market traded without that day");
-  assert.equal(TR.knownHoliday("2026-11-26", "AAA"), false, "the holiday hook exists (calendar list comes from holidays.ts)");
+  // A listed holiday is closed at once, with no later bar to wait for (holidays.ts; Thanksgiving 2026 for NYSE).
+  await TR.recordCalls([out("AAA")], I, "groq", at("2026-11-25T12:30:00Z"), "calls:hol", { phase: "pre" });
+  const hc = (await getJSON<Call[]>("calls:hol"))!;
+  hc[0].date = "2026-11-26";
+  hc[0].id = "2026-11-26:AAA:d";
+  await setJSON("calls:hol", hc);
+  closes.AAA = [["2026-11-24", 100], ["2026-11-25", 100]];
+  assert.equal(await TR.gradeCalls(at("2026-11-26T22:00:00Z"), "calls:hol"), 1, "no later bar needed on a listed holiday");
+  assert.equal((await getJSON<Call[]>("calls:hol"))![0].closed, true);
 
   await TR.recordCalls([out("AAA")], I, "groq", at("2026-11-23T12:30:00Z"), "calls:e", { phase: "pre" });
   closes.AAA = [["2026-11-13", 100], ["2026-11-16", 100], ["2026-11-17", 100]];

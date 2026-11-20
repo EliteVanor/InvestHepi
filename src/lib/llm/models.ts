@@ -118,6 +118,22 @@ export function recordUsage(def: ModelDef, route: Route, tokens: number, ok: boo
   });
 }
 
+/** Make a model unavailable until `untilMs` (never shortens a longer cooldown): the scheduler uses it to keep 120b out of a run that must start inside its token-per-minute window. */
+export async function holdOff(key: ModelKey, untilMs: number, now = new Date()): Promise<void> {
+  const def = modelDef(key);
+  if (!def) return;
+  const u = await loadUsage(def, now);
+  if ((u.cooldownUntil ?? 0) >= untilMs) return;
+  u.cooldownUntil = untilMs;
+  await setJSON(usageKey(key), u).catch(() => {});
+}
+
+/** Requests made to 120b today (to see whether a unit used it). */
+export async function requests120(now = new Date()): Promise<number> {
+  const def = modelDef("groq120");
+  return def ? (await loadUsage(def, now)).requests : 0;
+}
+
 /** After a refusal: back off for Retry-After, or an hour when the daily quota itself is spent. */
 export async function recordRefusal(def: ModelDef, status: number, retryAfterSec: number | undefined, body: string, now = new Date()): Promise<void> {
   const u = await loadUsage(def, now);

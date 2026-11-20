@@ -20,6 +20,7 @@
 import { checkPriceAlerts, loadAlertSettings } from "./alerts";
 import { OWNER, withUser } from "./context";
 import { appUrl } from "./email";
+import { holdOff, requests120 } from "./llm/models";
 import { pretranslateSet, translateLatest } from "./briefings";
 import { refreshHeadlines } from "./headlines";
 import { interestGroups, loadInterests, withHoldings } from "./interests";
@@ -56,6 +57,11 @@ export interface SlotRun {
 }
 
 export type Lane = "pred" | "brief";
+/** When a lane last started a unit, and whether it called gpt-oss-120b (the gap exists for its token rate). */
+interface LastUnit {
+  at: number;
+  used120: boolean;
+}
 interface SetRef {
   hash: string;
   interests: Interest[];
@@ -254,6 +260,11 @@ async function gradeIfDue(now: Date, out: TickResult) {
   const t = now.getTime();
   const due = fail ? t >= new Date(fail.retryAt).getTime() : !last || t - new Date(last.at).getTime() >= 55 * MIN;
   if (!due) return;
+  // Marked BEFORE the pass: a pass cut off at the function's time limit writes nothing afterwards, and
+  // without this every chained tick would start it again. Success clears it, a failure overwrites it.
+  const n = (fail?.n ?? 0) + 1;
+  const retryAt = new Date(t + gradeBackoffMin(n) * MIN).toISOString();
+  await setJSON(GRADE_FAIL_KEY, { at: now.toISOString(), n, error: "started, not finished", retryAt } satisfies GradeFailure);
   let res: Awaited<ReturnType<typeof gradeAll>>;
   try {
     res = await gradeAll(now);
@@ -263,12 +274,11 @@ async function gradeIfDue(now: Date, out: TickResult) {
   out.graded = res.graded;
   if (!res.errors.length) {
     await setJSON(GRADE_KEY, { at: now.toISOString() });
-    if (fail) await delJSON(GRADE_FAIL_KEY);
+    await delJSON(GRADE_FAIL_KEY);
     return;
   }
-  const n = (fail?.n ?? 0) + 1;
   out.gradeError = res.errors[0];
-  await setJSON(GRADE_FAIL_KEY, { at: now.toISOString(), n, error: res.errors.join("; ").slice(0, 160), retryAt: new Date(t + gradeBackoffMin(n) * MIN).toISOString() } satisfies GradeFailure);
+  await setJSON(GRADE_FAIL_KEY, { at: now.toISOString(), n, error: res.errors.join("; ").slice(0, 160), retryAt } satisfies GradeFailure);
 }
 
 /* -------------------------------------------------------------- alerts */
@@ -338,11 +348,11 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
     out.headlines = await refreshHeadlines(now).catch(() => 0);
     const units = await nextUnits(clock().getTime());
     const t0 = clock().getTime();
-    const waitOf = async (lane: Lane) => {
-      if (!units[lane]) return Infinity;
-      const last = (await getJSON<number>(`sched:lastUnit:${lane}`)) ?? (await getJSON<number>("sched:lastUnit")) ?? 0;
-      return Math.max(0, last + GAP_MS - t0);
+    const lastOf = async (lane: Lane): Promise<LastUnit> => {
+      const v = (await getJSON<number | LastUnit>(`sched:lastUnit:${lane}`)) ?? (await getJSON<number>("sched:lastUnit")) ?? 0;
+      return typeof v === "number" ? { at: v, used120: true } : v; // an old-format mark: assume the worst
     };
+    const waitOf = async (lane: Lane) => (units[lane] ? Math.max(0, (await lastOf(lane)).at + GAP_MS - t0) : Infinity);
     const [wp, wb] = await Promise.all([waitOf("pred"), waitOf("brief")]);
     if (wp === Infinity && wb === Infinity) return out;
     const lane: Lane = wp <= wb ? "pred" : "brief";
@@ -350,8 +360,13 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
     const end = itemEnd(u.occ, u.item);
     let wait = Math.min(wp, wb);
     // The lane's gap would end after this item's deadline (a before-market run waiting past the open):
-    // a try now, a little early on the token budget, beats a certain miss.
-    if (wait > 0 && t0 + wait >= end) wait = 0;
+    // a try now beats a certain miss. The gap protects Groq's tokens-per-minute on gpt-oss-120b, so when
+    // the previous unit on this lane used it, 120b sits out the rest of the gap and the run starts on
+    // the route's next model instead of risking a 429 (and a longer 120b cooldown).
+    if (wait > 0 && t0 + wait >= end) {
+      if ((await lastOf(lane)).used120) await holdOff("groq120", t0 + wait);
+      wait = 0;
+    }
     if (wait > 0) await sleep(wait);
     const unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8) };
     if (clock().getTime() >= end) {
@@ -361,8 +376,11 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
       await record(u, { at: iso(clock().getTime()), n: MAX_ATTEMPTS, ok: false, note });
       out.unit = { ...unit, ok: false, note };
     } else {
-      await setJSON(`sched:lastUnit:${lane}`, clock().getTime());
+      const startedAt = clock().getTime();
+      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: true } satisfies LastUnit); // until we know (a cut-off run counts as 120b)
+      const before = await requests120();
       const a = await runUnit(u, clock());
+      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: (await requests120()) > before } satisfies LastUnit);
       out.unit = { ...unit, ok: a.ok, note: a.note };
     }
   } finally {
@@ -414,8 +432,10 @@ const isReportable = (r: SlotReport) => r.state === "late" || r.state === "misse
 
 function stateOf(o: Occurrence, run: SlotRun | null, now: number): SlotReport {
   const failed = run ? [...Object.entries(run.items), ...Object.entries(run.sets)].filter(([, a]) => a && !a.ok && a.n >= MAX_ATTEMPTS).map(([k]) => k) : [];
+  // A run that couldn't start for lack of data ("unavailable: ...", shown on the card) is a data gap, not a missed run.
+  const missed = run ? [...Object.entries(run.items), ...Object.entries(run.sets)].filter(([k, a]) => failed.includes(k) && !/^(gave up: )?unavailable/.test(a?.note ?? "")) : [];
   let state: SlotState;
-  if (run?.done) state = failed.length ? "partial" : "done";
+  if (run?.done) state = missed.length ? "partial" : "done";
   else if (now < o.start + LATE_AFTER_MIN * MIN) state = "running";
   else state = now < o.end ? "late" : "missed";
   // Interest sets that ran (no hashes: counts only).
