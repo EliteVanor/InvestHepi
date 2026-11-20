@@ -116,7 +116,8 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   const scope = set ? `ib:${set.hash}:${market === "ivn" ? "vn" : "us"}` : sharedScope(market);
   const callsKey = set ? `calls:${set.hash}` : SHARED_CALLS[section as keyof typeof SHARED_CALLS];
   const route: Route = set ? (set.admin ? "predAdmin" : "predUser") : "predShared";
-  await gradeCalls(now, callsKey).catch(() => 0);
+  // Best effort: the hourly tick is the grading path that records failures (scheduler.ts gradeIfDue).
+  await gradeCalls(now, callsKey).catch((e) => console.warn(`grading ${callsKey} failed: ${(e as Error).message.slice(0, 120)}`));
 
   const firsts = interests.map((i) => i.tickers[0]);
   const symbols = [...new Set(interests.flatMap((i) => i.tickers))];

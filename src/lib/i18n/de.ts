@@ -139,6 +139,7 @@ export const de: Dict = {
   "st.cron": "Scheduler-Geheimnis",
   "st.sched": "Planer",
   "st.late": "Verspätet",
+  "st.gradeFail": "Bewertung schlägt fehl",
   "st.on": "An",
   "st.off": "Aus",
   "st.last": "Letzte Aktualisierung",

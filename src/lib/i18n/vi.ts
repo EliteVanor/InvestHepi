@@ -139,6 +139,7 @@ export const vi: Dict = {
   "st.cron": "Khóa bộ hẹn giờ",
   "st.sched": "Bộ hẹn giờ",
   "st.late": "Trễ",
+  "st.gradeFail": "Chấm điểm đang lỗi",
   "st.on": "Bật",
   "st.off": "Tắt",
   "st.last": "Làm mới lần cuối",

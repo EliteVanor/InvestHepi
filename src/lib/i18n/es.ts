@@ -139,6 +139,7 @@ export const es: Dict = {
   "st.cron": "Secreto del programador",
   "st.sched": "Programador",
   "st.late": "Retrasado",
+  "st.gradeFail": "Fallo al calificar",
   "st.on": "Activado",
   "st.off": "Desactivado",
   "st.last": "Última actualización",

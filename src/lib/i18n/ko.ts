@@ -139,6 +139,7 @@ export const ko: Dict = {
   "st.cron": "스케줄러 비밀키",
   "st.sched": "스케줄러",
   "st.late": "지연",
+  "st.gradeFail": "채점 오류",
   "st.on": "켜짐",
   "st.off": "꺼짐",
   "st.last": "마지막 새로고침",

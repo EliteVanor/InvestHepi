@@ -139,6 +139,7 @@ export const fr: Dict = {
   "st.cron": "Secret du planificateur",
   "st.sched": "Planificateur",
   "st.late": "En retard",
+  "st.gradeFail": "Échec de la notation",
   "st.on": "Activé",
   "st.off": "Désactivé",
   "st.last": "Dernière actualisation",

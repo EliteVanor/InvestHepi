@@ -287,7 +287,7 @@ interface Status {
   cronSecret: boolean;
   email: "resend" | "smtp" | "none";
   lastRefresh: Record<SectionId, { at: string; ok: boolean; provider?: string; error?: string } | null>;
-  schedule?: { lastTick: { at: string; src: string } | null; late: string[]; slots?: { slot: string; start: string }[] };
+  schedule?: { lastTick: { at: string; src: string } | null; late: string[]; slots?: { slot: string; start: string }[]; grading?: { lastOk: string | null; failing: { at: string; n: number; error: string; retryAt: string } | null } };
   /** Admin only: today's use per model against its free allowance. */
   aiUsage?: { key: string; model: string; tokens: number; tokensPerDay?: number; requests: number; requestsPerDay?: number; byRoute: Record<string, number>; cooldownUntil?: string; lastError?: string }[];
 }
@@ -370,6 +370,12 @@ function StatusTab() {
               ) : (
                 <span className="value">{s.schedule.lastTick ? `${relTime(s.schedule.lastTick.at, lang)} · ${s.schedule.lastTick.src}` : t("st.never")}</span>
               )}
+            </div>
+          )}
+          {s.schedule?.grading?.failing && (
+            <div className="row">
+              <span className="label">{t("st.gradeFail")}</span>
+              <span className="value bad">{s.schedule.grading.failing.n}× · {relTime(s.schedule.grading.failing.at, lang)} · {s.schedule.grading.failing.error}</span>
             </div>
           )}
           <div className="row"><span className="label">{t("st.email")}</span>{s.email === "none" ? onOff(false) : <span className="ok">{s.email === "resend" ? "Resend" : "SMTP"}</span>}</div>

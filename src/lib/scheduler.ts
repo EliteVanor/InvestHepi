@@ -28,7 +28,7 @@ import { refreshInterestSet, refreshShared, SHARED_CALLS } from "./pipeline";
 import { runPrediction, translatePredictions } from "./predictions";
 import { gradeCalls } from "./track";
 import { loadHoldings } from "./portfolio";
-import { getJSON, releaseLock, setJSON, takeLock } from "./store";
+import { delJSON, getJSON, releaseLock, setJSON, takeLock } from "./store";
 import { LATE_AFTER_MIN, isPred, itemEnd, occurrences, openOccurrences, predParts, runKey, type Occurrence, type SlotItem } from "./timetable";
 import type { Interest, SectionId } from "./types";
 import { activeUsers } from "./users";
@@ -219,13 +219,56 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
 /* ------------------------------------------------------------- grading */
 
 const GRADE_KEY = "sched:graded";
+const GRADE_FAIL_KEY = "sched:gradeFail";
+/** A failed grading pass is retried after 5, 10, 20, 40 min, then every 55 (the normal hourly rhythm). */
+const gradeBackoffMin = (fails: number) => Math.min(55, 5 * 2 ** Math.max(0, fails - 1));
 
-/** Grade every call store: the shared sections' and each active interest set's. */
-export async function gradeAll(now = new Date()): Promise<number> {
+export interface GradeFailure {
+  at: string;
+  n: number;
+  error: string;
+  retryAt: string;
+}
+
+/**
+ * Grade every call store: the shared sections' and each active interest set's. One store failing
+ * doesn't stop the others; the errors come back so the tick can record them.
+ */
+export async function gradeAll(now = new Date()): Promise<{ graded: number; errors: string[] }> {
   const keys = [...Object.values(SHARED_CALLS), ...[...(await interestGroups()).keys()].map((h) => `calls:${h}`)];
-  let n = 0;
-  for (const k of keys) n += await gradeCalls(now, k).catch(() => 0);
-  return n;
+  let graded = 0;
+  const errors: string[] = [];
+  for (const k of keys) {
+    try {
+      graded += await gradeCalls(now, k);
+    } catch (e) {
+      errors.push(`${k.slice(0, 14)}: ${(e as Error).message.slice(0, 120)}`);
+    }
+  }
+  return { graded, errors };
+}
+
+/** Hourly grading with a visible failure: the "graded at" mark only moves after a clean pass. */
+async function gradeIfDue(now: Date, out: TickResult) {
+  const [last, fail] = await Promise.all([getJSON<{ at: string }>(GRADE_KEY), getJSON<GradeFailure>(GRADE_FAIL_KEY)]);
+  const t = now.getTime();
+  const due = fail ? t >= new Date(fail.retryAt).getTime() : !last || t - new Date(last.at).getTime() >= 55 * MIN;
+  if (!due) return;
+  let res: Awaited<ReturnType<typeof gradeAll>>;
+  try {
+    res = await gradeAll(now);
+  } catch (e) {
+    res = { graded: 0, errors: [(e as Error).message.slice(0, 120)] };
+  }
+  out.graded = res.graded;
+  if (!res.errors.length) {
+    await setJSON(GRADE_KEY, { at: now.toISOString() });
+    if (fail) await delJSON(GRADE_FAIL_KEY);
+    return;
+  }
+  const n = (fail?.n ?? 0) + 1;
+  out.gradeError = res.errors[0];
+  await setJSON(GRADE_FAIL_KEY, { at: now.toISOString(), n, error: res.errors.join("; ").slice(0, 160), retryAt: new Date(t + gradeBackoffMin(n) * MIN).toISOString() } satisfies GradeFailure);
 }
 
 /* -------------------------------------------------------------- alerts */
@@ -265,6 +308,8 @@ export interface TickResult {
   busy?: boolean;
   alerts?: number;
   graded?: number;
+  /** Grading failed this pass (recorded at `sched:gradeFail`, retried after a short back-off). */
+  gradeError?: string;
   headlines?: number;
   unit?: { slot: string; item: SlotItem; set?: string; ok: boolean; note?: string };
   chained?: boolean | string;
@@ -288,11 +333,7 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
     }
     // Grade calls whose session has closed, at most hourly (no AI; prices only when something is due),
     // so results show up within the hour after each market closes, not at the next run.
-    const lastGrade = await getJSON<{ at: string }>(GRADE_KEY);
-    if (!lastGrade || now.getTime() - new Date(lastGrade.at).getTime() >= 55 * MIN) {
-      await setJSON(GRADE_KEY, { at: now.toISOString() });
-      out.graded = await gradeAll(now).catch(() => 0);
-    }
+    await gradeIfDue(now, out).catch((e) => void (out.gradeError = (e as Error).message.slice(0, 120)));
     // Headlines (no AI): shared sections every 15 minutes, active interest sets every 30.
     out.headlines = await refreshHeadlines(now).catch(() => 0);
     const units = await nextUnits(clock().getTime());
@@ -377,9 +418,11 @@ export async function lateNow(now: number): Promise<SlotReport[]> {
 export async function scheduleReport(now = Date.now()) {
   const recent = occurrences(now - 24 * 60 * MIN, now).filter((o) => o.start >= TIMETABLE_SINCE);
   const slots = await Promise.all(recent.map(async (o) => stateOf(o, await getJSON<SlotRun>(runKey(o)), now)));
-  const [lastTick, alerts] = await Promise.all([getJSON<{ at: string; src: string }>("sched:tick"), getJSON<{ at: string }>(ALERTS_KEY)]);
+  const [lastTick, alerts, graded, failing] = await Promise.all([getJSON<{ at: string; src: string }>("sched:tick"), getJSON<{ at: string }>(ALERTS_KEY), getJSON<{ at: string }>(GRADE_KEY), getJSON<GradeFailure>(GRADE_FAIL_KEY)]);
   return {
     lastTick,
+    /** The hourly grading pass: when it last finished cleanly, and the failure still being retried, if any. */
+    grading: { lastOk: graded?.at ?? null, failing: failing ?? null },
     lastAlerts: alerts?.at ?? null,
     late: slots.filter((s) => s.state === "late" || s.state === "missed").map((s) => s.slot),
     slots: slots.reverse(),

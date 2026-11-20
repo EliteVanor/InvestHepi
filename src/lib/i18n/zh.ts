@@ -139,6 +139,7 @@ export const zh: Dict = {
   "st.cron": "定时任务密钥",
   "st.sched": "定时任务",
   "st.late": "延迟",
+  "st.gradeFail": "评分失败",
   "st.on": "开",
   "st.off": "关",
   "st.last": "上次刷新",

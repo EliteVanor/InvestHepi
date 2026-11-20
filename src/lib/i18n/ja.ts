@@ -139,6 +139,7 @@ export const ja: Dict = {
   "st.cron": "スケジューラーの秘密鍵",
   "st.sched": "スケジューラー",
   "st.late": "遅延",
+  "st.gradeFail": "採点エラー",
   "st.on": "オン",
   "st.off": "オフ",
   "st.last": "最終更新",

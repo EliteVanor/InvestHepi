@@ -137,6 +137,7 @@ export const en = {
   "st.cron": "Scheduler secret",
   "st.sched": "Scheduler",
   "st.late": "Late",
+  "st.gradeFail": "Grading failing",
   "st.on": "On",
   "st.off": "Off",
   "st.last": "Last refresh",
