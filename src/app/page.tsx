@@ -220,6 +220,7 @@ function App() {
         const m = (e as Error).message;
         if (m === "wait") toast(rs.waitText ?? rs.limitText);
         else if (m === "limit") toast(rs.limitText);
+        else if (m === "busy") toast(t("ai.busy"));
         else if (!["401", "signin"].includes(m)) setError(m);
       } finally {
         setRefreshing(null);

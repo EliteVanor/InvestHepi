@@ -165,6 +165,30 @@ export async function available(def: ModelDef, route: Route, now = new Date()): 
   return { ok: true };
 }
 
+/**
+ * Daily ceiling for work a visitor starts (catch-ups, users' refresh button, first briefings, Ask AI,
+ * on-read translation for signed-out visitors): once a model has used this share of its free daily
+ * allowance (Groq tokens, Flash-Lite requests), that work leaves it alone until its next day. Shared and
+ * admin runs ignore the ceiling and keep going up to the usual 97%. AI_USER_CEILING overrides (0.1-1).
+ */
+export const userCeiling = () => Math.min(1, Math.max(0.1, Number(process.env.AI_USER_CEILING) || 0.7));
+
+export function overUserCeiling(def: ModelDef, u: ModelUsage): boolean {
+  const c = userCeiling();
+  return !!((def.tokensPerDay && u.tokens >= def.tokensPerDay * c) || (def.requestsPerDay && u.requests >= def.requestsPerDay * c));
+}
+
+/**
+ * True when visitor-triggered AI work on this route should wait for tomorrow: every model in its chain
+ * is past the ceiling (with no key configured nothing is "busy": the rule-based copy needs no model).
+ */
+export async function userAiBusy(route: Route, now = new Date()): Promise<boolean> {
+  const chain = chainFor(route);
+  if (!chain.length) return false;
+  for (const def of chain) if (!overUserCeiling(def, await loadUsage(def, now))) return false;
+  return true;
+}
+
 /** The models a route will try, in order, that have a key configured. */
 export function chainFor(route: Route): ModelDef[] {
   return ROUTES[route].map(modelDef).filter((d): d is ModelDef => d != null);

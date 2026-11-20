@@ -36,6 +36,21 @@ export async function setJSON<T>(key: string, value: T, ttlSec?: number): Promis
   await fs.writeFile(fileFor(key), JSON.stringify(value, null, 2));
 }
 
+/**
+ * Atomic counter that expires on its own: the new count. One Redis command per call (INCR), plus one
+ * EXPIRE only when the key was just created. Files (local dev) read and write, which is fine for one process.
+ */
+export async function incrWindow(key: string, ttlSec: number): Promise<number> {
+  if (redis) {
+    const n = await redis.incr(key);
+    if (n === 1) await redis.expire(key, ttlSec);
+    return n;
+  }
+  const n = ((await getJSON<number>(key)) ?? 0) + 1;
+  await setJSON(key, n);
+  return n;
+}
+
 export async function delJSON(key: string): Promise<void> {
   if (redis) {
     await redis.del(key);

@@ -145,7 +145,7 @@ export function AskPanel({
         }
       } catch (e) {
         const em = (e as Error).message;
-        if (em !== "signin") setMsgs((m) => [...m, { role: "assistant", content: em === "NO_PROVIDER" ? t("ask.noProvider") : em, error: true }]);
+        if (em !== "signin") setMsgs((m) => [...m, { role: "assistant", content: em === "NO_PROVIDER" ? t("ask.noProvider") : em === "busy" ? t("ai.busy") : em, error: true }]);
         else setMsgs((m) => m.slice(0, -1));
       } finally {
         setBusy(false);

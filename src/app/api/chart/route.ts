@@ -1,10 +1,13 @@
 import { authorized, unauthorized } from "@/lib/auth";
+import { priceLimited } from "@/lib/ratelimit";
 import { CHART_RANGES, getChart, type ChartRange } from "@/lib/chart";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   if (!authorized(req)) return unauthorized();
+  const limited = await priceLimited(req);
+  if (limited) return limited;
   const p = new URL(req.url).searchParams;
   const symbol = (p.get("symbol") ?? "").toUpperCase();
   const range = (p.get("range") ?? "1d") as ChartRange;
