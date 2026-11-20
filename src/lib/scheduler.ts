@@ -347,11 +347,24 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
     if (wp === Infinity && wb === Infinity) return out;
     const lane: Lane = wp <= wb ? "pred" : "brief";
     const u = units[lane]!;
-    const wait = Math.min(wp, wb);
+    const end = itemEnd(u.occ, u.item);
+    let wait = Math.min(wp, wb);
+    // The lane's gap would end after this item's deadline (a before-market run waiting past the open):
+    // a try now, a little early on the token budget, beats a certain miss.
+    if (wait > 0 && t0 + wait >= end) wait = 0;
     if (wait > 0) await sleep(wait);
-    await setJSON(`sched:lastUnit:${lane}`, clock().getTime());
-    const a = await runUnit(u, clock());
-    out.unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8), ok: a.ok, note: a.note };
+    const unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8) };
+    if (clock().getTime() >= end) {
+      // The wait itself ran past the deadline: don't start a run that can no longer count; record it so the chain ends.
+      const prev = u.set ? u.run.sets[setKey(u.item, u.set.hash)] : u.run.items[u.item];
+      const note = prev ? `gave up: ${prev.note ?? "failed"}` : "missed: too late";
+      await record(u, { at: iso(clock().getTime()), n: MAX_ATTEMPTS, ok: false, note });
+      out.unit = { ...unit, ok: false, note };
+    } else {
+      await setJSON(`sched:lastUnit:${lane}`, clock().getTime());
+      const a = await runUnit(u, clock());
+      out.unit = { ...unit, ok: a.ok, note: a.note };
+    }
   } finally {
     await releaseLock(LOCK, token);
   }
