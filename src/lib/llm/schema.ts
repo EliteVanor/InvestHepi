@@ -78,7 +78,34 @@ export type RawAnalysis = z.infer<typeof AnalysisSchema>;
 
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(Number(n) || 0)));
 
-export function toAnalysis(r: RawAnalysis): Analysis {
+const PLACEHOLDER = /^(n\/?a|none|null|nil|undefined|tbd|unknown|no data|not available|not applicable|[-\u2013\u2014.\u2026?_*\s]*)$/i;
+/** Text that says something: not blank and not a placeholder like "N/A". */
+export const hasText = (v: unknown): boolean => typeof v === "string" && !PLACEHOLDER.test(v.trim());
+
+/** True when a reply carries a headline, a summary bullet or an event with real text. */
+export function hasUsableContent(r: RawAnalysis): boolean {
+  return hasText(r.headline) || (r.summary ?? []).some(hasText) || (r.events ?? []).some((e) => hasText(e.title) || hasText(e.what_happened));
+}
+
+/** Valid, de-duplicated headline indexes: integers in [0, count), at most `max`. */
+export function clampSourceIds(ids: unknown, count: number, max = 8): number[] {
+  const out: number[] = [];
+  for (const x of Array.isArray(ids) ? ids : []) {
+    const n = typeof x === "string" && x.trim() === "" ? NaN : Number(x);
+    if (Number.isInteger(n) && n >= 0 && n < count && !out.includes(n)) out.push(n);
+    if (out.length >= max) break;
+  }
+  return out;
+}
+
+/**
+ * Turn a validated reply into an Analysis. `headlines` is how many headlines the model was shown:
+ * cited ids outside that range are dropped. A reply with no usable content throws, so the caller
+ * tries the next model (and finally the rule-based path) instead of storing an empty briefing.
+ */
+export function toAnalysis(r: RawAnalysis, headlines = Infinity): Analysis {
+  if (!hasUsableContent(r)) throw new Error("model reply had no usable content (no headline, summary or events)");
+  const ids = (v: unknown) => clampSourceIds(v, headlines);
   return {
     headline: r.headline,
     mood: r.mood,
@@ -88,13 +115,13 @@ export function toAnalysis(r: RawAnalysis): Analysis {
       whatHappened: e.what_happened,
       whyItMatters: e.why_it_matters,
       importance: clamp(e.importance, 1, 5),
-      sourceIds: e.source_ids ?? [],
+      sourceIds: ids(e.source_ids),
       impacts: (e.impacts ?? []).map((i) => ({ ...i, confidence: clamp(i.confidence, 0, 100) })),
       analog: e.analog ? { event: analogEventName(e.analog.event, e.analog.date), date: e.analog.date, whatHappenedNext: e.analog.what_happened_next } : null,
       whatCouldGoWrong: e.what_could_go_wrong,
     })),
     watchNext: r.watch_next ?? [],
-    movers: (r.movers ?? []).map((m) => ({ ticker: m.ticker.toUpperCase(), changePct: Number(m.change_pct) || 0, why: m.why, sourceIds: m.source_ids ?? [] })),
+    movers: (r.movers ?? []).map((m) => ({ ticker: m.ticker.toUpperCase(), changePct: Number(m.change_pct) || 0, why: m.why, sourceIds: ids(m.source_ids) })),
     scenarios: (r.scenarios ?? [])
       .filter((s) => s.catalyst && s.cases?.length >= 2)
       .slice(0, 1)
@@ -155,7 +182,7 @@ export function normalizeRaw(input: unknown): unknown {
       what_happened: str(e?.what_happened),
       why_it_matters: str(e?.why_it_matters),
       importance: num(e?.importance, 3),
-      source_ids: arr(e?.source_ids).map((x) => num(x, 0)),
+      source_ids: arr(e?.source_ids).map((x) => (typeof x === "string" && x.trim() === "" ? NaN : Number(x))).filter((x) => Number.isInteger(x)),
       impacts: arr(e?.impacts).map((i: any) => ({
         interest: str(i?.interest),
         direction: dir(i?.direction),
@@ -169,7 +196,7 @@ export function normalizeRaw(input: unknown): unknown {
       what_could_go_wrong: str(e?.what_could_go_wrong),
     })),
     watch_next: arr(o.watch_next).map(str),
-    movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why), source_ids: arr(m?.source_ids).map((x: unknown) => Number(x)).filter((x: number) => Number.isInteger(x) && x >= 0) })),
+    movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why), source_ids: arr(m?.source_ids).map((x: unknown) => (typeof x === "string" && x.trim() === "" ? NaN : Number(x))).filter((x: number) => Number.isInteger(x) && x >= 0) })),
     scenarios: arr(o.scenarios).map((s: any) => ({
       catalyst: str(s?.catalyst),
       when: str(s?.when),

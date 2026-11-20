@@ -22,7 +22,7 @@ interface Step {
   compact: boolean;
   provider?: CompatProvider;
   def?: ModelDef;
-  run: (system: string, user: string) => Promise<{ analysis: Analysis; tokens: number }>;
+  run: (system: string, user: string, headlines?: number) => Promise<{ analysis: Analysis; tokens: number }>;
 }
 
 function forcedOrder<T extends { id: string }>(steps: T[]): T[] {
@@ -35,7 +35,7 @@ function forcedOrder<T extends { id: string }>(steps: T[]): T[] {
 export function providerChain(route: Route = "shared"): Step[] {
   const steps: Step[] = [];
   if (process.env.ANTHROPIC_API_KEY) {
-    steps.push({ id: `claude:${CLAUDE_MODEL}`, compact: false, run: async (s, u) => ({ analysis: toAnalysis(await analyzeWithClaude(s, u)), tokens: 0 }) });
+    steps.push({ id: `claude:${CLAUDE_MODEL}`, compact: false, run: async (s, u, n) => ({ analysis: toAnalysis(await analyzeWithClaude(s, u), n), tokens: 0 }) });
   }
   for (const def of chainFor(route)) {
     const p = def.provider;
@@ -44,9 +44,14 @@ export function providerChain(route: Route = "shared"): Step[] {
       compact: true,
       provider: p,
       def,
-      run: async (s, u) => {
+      run: async (s, u, n) => {
         const r = await analyzeWithCompat(p, s, u);
-        return { analysis: toAnalysis(r.raw), tokens: r.usage.tokens };
+        try {
+          return { analysis: toAnalysis(r.raw, n), tokens: r.usage.tokens };
+        } catch (e) {
+          // An empty reply still cost tokens.
+          throw Object.assign(e as Error, { usage: r.usage });
+        }
       },
     });
   }
@@ -99,9 +104,10 @@ export async function analyze(input: PromptInput, route: Route = "shared"): Prom
   const failures: string[] = [];
   for (const step of providerChain(route)) {
     try {
-      const { system, user } = fitPrompt(input, step);
+      const { system, user, maxHeadlines } = fitPrompt(input, step);
+      const shown = Math.min(input.news.length, maxHeadlines ?? (step.compact ? 30 : 45));
       const analysis = await guarded(step.def, route, async () => {
-        const r = await step.run(system, user);
+        const r = await step.run(system, user, shown);
         return { value: r.analysis, tokens: r.tokens };
       });
       return { analysis, provider: step.id, note: failures.length ? `Fell back after: ${failures.join("; ")}` : undefined };
