@@ -99,6 +99,18 @@ const OWNER = "owner@example.com";
   const ownerTest = await test.POST(req("/api/alerts/test", OWNER, { method: "POST", body: "{}" }));
   assert.equal(ownerTest.status, 200, "the cap is per person");
 
+  /* ===== Row 17: feed links are http(s) only ===== */
+  const { parseFeed } = await import("../../src/lib/news");
+  const { safeHttpUrl } = await import("../../src/lib/safe-url");
+  const item = (l: string) => `<item><title>Headline ${l.length}</title><link>${l}</link><pubDate>Thu, 19 Nov 2026 12:00:00 GMT</pubDate></item>`;
+  const links = ["https://ok.example/a", "http://ok.example/b", "javascript:alert(1)", "JaVaScRiPt:alert(1)", "data:text/html,<b>x</b>", "vbscript:x", "//evil.example/x", "not a url"];
+  const parsed = parseFeed(`<rss><channel>${links.map(item).join("")}</channel></rss>`, "T");
+  assert.deepEqual(parsed.map((n) => n.link), ["https://ok.example/a", "http://ok.example/b", "", "", "", "", "", ""], "only http(s) links survive parsing");
+  const atom = parseFeed(`<feed><entry><title>A</title><link href="javascript:alert(1)"/></entry><entry><title>B</title><link href="https://ok.example/c"/></entry></feed>`, "T");
+  assert.deepEqual(atom.map((n) => n.link), ["", "https://ok.example/c"], "Atom href too");
+  assert.equal(safeHttpUrl(undefined), "");
+  assert.equal(safeHttpUrl("  https://x.example/p?q=1 "), "https://x.example/p?q=1");
+
   void otherFetch;
   console.log("SECURITY ROW16 OK");
 })().catch((e) => {

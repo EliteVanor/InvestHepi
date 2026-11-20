@@ -16,6 +16,7 @@ import { IconPanelRight, IconSparkles, IconX } from "./Icons";
 import { calTitle, groupName, symName } from "./labels";
 import { usePrefs } from "./prefs";
 import { Sheet, fmtPct } from "./primitives";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 export interface AskMsg {
   role: "user" | "assistant";
@@ -266,7 +267,7 @@ export function AskPanel({
                 {m.role === "assistant" && (m.sources?.length || m.provider) ? (
                   <div className="bubble-meta">
                     {m.sources?.map((s) => (
-                      <a key={s.n} href={s.link} target="_blank" rel="noreferrer" title={s.title}>
+                      <a key={s.n} href={safeHttpUrl(s.link) || undefined} target="_blank" rel="noreferrer" title={s.title}>
                         [{s.n}] {s.source}
                       </a>
                     ))}

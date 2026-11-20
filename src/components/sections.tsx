@@ -14,6 +14,7 @@ import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
 import { isPercentQuote, priceDigits } from "@/lib/symbols";
 import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";
 import { dayIn } from "@/lib/dates";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 
 /* ---------------------------------------------------------------- Market */
@@ -427,7 +428,7 @@ export function Events({ events, news }: { events: KeyEvent[]; news: NewsItem[] 
                 .filter(Boolean)
                 .slice(0, 4)
                 .map((n) => (
-                  <a key={n.id} href={n.link} target="_blank" rel="noreferrer">
+                  <a key={n.id} href={safeHttpUrl(n.link) || undefined} target="_blank" rel="noreferrer">
                     {n.source}
                   </a>
                 ))}
@@ -583,7 +584,7 @@ export function Headlines({
       {list.length === 0 && <p className="muted" style={{ padding: "12px 0" }}>{filter === "saved" && !needle ? t("news.savedEmpty") : t("news.none")}</p>}
       {list.map((n) => (
         <div className={`news ${newIds.has(n.id) ? "is-new" : ""}`} key={n.id}>
-          <a href={n.link} target="_blank" rel="noreferrer" title={n.titleOrig}>
+          <a href={safeHttpUrl(n.link) || undefined} target="_blank" rel="noreferrer" title={n.titleOrig}>
             {n.title}
           </a>
           <div className="news-actions">

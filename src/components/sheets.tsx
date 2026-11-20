@@ -17,6 +17,7 @@ import { useAccount } from "./account";
 import { VN_PRESET } from "@/lib/config";
 import { QUICK_ZONES, allZones, deviceZone, zoneOffset } from "@/lib/zones";
 import { HoldingsEditor, TickerSearch } from "./portfolio";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 /* -------------------------------------------------------------- Settings */
 
@@ -561,7 +562,7 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
         ) : (
           related.map((n) => (
             <div className="news" key={n.id} style={{ gridTemplateColumns: "1fr" }}>
-              <a href={n.link} target="_blank" rel="noreferrer">{n.title}</a>
+              <a href={safeHttpUrl(n.link) || undefined} target="_blank" rel="noreferrer">{n.title}</a>
               <div className="news-meta">{n.source} · {relTime(n.publishedAt, lang)}</div>
             </div>
           ))
