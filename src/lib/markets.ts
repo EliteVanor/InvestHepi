@@ -2,9 +2,11 @@
  * Exchange clocks and the prediction markets. Pure (no I/O), so the scheduler, grading, the track
  * record and the page all use the same hours.
  *
- * Holidays are not modeled: a holiday simply has no price bar, and grading marks a daily call on it
- * "market closed, not graded" (track.ts).
+ * Holidays and early closes come from the table in holidays.ts (2026-2027, per exchange). A closure the
+ * table doesn't know simply has no price bar, and grading still marks a daily call on it "market closed,
+ * not graded" once a later bar exists or 48 h passed (track.ts).
  */
+import { earlyCloseMins, isHoliday } from "./holidays";
 import { exchangeTz } from "./symbols";
 import type { Interest, SectionId } from "./types";
 
@@ -22,6 +24,10 @@ export const SESSIONS: Record<string, { open: number; close: number }> = {
   "Europe/Paris": { open: 540, close: 1050 },
 };
 const sessionOf = (tz: string) => SESSIONS[tz] ?? SESSIONS["America/New_York"];
+/** Closing minute of the session on `date` (an early close ends it sooner). */
+export const closeMinsOn = (tz: string, date: string): number => earlyCloseMins(tz, date) ?? sessionOf(tz).close;
+/** Regular session hours in minutes after local midnight, for the day `date` when given. */
+export const sessionHours = (tz: string, date?: string) => ({ open: sessionOf(tz).open, close: date ? closeMinsOn(tz, date) : sessionOf(tz).close });
 
 /** Closing prints settle a few minutes after the bell. */
 export const SETTLE_MINS = 15;
@@ -42,15 +48,26 @@ export function addDays(iso: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 export const isWeekend = (iso: string) => [0, 6].includes(new Date(iso + "T12:00:00Z").getUTCDay());
+/** A day the exchange on `tz` trades: a weekday that isn't in its holiday table (without `tz`: any weekday). */
+export const isTradingDay = (iso: string, tz?: string) => !isWeekend(iso) && !(tz && isHoliday(tz, iso));
 
-/** The n-th weekday counting `date` itself (n = 1 is `date` when it's a weekday). Holidays aren't known. */
-export function nthWeekday(date: string, n: number): string {
+/**
+ * The n-th trading day counting `date` itself (n = 1 is `date` when it trades). With `tz`, the exchange's
+ * holidays are skipped; without it, only weekends.
+ */
+export function nthWeekday(date: string, n: number, tz?: string): string {
   let d = date;
-  while (isWeekend(d)) d = addDays(d, 1);
+  while (!isTradingDay(d, tz)) d = addDays(d, 1);
   for (let i = 1; i < n; ) {
     d = addDays(d, 1);
-    if (!isWeekend(d)) i++;
+    if (isTradingDay(d, tz)) i++;
   }
+  return d;
+}
+/** The first trading day after `date` on the exchange's calendar. */
+export function nextTradingDay(date: string, tz?: string): string {
+  let d = addDays(date, 1);
+  while (!isTradingDay(d, tz)) d = addDays(d, 1);
   return d;
 }
 
@@ -67,12 +84,16 @@ export function zonedToUtc(date: string, mins: number, tz: string): Date {
 }
 
 export const openUtc = (date: string, tz: string) => zonedToUtc(date, sessionOf(tz).open, tz);
-export const closeUtc = (date: string, tz: string) => zonedToUtc(date, sessionOf(tz).close, tz);
+export const closeUtc = (date: string, tz: string) => zonedToUtc(date, closeMinsOn(tz, date), tz);
 
-/** Whether the session on `date` is over on that clock (close plus settling). */
+/**
+ * Whether the session on `date` is over on that clock (close plus settling). A holiday is over from
+ * its first minute (there is nothing to wait for).
+ */
 export function sessionClosed(date: string, tz: string, now: Date | number): boolean {
   const { date: today, mins } = localNow(now, tz);
-  return date < today || (date === today && mins >= sessionOf(tz).close + SETTLE_MINS);
+  if (isHoliday(tz, date)) return date <= today;
+  return date < today || (date === today && mins >= closeMinsOn(tz, date) + SETTLE_MINS);
 }
 
 /**
@@ -84,24 +105,22 @@ export function dailyTarget(now: Date | number, ticker: string): { date: string;
   const tz = exchangeTz(ticker);
   const { date, mins } = localNow(now, tz);
   const s = sessionOf(tz);
-  if (!isWeekend(date) && mins < s.close) return { date, opened: mins >= s.open, tz };
-  let d = addDays(date, 1);
-  while (isWeekend(d)) d = addDays(d, 1);
-  return { date: d, opened: false, tz };
+  if (isTradingDay(date, tz) && mins < closeMinsOn(tz, date)) return { date, opened: mins >= s.open, tz };
+  return { date: nextTradingDay(date, tz), opened: false, tz };
 }
 
-/** The weekday before `date`. */
-export function prevWeekday(date: string): string {
+/** The trading day before `date` (with `tz`, on that exchange's calendar; without, weekends only). */
+export function prevWeekday(date: string, tz?: string): string {
   let d = addDays(date, -1);
-  while (isWeekend(d)) d = addDays(d, -1);
+  while (!isTradingDay(d, tz)) d = addDays(d, -1);
   return d;
 }
 
-/** The latest session on a ticker's exchange that has closed by `now` (weekdays; holidays unknown). */
+/** The latest session on a ticker's exchange that has closed by `now` (trading days only; an early close ends it early). */
 export function lastFinishedSession(symbol: string, now: Date | number, proxy?: string): string {
   const tz = proxy ? "America/New_York" : exchangeTz(symbol);
   let d = localNow(now, tz).date;
-  while (isWeekend(d) || !sessionClosed(d, tz, now)) d = addDays(d, -1);
+  while (!isTradingDay(d, tz) || !sessionClosed(d, tz, now)) d = addDays(d, -1);
   return d;
 }
 
@@ -154,9 +173,7 @@ export function interestPart(interests: Interest[], market: "us" | "vn"): Intere
 export function preDeadline(market: SlotMarket, now: Date | number): Date {
   const tz = MARKET_TZ[market];
   const { date, mins } = localNow(now, tz);
-  const s = sessionOf(tz);
-  let d = !isWeekend(date) && mins < s.close ? date : addDays(date, 1);
-  while (isWeekend(d)) d = addDays(d, 1);
+  const d = isTradingDay(date, tz) && mins < closeMinsOn(tz, date) ? date : nextTradingDay(date, tz);
   return openUtc(d, tz);
 }
 

@@ -13,7 +13,7 @@ import { isVnSymbol, pool, vnDaily, vndirectDaily } from "./vnmarket";
 import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
 import { emSession, hasEastmoney } from "./eastmoney";
-import { SESSIONS, lastFinishedSession, localNow, prevWeekday } from "./markets";
+import { lastFinishedSession, localNow, prevWeekday, sessionHours } from "./markets";
 import { exchangeTz } from "./symbols";
 import { dayIn } from "./dates";
 
@@ -137,13 +137,14 @@ export async function freshenQuotes(quotes: Quote[], now = new Date()): Promise<
   await pool(lagging.slice(0, 48), 4, async (q) => {
     const want = lastFinishedSession(q.symbol, now, q.proxy);
     const last = q.history.at(-1)!;
+    const tz = q.proxy ? "America/New_York" : exchangeTz(q.symbol);
     const close = await latestClose(q.proxy ?? q.symbol, want).catch(() => null);
     if (!close) return;
     // Eastmoney's previous close must match ours when both are for the same day (a mislabeled series is caught here),
     // and no fill may move more than 25% from our last close (a broken print, not a market move).
-    if (close.prev != null && last[0] === prevWeekday(want) && Math.abs(close.prev / last[1] - 1) > 0.003) return;
+    if (close.prev != null && last[0] === prevWeekday(want, tz) && Math.abs(close.prev / last[1] - 1) > 0.003) return;
     if (Math.abs(close.value / last[1] - 1) > 0.25) return;
-    const prevClose = last[0] === prevWeekday(want) ? last[1] : (close.prev ?? last[1]);
+    const prevClose = last[0] === prevWeekday(want, tz) ? last[1] : (close.prev ?? last[1]);
     fixed.set(q.symbol, { ...q, price: close.value, prevClose, changePct: ((close.value - prevClose) / prevClose) * 100, history: [...q.history, [want, close.value] as [string, number]].slice(-25), closeVia: close.via });
   });
   return quotes.map((q) => fixed.get(q.symbol) ?? q);
@@ -156,7 +157,7 @@ async function latestClose(symbol: string, want: string): Promise<{ value: numbe
     const em = await emSession(symbol);
     if (em?.session === want) return { value: em.last, prev: em.preClose, via: "eastmoney" };
     // A newer session is under way: its previous close is the one we want.
-    if (em && em.session > want && prevWeekday(em.session) === want) return { value: em.preClose, via: "eastmoney" };
+    if (em && em.session > want && prevWeekday(em.session, tz) === want) return { value: em.preClose, via: "eastmoney" };
   }
   if (hasWorldDaily(symbol)) return null; // index levels: only Eastmoney is trusted for these
   // US stocks and ETFs: the same provider's 1-day bars, so the series matches the daily history by
@@ -164,8 +165,8 @@ async function latestClose(symbol: string, want: string): Promise<{ value: numbe
   // Only bars inside the wanted session's regular hours count: no after-hours print, no guessing.
   const d = await getChart(symbol, "1d");
   if (d.dailyOnly || d.proxy || d.estimatedVia) return null;
-  const close = SESSIONS[tz]?.close ?? 960;
-  const open = SESSIONS[tz]?.open ?? 570;
+  // An early close (13:00 on the day after US Thanksgiving) ends the session then: later prints are after hours.
+  const { open, close } = sessionHours(tz, want);
   const inSession = d.bars.filter((b) => {
     const l = localNow(b.t * 1000, tz);
     return l.date === want && l.mins >= open && l.mins <= close;
