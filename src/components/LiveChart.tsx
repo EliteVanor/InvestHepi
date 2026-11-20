@@ -4,14 +4,17 @@
  * Live price chart (TradingView Lightweight Charts, Apache-2.0).
  * - Ranges 1D · 5D · 1M · 6M · 1Y; area turns green/red vs the reference price
  * - Dashed previous-close line, volume histogram, crosshair readout
- * - Polls every 20s while the market session is active and the tab is visible
+ * - Polls every 20s while the symbol trades (its own exchange's hours) and the tab is visible
+ * - The header is the current quote (quote.ts): the same price and day change on every range, with the
+ *   selected range's change beside it
  * - Re-themes itself when light/dark changes
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, IPriceLine, SeriesMarker, Time, UTCTimestamp } from "lightweight-charts";
 import type { ChartData, ChartRange } from "@/lib/chart";
+import type { MsgKey } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
-import { marketClock, vnMarketClock } from "@/lib/marketTime";
+import { liveHours, type CurrentQuote } from "@/lib/quote-view";
 import { exchangeTz, priceDigits } from "@/lib/symbols";
 import type { Call } from "@/lib/types";
 import { lsGet, lsSet, usePrefs } from "./prefs";
@@ -27,13 +30,8 @@ interface ChartOpts {
 }
 const DEFAULT_OPTS: ChartOpts = { candles: false, ma: false, calls: true };
 
-/** Session clock for the symbol's exchange: HOSE for Vietnam, NYSE/Nasdaq for US, weekdays elsewhere. */
-function clockFor(symbol: string) {
-  if (symbol.endsWith(".VN")) return vnMarketClock();
-  if (exchangeTz(symbol) === "America/New_York") return marketClock();
-  const wd = new Date().getUTCDay();
-  return { phase: wd === 0 || wd === 6 ? "closed" : "open", secs: 0 } as ReturnType<typeof marketClock>;
-}
+/** /api/chart's reply: the series plus the current quote and the range's change (quote.ts chartWithQuote). */
+export type ChartReply = ChartData & { quote?: CurrentQuote | null; rangeChangePct?: number | null };
 
 function smaSeries(bars: { t: number; c: number }[], n: number) {
   const out: { time: UTCTimestamp; value: number }[] = [];
@@ -89,7 +87,7 @@ function useLiveFlash(value: number | undefined, scope: string) {
   return flash;
 }
 
-export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeader = true, onData }: { symbol: string; height?: number; initialRange?: ChartRange; showHeader?: boolean; onData?: (d: ChartData) => void }) {
+export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeader = true, onData }: { symbol: string; height?: number; initialRange?: ChartRange; showHeader?: boolean; onData?: (d: ChartReply) => void }) {
   const { t, lang, api } = usePrefs();
   const box = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -116,12 +114,12 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   }, [api, symbol]);
   const prevLineRef = useRef<IPriceLine | null>(null);
   const [range, setRange] = useState<ChartRange>(initialRange);
-  const [data, setData] = useState<ChartData | null>(null);
+  const [data, setData] = useState<ChartReply | null>(null);
   const [err, setErr] = useState("");
   const [hover, setHover] = useState<{ price: number; time: number } | null>(null);
   const [live, setLive] = useState(false);
   const [readyTick, setReadyTick] = useState(0);
-  const flash = useLiveFlash(data?.price, data ? `${data.symbol}|${data.range}` : "");
+  const flash = useLiveFlash(data?.quote?.price ?? data?.price, data ? `${data.symbol}|${data.range}` : "");
   const onDataRef = useRef(onData);
   onDataRef.current = onData;
 
@@ -249,7 +247,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
 
   const load = useCallback(async () => {
     try {
-      const d = await api<ChartData>(`/api/chart?symbol=${encodeURIComponent(symbol)}&range=${range}`);
+      const d = await api<ChartReply>(`/api/chart?symbol=${encodeURIComponent(symbol)}&range=${range}`);
       setData(d);
       setErr("");
       onDataRef.current?.(d);
@@ -274,13 +272,12 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       return;
     }
     const tick = () => {
-      const { phase } = clockFor(symbol);
-      const active = phase !== "closed" && document.visibilityState === "visible";
-      setLive(phase === "open");
-      if (active) load();
+      const open = liveHours(symbol, Date.now());
+      setLive(open);
+      if (open && document.visibilityState === "visible") load();
     };
     const id = setInterval(tick, POLL_MS);
-    setLive(clockFor(symbol).phase === "open");
+    setLive(liveHours(symbol, Date.now()));
     const onVis = () => document.visibilityState === "visible" && tick();
     document.addEventListener("visibilitychange", onVis);
     return () => {
@@ -307,30 +304,38 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
     };
   }, [data, paint]);
 
+  // Hovering reads the chart (change vs the range's start); otherwise the header is the current quote.
+  const q = data?.quote ?? null;
   const ref = data ? (data.range === "1d" ? data.prevClose : data.bars[0]?.c ?? data.prevClose) : 0;
-  const shown = hover?.price ?? data?.price;
-  const chg = data && shown != null ? shown - ref : 0;
-  const chgPct = data && ref ? (chg / ref) * 100 : 0;
+  const shown = hover?.price ?? q?.price ?? data?.price;
+  const chg = !data || shown == null ? 0 : hover ? shown - ref : q ? q.price - q.prevClose : data.price - data.prevClose;
+  const chgPct = !data ? 0 : hover ? (ref ? (chg / ref) * 100 : 0) : q?.changePct ?? data.changePct;
+  const proxyVia = q ? (q.basis === "proxy" ? q.via : undefined) : data?.proxy;
+  const estimated = q ? q.basis === "estimate" : !!data?.estimatedVia;
   const rangeLabel: Record<ChartRange, string> = { "1d": "1D", "5d": "5D", "1mo": "1M", "6mo": "6M", "1y": "1Y" };
-  const stale = data ? Date.now() / 1000 - data.asOf > 20 * 60 && clockFor(symbol).phase === "open" : false;
-  // Daily-only data is never "live"; and a 1-day view of an earlier session says which day it is.
-  const isLive = live && !stale && !data?.dailyOnly;
+  const stale = q ? q.stale : !!data?.stale;
+  const asOf = q?.asOf ?? data?.asOf ?? 0;
+  // Daily-only data is never "live"; and the day change says which session it is when it isn't today's.
+  const isLive = live && !stale && (q ? q.intraday : !data?.dailyOnly);
   const dayOf = (sec: number) => dayIn(tz, sec * 1000);
+  const session = q?.session ?? dayOf(asOf);
   const sessionLabel = data
-    ? dayOf(data.asOf) === dayOf(Date.now() / 1000)
+    ? session === dayOf(Date.now() / 1000)
       ? t("chart.today")
-      : new Intl.DateTimeFormat(locale, { timeZone: tz, weekday: "short", day: "numeric", month: "short" }).format(new Date(data.asOf * 1000))
+      : new Intl.DateTimeFormat(locale, { timeZone: "UTC", weekday: "short", day: "numeric", month: "short" }).format(new Date(`${session}T12:00:00Z`))
     : "";
+  const rangeChg = !hover && range !== "1d" && data?.rangeChangePct != null ? data.rangeChangePct : null;
+  const ext = !hover ? q?.extended : undefined;
   const sourceNote = !data
     ? ""
-    : data.proxy
-      ? t("strip.via", { etf: data.proxy })
-      : data.estimatedVia
-        ? t("strip.est", { etf: data.estimatedVia })
+    : proxyVia
+      ? t("strip.via", { etf: proxyVia })
+      : estimated
+        ? t("strip.est", { etf: q?.via ?? data.estimatedVia ?? "" })
         : data.shapeVia
           ? t("chart.shape", { etf: data.shapeVia })
-          : data.dailyOnly
-            ? t("strip.closeOf", { date: new Intl.DateTimeFormat(locale, { timeZone: tz, day: "numeric", month: "short" }).format(new Date(data.asOf * 1000)) })
+          : (q?.dailyOnly ?? data.dailyOnly)
+            ? t("strip.closeOf", { date: new Intl.DateTimeFormat(locale, { timeZone: tz, day: "numeric", month: "short" }).format(new Date(asOf * 1000)) })
             : "";
 
   return (
@@ -339,20 +344,29 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
         <div className="chart-head">
           <div>
             <div className="chart-price num">
-              <span className={flash}>{shown != null ? `${data?.estimatedVia && !hover ? "≈" : ""}${fmtPrice(shown, priceDigits(symbol, shown))}` : "—"}</span>
+              {/* An ETF stand-in's price is never shown as the symbol's level (only its %, "via <ETF>"). */}
+              <span className={flash}>{shown == null ? "—" : proxyVia && !hover ? t("strip.viaShort", { etf: proxyVia }) : `${estimated && !hover ? "≈" : ""}${fmtPrice(shown, priceDigits(symbol, shown))}`}</span>
             </div>
             <div className={`chart-chg num ${chg >= 0 ? "up" : "down"}`}>
-              {data ? `${chg >= 0 ? "+" : ""}${fmtPrice(Math.abs(chg) < 1000 ? chg : Math.round(chg))} (${fmtPct(chgPct)})` : " "}
-              <span className="chart-when">
-                {hover ? fmtTime(hover.time, range !== "1d" || !!data?.dailyOnly) : data ? (range === "1d" ? sessionLabel : t(`chart.range.${range}`)) : ""}
-              </span>
+              {data ? (proxyVia && !hover ? fmtPct(chgPct) : `${chg >= 0 ? "+" : ""}${fmtPrice(Math.abs(chg) < 1000 ? chg : Math.round(chg))} (${fmtPct(chgPct)})`) : " "}
+              <span className="chart-when">{hover ? fmtTime(hover.time, range !== "1d" || !!data?.dailyOnly) : sessionLabel}</span>
+              {rangeChg != null && (
+                <span className={`chart-range-chg ${rangeChg >= 0 ? "up" : "down"}`}>
+                  {t(`chart.range.${range}` as MsgKey)} {fmtPct(rangeChg)}
+                </span>
+              )}
             </div>
+            {ext && (
+              <div className="chart-ext num">
+                {t(ext.kind === "after" ? "quote.after" : "quote.pre")} {fmtPrice(ext.price, priceDigits(symbol, ext.price))} <span className={ext.changePct >= 0 ? "up" : "down"}>({fmtPct(ext.changePct)})</span>
+              </div>
+            )}
           </div>
           <span className="spacer" />
           {data && (
             <span className="chart-live">
               <span className={`dot ${isLive ? "live" : ""}`} />
-              {isLive ? t("chart.live") : stale && !data.dailyOnly ? t("chart.delayed") : t("chart.asOf", { t: new Intl.DateTimeFormat(locale, { timeZone: tz, month: "short", day: "numeric", ...(data.dailyOnly ? {} : { hour: "numeric", minute: "2-digit" }) }).format(new Date(data.asOf * 1000)) })}
+              {isLive ? t("chart.live") : stale ? t("chart.delayed") : t("chart.asOf", { t: new Intl.DateTimeFormat(locale, { timeZone: tz, month: "short", day: "numeric", ...(data.dailyOnly ? {} : { hour: "numeric", minute: "2-digit" }) }).format(new Date(asOf * 1000)) })}
             </span>
           )}
         </div>
