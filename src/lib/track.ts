@@ -9,7 +9,9 @@
  *    of the call (`baseChg`, its move since the previous close, so it works with any price series).
  *    Without a live price that day it's graded from the previous close but not counted in the
  *    headline (`noLiveBase`): headlines could already say how the morning went.
- * A weekday with no session (a holiday) gets "market closed, not graded" (`closed`). A close the daily
+ * A weekday with no session (a holiday) gets "market closed, not graded" (`closed`), but only when a later
+ * bar proves the exchange traded after it (or a holiday in `holidays.ts`); a missing bar with nothing after it is an
+ * outage: the call waits (looked up every 6 h) and after 10 days is `expired`, not graded. A close the daily
  * source hasn't posted yet comes from an intraday series: graded within the hour as `provisional`,
  * re-graded from the official close when it's posted.
  *
@@ -114,8 +116,37 @@ export function flatBand(closes: number[], weekly: boolean): number {
   return Number((weekly ? day * Math.sqrt(5) : day).toFixed(2));
 }
 
-/** Without a bar for a weekday the table doesn't know as a holiday, it counts as one once a later session exists or two days have passed. */
-const CLOSED_AFTER_MS = 48 * 3600_000;
+/** A call this long past its close that still has no bar is looked up every 6 h, not every hour. */
+const OVERDUE_MS = 48 * 3600_000;
+const RECHECK_MS = 6 * 3600_000;
+/** No bar for 10 days after the close (a source outage, or older than the price history reaches): given up. */
+const EXPIRE_AFTER_MS = 10 * 86_400_000;
+
+const msPastClose = (c: Call, now: Date) => now.getTime() - closeUtc(gradeDateOf(c), gradeTz(c.ticker, c.proxy)).getTime();
+
+/**
+ * Ungraded calls that nothing could grade: an old one is retried every 6 h (`checkedAt`), and after 10
+ * days it's `expired` (not graded, counted apart from "market closed"). Returns whether anything changed.
+ */
+function settleStale(calls: Call[], now: Date, looked: Set<Call>): boolean {
+  let changed = false;
+  for (const c of calls) {
+    if (c.correct !== undefined || c.gradedAt || c.provisional) continue;
+    const age = msPastClose(c, now);
+    if (age > EXPIRE_AFTER_MS) {
+      c.expired = true;
+      c.gradedAt = now.toISOString();
+      changed = true;
+    } else if (age > OVERDUE_MS && looked.has(c)) {
+      c.checkedAt = now.toISOString();
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** Overdue and looked up recently without luck: not worth another fetch yet. */
+const resting = (c: Call, now: Date) => !!c.checkedAt && msPastClose(c, now) > OVERDUE_MS && now.getTime() - new Date(c.checkedAt).getTime() < RECHECK_MS;
 
 export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
   const calls = await loadCalls(key);
@@ -127,9 +158,9 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     fixed++;
   }
   // Due: ungraded calls whose graded session has closed, and provisional grades waiting for the official close.
-  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker, c.proxy), now)));
+  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker, c.proxy), now) && !resting(c, now)));
   if (!pending.length) {
-    if (fixed) await setJSON(key, calls);
+    if (settleStale(calls, now, new Set()) || fixed) await setJSON(key, calls);
     return 0;
   }
   const tickers = [...new Set(pending.map((c) => c.ticker))];
@@ -164,11 +195,11 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     let out = hist.find(([d]) => d === end);
     if (!out) {
       if (c.provisional) continue;
-      // No bar for the graded session yet: still being posted, or the market was closed that day.
-      // A holiday in the table is known to be closed: no waiting for a later bar or 48 hours.
+      // No bar for the graded session: still being posted, a source outage, or the market was closed that
+      // day. Only a LATER bar (the exchange traded after it) or a holiday in the table (`isHoliday`) says closed; otherwise it
+      // stays pending (retried every 6 h once overdue, `expired` after 10 days).
       const later = hist.some(([d]) => d > end) || isHoliday(tz, end);
-      const overdue = now.getTime() - closeUtc(end, tz).getTime() > CLOSED_AFTER_MS;
-      if (!later && !overdue) continue;
+      if (!later) continue;
       const inside = weekly ? hist.filter(([d]) => d >= c.date && d < end).at(-1) : undefined;
       if (!inside) {
         // Daily call on a holiday (or a whole week of them): market closed, not graded.
@@ -202,7 +233,7 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     c.gradedAt = now.toISOString();
     graded++;
   }
-  if (graded || fixed || learned) await setJSON(key, calls);
+  if (settleStale(calls, now, new Set(pending)) || graded || fixed || learned) await setJSON(key, calls);
   return graded;
 }
 
@@ -247,6 +278,8 @@ export interface TrackStats {
   uncounted: number;
   /** Weekday calls on a day the market was closed: not graded. */
   closed: number;
+  /** Calls with no price data 10 days after their close: given up, not graded (not "market closed"). */
+  expired: number;
   /** Daily calls by when they were made. */
   byPhase: { pre: Rate; mid: Rate };
   /** Flat calls: right when the move stayed inside the ticker's band. */
@@ -357,8 +390,9 @@ export function computeStats(calls: Call[]): TrackStats {
     graded: graded.length,
     hitRate: graded.length ? hits(graded) / graded.length : null,
     direction: { ...dir, skill: dir.rate != null && dir.base != null ? dir.rate - dir.base : null, noResult: calls.filter((c) => c.noResult).length, calls: directional.length },
-    uncounted: calls.filter((c) => c.noLiveBase && c.gradedAt && !c.closed).length,
+    uncounted: calls.filter((c) => c.noLiveBase && c.gradedAt && !c.closed && !c.expired).length,
     closed: calls.filter((c) => c.closed).length,
+    expired: calls.filter((c) => c.expired).length,
     flat: of(flat),
     brier: graded.length ? graded.reduce((s, c) => s + (c.confidence / 100 - (c.correct ? 1 : 0)) ** 2, 0) / graded.length : null,
     buckets,

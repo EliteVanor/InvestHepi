@@ -136,7 +136,10 @@ const T = (iso: string) => Date.parse(iso);
   assert.deepEqual([hol.closed, hol.correct, hol.returnPct], [true, undefined, undefined], "unlisted closure: market closed, not graded");
   await TR.recordCalls([o("DDD.KS", "today")], [{ id: "d", name: "D", query: "", tickers: ["DDD.KS"] }], "groq", at("2026-11-26T00:30:00Z"), "calls:h2", { phase: "pre" });
   closes["DDD.KS"] = [["2026-11-24", 10], ["2026-11-25", 10.1]];
-  assert.equal(await TR.gradeCalls(at("2026-11-28T23:00:00Z"), "calls:h2"), 1, "no later bar, but two days passed: closed");
+  assert.equal(await TR.gradeCalls(at("2026-11-28T23:00:00Z"), "calls:h2"), 0, "no later bar: could be an outage (v19 row 12), not 'closed' even after two days");
+  assert.ok(!(await getJSON<Call[]>("calls:h2"))![0].closed);
+  closes["DDD.KS"].push(["2026-11-27", 10.2]);
+  assert.equal(await TR.gradeCalls(at("2026-11-29T05:00:00Z"), "calls:h2"), 1, "a later bar proves the market traded without that day: closed");
   assert.equal((await getJSON<Call[]>("calls:h2"))![0].closed, true);
 
   /* ---------------- stats: independent days, uncounted, closed, by phase */

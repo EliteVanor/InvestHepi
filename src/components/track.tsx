@@ -96,8 +96,8 @@ export function TrackSheet({ onClose, section = "interests" }: { onClose: () => 
                       <b className="tr-sym">{symLabel(c.ticker)}</b>
                       {callLabel(c)}
                       <span className="num muted">{c.confidence}%</span>
-                      {c.closed ? (
-                        <span className="tr-result muted">{t("track.closed")}</span>
+                      {c.closed || c.expired ? (
+                        <span className="tr-result muted">{t(c.expired ? "track.expired" : "track.closed")}</span>
                       ) : (
                         <span className={`num tr-result ${c.noResult || c.noLiveBase ? "muted" : c.correct ? "ok" : "bad"}`} title={c.band != null ? `±${c.band}%` : undefined}>
                           {c.noResult ? "–" : c.correct ? "✓" : "✗"} {fmtPct(c.returnPct ?? 0)}
@@ -106,9 +106,10 @@ export function TrackSheet({ onClose, section = "interests" }: { onClose: () => 
                     </div>
                     <div className="tr-sub">
                       <span className="tr-made">{madeLabel(t, lang, c)}</span> · {marketTime(c.madeAt, exchangeTz(c.ticker), { day: c.id.endsWith(":w") })}
-                      {!c.closed && <> · {t("track.gradedClose", { when: new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date((c.gradedOn ?? c.endDate ?? c.date) + "T12:00:00Z")) })}</>}
+                      {!c.closed && !c.expired && <> · {t("track.gradedClose", { when: new Intl.DateTimeFormat(lang, { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" }).format(new Date((c.gradedOn ?? c.endDate ?? c.date) + "T12:00:00Z")) })}</>}
                       {c.closed && <> · {t("track.closedHint")}</>}
-                      {c.noLiveBase && !c.closed && <> · {t("track.uncountedOne")}</>}
+                      {c.expired && <> · {t("track.expiredHint")}</>}
+                      {c.noLiveBase && !c.closed && !c.expired && <> · {t("track.uncountedOne")}</>}
                       {c.provisional && <> · {t("track.provisional")}</>}
                       {c.baseChg != null && <> · {t("track.fromNow", { chg: fmtPct(c.baseChg) })}</>}
                     </div>
@@ -138,6 +139,7 @@ function Summary({ s }: { s: TrackStats }) {
           {d.noResult > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.noResult", { n: d.noResult })}</span>}
           {s.uncounted > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.uncounted", { n: s.uncounted })}</span>}
           {s.closed > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.closedN", { n: s.closed })}</span>}
+          {s.expired > 0 && <span className="muted" style={{ fontSize: 13 }}>{t("track.expiredN", { n: s.expired })}</span>}
         </div>
         <div className="tr-chips">
           {d.low != null && <span className="chip num">{t("track.likely", { lo: Math.round(d.low * 100), hi: Math.round(d.high! * 100) })}</span>}
