@@ -53,7 +53,8 @@ export async function POST(req: Request) {
       return Response.json({ ...r, chatId: id });
     } catch (e) {
       const msg = (e as Error).message;
-      return Response.json({ error: msg === "NO_PROVIDER" ? "NO_PROVIDER" : msg }, { status: msg === "NO_PROVIDER" ? 412 : 502 });
+      if (msg !== "NO_PROVIDER") console.error("ask failed:", e);
+      return Response.json({ error: msg === "NO_PROVIDER" ? "NO_PROVIDER" : "Ask AI is unavailable right now, try again later" }, { status: msg === "NO_PROVIDER" ? 412 : 502 });
     }
   });
 }

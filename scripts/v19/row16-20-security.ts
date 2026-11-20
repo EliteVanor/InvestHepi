@@ -233,7 +233,7 @@ const OWNER = "owner@example.com";
   /* ===== Row 19: no GET refresh, security headers ===== */
   assert.equal((refresh as Record<string, unknown>).GET, undefined, "/api/refresh has no GET (the browser and cron never used it)");
   assert.equal(typeof refresh.POST, "function");
-  const cfg = (await import("../../next.config.mjs")).default as { headers: () => Promise<{ source: string; headers: { key: string; value: string }[] }[]> };
+  const cfg = (await import(["..", "..", "next.config.mjs"].join("/") as string)).default as { headers: () => Promise<{ source: string; headers: { key: string; value: string }[] }[]> };
   const rules = await cfg.headers();
   assert.equal(rules[0].source, "/:path*", "applies to every path");
   const hv = Object.fromEntries(rules[0].headers.map((h) => [h.key.toLowerCase(), h.value]));
@@ -243,6 +243,32 @@ const OWNER = "owner@example.com";
   assert.match(hv["permissions-policy"], /camera=\(\)/);
   assert.match(hv["content-security-policy"], /frame-ancestors 'none'/);
   assert.ok(!/script-src|default-src/.test(hv["content-security-policy"]), "no script policy that could break Next, sign-in or analytics");
+
+  /* ===== Row 20: no raw error text, track section validated ===== */
+  const track = await import("../../src/app/api/track/route");
+  const tj = async (q: string) => track.GET(req(`/api/track${q}`, OWNER));
+  for (const bad of ["constructor", "__proto__", "toString", "nope", "WORLD"]) assert.equal((await tj(`?section=${bad}`)).status, 400, `section=${bad} is refused`);
+  for (const ok of ["", "?section=world", "?section=us", "?section=vn", "?section=interests", "?format=csv&section=world", "?ticker=SPY"]) assert.equal((await tj(ok)).status, 200, `track${ok} still works`);
+
+  const origErr = console.error;
+  const logged: string[] = [];
+  console.error = (...a: unknown[]) => void logged.push(a.map(String).join(" "));
+  try {
+    const ch = await chart.GET(req("/api/chart?symbol=ZZZZ&range=1d", undefined, { headers: { "x-real-ip": "6.6.6.6" } }));
+    if (ch.status === 502) {
+      assert.deepEqual(await ch.json(), { error: "Chart unavailable" }, "chart failure is generic");
+      assert.ok(logged.some((l) => l.startsWith("chart failed")), "and the cause is logged on the server");
+    }
+    const t502 = await tr.POST(trReq("zh", "7.7.7.7"));
+    assert.ok(!/fetch|http|groq|gemini|\\bat \\w/i.test(JSON.stringify(await t502.json())), "translate failure carries no provider text");
+    await setUse("groq20", 0.1);
+    await setUse("groq120", 0.1);
+    const askFail = await ask.POST(req("/api/ask", OWNER, { method: "POST", body: JSON.stringify({ question: "what moved today?" }) }));
+    const aj = await askFail.json();
+    assert.ok(!/fetch|http|groq|429|500/i.test(String(aj.error)), `ask error is generic: ${aj.error}`);
+  } finally {
+    console.error = origErr;
+  }
 
   void otherFetch;
   console.log("SECURITY ROW16 OK");

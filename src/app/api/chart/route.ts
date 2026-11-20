@@ -16,6 +16,7 @@ export async function GET(req: Request) {
   try {
     return Response.json(await getChart(symbol, range), { headers: { "Cache-Control": "private, max-age=10" } });
   } catch (e) {
-    return Response.json({ error: (e as Error).message }, { status: 502 });
+    console.error("chart failed:", symbol, range, e);
+    return Response.json({ error: "Chart unavailable" }, { status: 502 });
   }
 }

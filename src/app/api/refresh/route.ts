@@ -38,7 +38,8 @@ export async function POST(req: Request) {
         if (d.language !== lang) await translateLatest(section, lang).catch(() => null);
         return Response.json({ results: [{ section, ok: true, provider: d.provider, keptAi: !!d.keptAi }], quota: await userRefreshQuota() });
       } catch (e) {
-        return Response.json({ results: [{ section, ok: false, error: (e as Error).message }], quota: await userRefreshQuota() });
+        console.error("refresh (user) failed:", e); // the reader gets a generic line, the log has the cause
+        return Response.json({ results: [{ section, ok: false, error: "Refresh failed" }], quota: await userRefreshQuota() });
       }
     }
 

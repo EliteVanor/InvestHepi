@@ -41,7 +41,8 @@ export async function POST(req: Request) {
       const digest = await translateLatest(section, lang, mayTranslate, variant);
       return Response.json({ digest, translated: digest?.language === lang });
     } catch (e) {
-      return Response.json({ error: (e as Error).message }, { status: 502 });
+      console.error("translate failed:", e);
+      return Response.json({ error: "Translation unavailable, try again later" }, { status: 502 });
     }
   });
 }
