@@ -7,6 +7,7 @@ import { currentInterestSet } from "@/lib/interests";
 import { scheduleReport } from "@/lib/scheduler";
 import { getJSON, storeKind } from "@/lib/store";
 import { SHARED_SECTIONS } from "@/lib/types";
+import { holidayGaps } from "@/lib/holidays";
 import { gate, listUsers } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export async function GET(req: Request) {
       email: emailProvider(),
       lastRefresh: last,
       schedule,
+      // Exchange holiday tables missing for the year ahead (from Dec 1: next year), e.g. ["NYSE 2028"]; empty when fine.
+      holidayGaps: holidayGaps(Date.now()),
       // Admin only: today's AI use per model against its free allowance.
       aiUsage: user?.admin || (!multi && role(req) === "owner") ? await usageReport() : undefined,
     });

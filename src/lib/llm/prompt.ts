@@ -1,6 +1,6 @@
 import { EVENT_KEYWORDS, PLAYBOOK, type EventType, type PlaybookEntry } from "../analogs";
 import { calendarAsText } from "../calendar";
-import { isHoliday } from "../holidays";
+import { earlyCloseMins, isHoliday } from "../holidays";
 import { SECTION_MACRO } from "../config";
 import { sectorsAsText } from "../chart";
 import { langInfo } from "../languages";
@@ -140,8 +140,9 @@ export function marketPhase(d: Date): string {
   const mins = (Number(parts.hour) % 24) * 60 + Number(parts.minute);
   if (parts.weekday === "Sat" || parts.weekday === "Sun") return "weekend, market closed (next session Monday)";
   if (isHoliday("America/New_York", `${parts.year}-${parts.month}-${parts.day}`)) return "market holiday, US exchanges closed";
+  const early = earlyCloseMins("America/New_York", `${parts.year}-${parts.month}-${parts.day}`);
   if (mins < 570) return "pre-market (regular session opens 9:30 ET)";
-  if (mins < 960) return "regular session in progress";
+  if (mins < (early ?? 960)) return early ? `regular session in progress (early close at ${Math.floor(early / 60)}:${String(early % 60).padStart(2, "0")} ET)` : "regular session in progress";
   return "after the close (next session tomorrow)";
 }
 

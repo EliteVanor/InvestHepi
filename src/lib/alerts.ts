@@ -19,6 +19,8 @@ import { listUsers } from "./users";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Digest, Interest, Outlook } from "./types";
 import { dayIn, NY } from "./dates";
+import { isHoliday } from "./holidays";
+import { nextTradingDay } from "./markets";
 
 export type PriceOp = "above" | "below" | "pct_up" | "pct_down";
 
@@ -301,11 +303,9 @@ export function evaluateBriefingRules(
   return events;
 }
 
-function nextWeekday(iso: string): string {
-  const d = new Date(iso + "T12:00:00Z");
-  do d.setUTCDate(d.getUTCDate() + 1);
-  while ([0, 6].includes(d.getUTCDay()));
-  return d.toISOString().slice(0, 10);
+/** The next NYSE trading day after `iso` (weekends and NYSE holidays skipped). */
+export function nextWeekday(iso: string): string {
+  return nextTradingDay(iso, NY);
 }
 
 /** After a prediction run of the current user's interest set: call changes and high-confidence calls. */
@@ -349,7 +349,7 @@ export async function afterRefresh(ctx: RefreshContext, now = new Date()) {
   }
 
   // Morning briefing: first refresh between 7:30 and 9:30 ET on a weekday, once per day.
-  const weekdayOk = !["Sat", "Sun"].includes(weekday);
+  const weekdayOk = !["Sat", "Sun"].includes(weekday) && !isHoliday(NY, date); // no "before the open" email on a NYSE holiday
   if (settings.morningBriefing && weekdayOk && mins >= 7 * 60 + 30 && mins < 9 * 60 + 30 && interests) {
     const key = `morning:${date}`;
     const ledger = await loadLedger(now);
