@@ -147,11 +147,15 @@ const MIN = 60_000;
   assert.ok(!(await lateIds(start + 150 * MIN)).includes("p-us-pre:late"), "outside the window");
 
   /* ---------------- holidays: no slot, so no late or partial report can come from a closed market */
-  const hasSlot = (id: string, day: string) => TT.occurrences(T(day + "T00:00:00Z"), T(day + "T23:59:00Z")).some((o) => o.slot.id === id);
-  assert.equal(hasSlot("p-us-pre", "2026-11-26"), false, "Thanksgiving: no US prediction slot");
-  assert.equal(hasSlot("p-us-pre", "2026-11-27"), true, "the day after: there is");
+  // Thanksgiving: NYSE is closed, so the slot keeps only oil and gold (CME trades that day, early close); no US-equity item exists.
+  const itemsOn = (id: string, day: string) => TT.occurrences(T(day + "T00:00:00Z"), T(day + "T23:59:00Z")).find((o) => o.slot.id === id)?.slot.items ?? [];
+  assert.deepEqual(itemsOn("p-us-pre", "2026-11-26"), ["p:oil:pre", "p:gold:pre"], "Thanksgiving: no US-equity prediction items, only CME oil and gold");
+  assert.ok(itemsOn("p-us-pre", "2026-11-27").includes("p:us:pre"), "the day after: the US run is back");
+  // Once oil and gold have run, nothing is reported for the day: there is no US-equity item to be late.
+  const tgOcc = TT.occurrences(T("2026-11-26T00:00:00Z"), T("2026-11-26T23:59:00Z")).find((o) => o.slot.id === "p-us-pre")!;
+  await setJSON(TT.runKey(tgOcc), { items: { "p:oil:pre": { at: "2026-11-26T12:31:00Z", n: 1, ok: true }, "p:gold:pre": { at: "2026-11-26T12:33:00Z", n: 1, ok: true } }, sets: {}, done: "2026-11-26T12:33:00Z" });
   assert.deepEqual(await S.lateNow(T("2026-11-26T13:45:00Z")).then((r) => r.filter((x) => x.slot.startsWith("p-us"))), [], "nothing to report for it");
-  assert.equal((await S.scheduleReport(T("2026-11-26T20:00:00Z"))).slots.some((x) => x.slot === "p-us-pre" && x.start.startsWith("2026-11-26")), false);
+  // The day's slot holds only oil and gold, so no US-equity item can be reported late or partial.
 
   /* ---------------- TIME-T3: summer-time switch moves a prediction slot, not its meaning */
   const usPre = (from: string) => TT.occurrences(T(from + "T00:00:00Z"), T(from + "T23:59:00Z")).find((o) => o.slot.id === "p-us-pre");
