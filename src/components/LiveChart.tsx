@@ -358,7 +358,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
             </div>
             {ext && (
               <div className="chart-ext num">
-                {t(ext.kind === "after" ? "quote.after" : "quote.pre")} {fmtPrice(ext.price, priceDigits(symbol, ext.price))} <span className={ext.changePct >= 0 ? "up" : "down"}>({fmtPct(ext.changePct)})</span>
+                {t(ext.kind === "after" ? "quote.after" : "quote.pre")} {proxyVia ? "" : fmtPrice(ext.price, priceDigits(symbol, ext.price))} <span className={ext.changePct >= 0 ? "up" : "down"}>({fmtPct(ext.changePct)})</span>
               </div>
             )}
           </div>
