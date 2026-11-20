@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { promises as fs } from "node:fs";
 import { pinClock } from "../clock";
 
+const realNow = Date.now(); // the REAL time, before the pin: the year guard must be checked against it
 pinClock("2026-11-20T12:00:00Z");
 process.env.VERCEL = "1";
 delete process.env.KV_REST_API_URL;
@@ -36,7 +37,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const H = await import("../../src/lib/holidays");
   const MK = await import("../../src/lib/markets");
   const TT = await import("../../src/lib/timetable");
@@ -81,9 +82,45 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   // No prediction slot on the holiday (New York's), but Tokyo's still run that day, and Friday's US slots exist.
   const slotsOn = (date: string, tz: string) =>
     TT.occurrences(Date.parse(`${date}T00:00:00Z`) - 14 * 3600_000, Date.parse(`${date}T00:00:00Z`) + 38 * 3600_000).filter((o) => o.slot.tz === tz && MK.localNow(o.start, tz).date === date).map((o) => o.slot.id);
-  assert.deepEqual(slotsOn("2026-11-26", NY), [], "Thanksgiving: no US prediction runs (no 'unavailable' notes)");
-  assert.deepEqual(slotsOn("2026-11-25", NY), ["p-us-pre", "p-us-mid"]);
-  assert.deepEqual(slotsOn("2026-11-27", NY), ["p-us-pre", "p-us-mid"]);
+  /** "slot-id: markets" for the prediction items that run on a local date (items are filtered per market). */
+  const runsOn = (date: string, tz: string) =>
+    TT.occurrences(Date.parse(`${date}T00:00:00Z`) - 14 * 3600_000, Date.parse(`${date}T00:00:00Z`) + 38 * 3600_000)
+      .filter((o) => o.slot.tz === tz && MK.localNow(o.start, tz).date === date)
+      .map((o) => `${o.slot.id}: ${o.slot.items.map((i) => TT.predParts(i as never).market).join(",")}`);
+  assert.deepEqual(runsOn("2026-11-26", NY), ["p-us-pre: oil,gold"], "Thanksgiving: no US stock-market runs (no 'unavailable' notes); oil and gold futures trade, and their mid-day run (1 h before CME's early halt) is dropped");
+  assert.deepEqual(runsOn("2026-11-25", NY), ["p-us-pre: us,wus,oil,gold,ius", "p-us-mid: us,wus,oil,gold,ius"]);
+  assert.deepEqual(runsOn("2026-11-27", NY), ["p-us-pre: us,wus,oil,gold,ius"], "Nov 27 closes at 13:00 ET: the 12:00 mid-day run (one hour of session left) is dropped");
+  assert.deepEqual(runsOn("2026-12-24", HK), ["p-cn-pre: cn"], "HKEX half day closes 12:00, the mid-day slot is 12:15: dropped");
+  assert.deepEqual(runsOn("2026-12-23", HK), ["p-cn-pre: cn", "p-cn-mid: cn"]);
+  assert.equal(TT.occurrences(Date.parse("2026-11-27T00:00:00Z"), Date.parse("2026-11-28T00:00:00Z")).some((o) => o.slot.id === "p-us-mid"), false);
+  // A mid-day deadline never passes that day's close; the next US run after Wednesday skips Thanksgiving's stock runs.
+  const midEnd = (iso: string, market: string) => new Date(TT.itemEnd({ start: Date.parse(iso), slot: TT.TIMETABLE.find((s) => s.items.includes(`p:${market}:mid` as never))! }, `p:${market}:mid` as never)).toISOString();
+  assert.equal(midEnd("2026-11-27T17:00:00Z", "us"), "2026-11-27T18:00:00.000Z", "capped at the 13:00 ET close (not 90 minutes later)");
+  assert.equal(midEnd("2026-11-25T17:00:00Z", "us"), "2026-11-25T18:30:00.000Z", "a normal day: 90 minutes");
+
+  // Europe: the run follows the group (London, Frankfurt). Calls on a closed exchange's tickers are dropped.
+  assert.deepEqual(runsOn("2026-12-24", "Europe/London"), ["p-eu-pre: eu"], "Dec 24 2026: Xetra closed, LSE half day (12:30): the pre run exists (FTSE), the 12:00 mid-day run doesn't");
+  assert.deepEqual(runsOn("2027-05-03", "Europe/London"), ["p-eu-pre: eu", "p-eu-mid: eu"], "May 3 2027: UK holiday, Xetra open: Europe runs (DAX, Euro Stoxx 50)");
+  assert.deepEqual(runsOn("2026-12-25", "Europe/London"), [], "Dec 25: everything closed");
+  assert.equal(MK.tradesToday("^FTSE", at("2027-05-03T07:00:00Z")), false, "no FTSE call on the UK holiday");
+  assert.equal(MK.tradesToday("^GDAXI", at("2027-05-03T07:00:00Z")), true);
+  assert.equal(MK.tradesToday("^GDAXI", at("2026-12-24T07:00:00Z")), false, "no DAX call on Dec 24 (Xetra closed)");
+  assert.equal(MK.tradesToday("^STOXX50E", at("2026-12-24T07:00:00Z")), false);
+  assert.equal(MK.tradesToday("^FTSE", at("2026-12-24T07:00:00Z")), true, "LSE trades until 12:30");
+  assert.equal(MK.preDeadline("eu", at("2027-05-03T05:00:00Z")).toISOString(), "2027-05-03T07:00:00.000Z", "Europe's window ends at Frankfurt's open (09:00 CEST) when London is shut");
+
+  // Oil and gold futures use CME's calendar, not NYSE's.
+  assert.equal(MK.calendarKey("CL=F"), "CME");
+  assert.equal(MK.calendarKey("CL=F", "USO"), NY, "an ETF stand-in follows NYSE");
+  assert.equal(MK.calendarKey("^GSPC"), NY);
+  assert.equal(MK.tradesToday("CL=F", at("2026-11-26T15:00:00Z")), true, "Globex trades on Thanksgiving");
+  assert.equal(MK.tradesToday("SPY", at("2026-11-26T15:00:00Z")), false);
+  assert.equal(MK.prevWeekday("2026-11-27", MK.calendarKey("CL=F")), "2026-11-26", "the CME session before Friday is Thursday's shortened one (Eastmoney's previous close)");
+  assert.equal(MK.prevWeekday("2026-11-27", NY), "2026-11-25");
+  assert.equal(MK.lastFinishedSession("GC=F", at("2026-11-27T19:00:00Z")), "2026-11-27", "13:15 ET early halt + settling");
+  assert.equal(MK.lastFinishedSession("GC=F", at("2026-11-26T19:00:00Z")), "2026-11-26", "Thursday's shortened session counts");
+  assert.equal(MK.lastFinishedSession("GC=F", at("2026-12-25T19:00:00Z")), "2026-12-24", "Christmas is a CME closure; Christmas Eve ended early");
+  assert.ok(H.isProvisional("CME", "2026-11-26"), "CME's Thanksgiving hours are provisional");
   assert.deepEqual(slotsOn("2026-11-26", "Asia/Tokyo"), ["p-jp-pre", "p-jp-mid"], "Tokyo trades on Nov 26");
   assert.deepEqual(TT.nextPredictionRuns("us", Date.parse("2026-11-25T20:00:00Z"), 1).map((r) => new Date(r.at).toISOString()), ["2026-11-27T12:30:00.000Z"], "next US run skips Thanksgiving");
   // Briefings still run on a holiday (they are not market-bound).
@@ -180,6 +217,23 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   );
   assert.equal((await getJSON<Call[]>("calls:hd"))![0].date, "2026-11-27");
 
+  /* ---------------- Euronext half days, prompt phase, catalyst reminders, /api/status */
+  assert.equal(H.earlyCloseMins("Europe/Paris", "2026-12-31"), 14 * 60 + 5);
+  assert.equal(H.earlyCloseMins("Europe/Paris", "2027-12-31"), 14 * 60 + 5);
+  assert.ok(H.isProvisional("Europe/Paris", "2026-12-31") && H.isProvisional("Europe/Paris", "2027-12-31"));
+  const PR = await import("../../src/lib/llm/prompt");
+  assert.match(PR.marketPhase(at("2026-11-27T17:30:00Z")), /regular session in progress \(early close at 13:00 ET\)/);
+  assert.equal(PR.marketPhase(at("2026-11-27T18:30:00Z")), "after the close (next session tomorrow)", "13:30 ET on the early-close day");
+  assert.equal(PR.marketPhase(at("2026-11-25T18:30:00Z")), "regular session in progress");
+  assert.equal(PR.marketPhase(at("2026-11-26T15:00:00Z")), "market holiday, US exchanges closed");
+  const AL = await import("../../src/lib/alerts");
+  assert.equal(AL.nextWeekday("2026-11-25"), "2026-11-27", "catalyst reminders skip Thanksgiving");
+  assert.equal(AL.nextWeekday("2026-11-27"), "2026-11-30");
+  process.env.APP_PASSWORD = "pw";
+  const st = await import("../../src/app/api/status/route");
+  const stj = await (await st.GET(new Request("http://x/api/status", { headers: { "x-app-password": "pw" } }))).json();
+  assert.deepEqual(stj.holidayGaps, [], "the admin's Status panel data carries the guard (empty when the tables cover the year ahead)");
+
   /* ---------------- FOMC 2027 */
   const f27 = CAL.fomcEvents("2027-01-01", "2027-12-31");
   assert.equal(f27.covered, true);
@@ -189,7 +243,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   /* ---------------- guard: from Dec 1 of year Y, year Y+1 must be in the table for every exchange */
   assert.deepEqual(H.holidayGaps(at("2026-11-30T23:59:00Z")), [], "Nov 30 2026: 2026 needed, present");
   assert.deepEqual(H.holidayGaps(at("2026-12-01T00:00:00Z")), [], "Dec 1 2026: 2027 needed, present");
-  assert.deepEqual(H.holidayGaps(Date.now()), [], "today (the real run): nothing missing");
+  assert.deepEqual(H.holidayGaps(realNow), [], "the real clock: from Dec 1 of a year the next year must be in the table (add it, with sources, in holidays.ts)");
   assert.deepEqual(H.holidayGaps(at("2027-11-30T12:00:00Z")), [], "Nov 30 2027: still fine");
   const gaps2028 = H.holidayGaps(at("2027-12-01T00:00:00Z"));
   assert.deepEqual(gaps2028, Object.keys(H.HOLIDAYS).map((c) => `${c} 2028`), "Dec 1 2027 with no 2028 table fails for every exchange (the real table must get 2028 before then)");

@@ -180,6 +180,8 @@ Provisional (treated as closed or early, but not confirmed on the exchange's own
 - JPX Sep 23 2027 (autumn equinox, by the Act on National Holidays).
 - Also unchecked: NYSE option-only hours (13:15), FOMC Nov 17 2027 having projections (the code adds them by month, so it doesn't).
 
+Review fixes (same day): the year guard now tests the real clock (the test pins the clock after capturing it) and `/api/status` carries `holidayGaps`; mid-day runs are dropped when under 2 h of session remain (HK half days, US Nov 27/Dec 24) and a mid-day deadline never passes the close; Europe runs when London or Frankfurt trades and calls on a closed exchange's ticker are dropped; oil and gold use a CME calendar (Thanksgiving is an early close, not a closure; CME's early times are third-party, provisional); Euronext Dec 31 half days added (provisional); catalyst reminders skip NYSE holidays and no morning email on one. Price alerts still run on holidays (no AI).
+
 Known limits: calls stored before this change keep their stored `endDate` (a weekly call made Nov 23 before the table was deployed ends Nov 27, not Nov 30). The US mid-day prediction slot still runs at 12:00 ET on Nov 27 and Dec 24 (one hour before the early close). Oil and gold use New York's calendar although CME has its own holiday hours. The price-alert window is still weekday-based (a wasted tick on a holiday, no AI).
 
 ## Session summary, Nov 17 2026 (v18)
