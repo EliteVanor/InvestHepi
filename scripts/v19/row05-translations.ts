@@ -307,7 +307,7 @@ const digest = (generatedAt: string, strings = 3, len = 40) => ({
   assert.equal(calls.length, 1, "three simultaneous readers, one call");
 
   // ---- chunks are stored only when a run fails
-  const trc = async () => (await fs.readdir("/tmp/invest-helper")).filter((n) => n.startsWith("trc_")).length;
+  const trc = async () => (await fs.readdir(process.env.STORE_DIR || "/tmp/invest-helper")).filter((n) => n.startsWith("trc_")).length;
   const before = await trc();
   const h8 = "okrun001";
   await setJSON(`ib:${h8}`, digest("2026-11-19T12:00:00Z", 2, 33));
