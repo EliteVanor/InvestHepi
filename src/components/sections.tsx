@@ -12,6 +12,7 @@ import {
 import { usePrefs } from "./prefs";
 import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
 import { isPercentQuote, priceDigits } from "@/lib/symbols";
+import { moverChange, showsLevel } from "@/lib/quote-view";
 import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";
 import { dayIn } from "@/lib/dates";
 import { safeHttpUrl } from "@/lib/safe-url";
@@ -146,9 +147,10 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
                   <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
                 </div>
                 <div className="px num">
-                  {q.estimatedVia ? "≈" : ""}{fmtPrice(q.price, priceDigits(q.symbol, q.price))}
+                  {showsLevel(q) && `${q.estimatedVia ? "≈" : ""}${fmtPrice(q.price, priceDigits(q.symbol, q.price))}`}
                   <QuoteTag q={q} />
                 </div>
+                <ExtendedLine q={q} />
                 {/* The latest session's path against the previous close, colored like the % beside it.
                     Without live intraday data, the month of daily closes is shown in gray: context,
                     not today's direction. */}
@@ -168,7 +170,7 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
               <span>{symName(t, q.symbol)}</span>
             </div>
             <div className="px num">
-              {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : `${q.estimatedVia ? "≈" : ""}${fmtPrice(q.price, priceDigits(q.symbol, q.price))}`}
+              {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : showsLevel(q) ? `${q.estimatedVia ? "≈" : ""}${fmtPrice(q.price, priceDigits(q.symbol, q.price))}` : ""}
               <QuoteTag q={q} />
             </div>
             <div className={`chg num ${q.changePct >= 0 ? "up" : "down"}`} style={{ fontSize: 12, fontWeight: 600 }}>
@@ -348,8 +350,7 @@ export function Movers({ movers, quotes, onTicker }: { movers: Digest["analysis"
         <IconChartSmall /> {t("movers.title")}
       </h2>
       {movers.map((m) => {
-        const q = quotes.find((x) => x.symbol === m.ticker);
-        const chg = q?.changePct ?? m.changePct;
+        const chg = moverChange(m, quotes);
         return (
           <div className="mover" key={m.ticker}>
             <button className="mover-tk" onClick={() => onTicker(m.ticker)}>
@@ -442,10 +443,22 @@ export function Events({ events, news }: { events: KeyEvent[]; news: NewsItem[] 
 
 /* --------------------------------------------------------------- Up next */
 
+/** A pre-market or after-hours print, small and apart from the regular-session price. */
+function ExtendedLine({ q }: { q: Quote }) {
+  const { t } = usePrefs();
+  if (!q.extended) return null;
+  return (
+    <div className="px-ext num">
+      {t(q.extended.kind === "after" ? "quote.after" : "quote.pre")} <span className={q.extended.changePct >= 0 ? "up" : "down"}>{fmtPct(q.extended.changePct)}</span>
+    </div>
+  );
+}
+
 /** What a strip price is when it isn't a live quote: an ETF's price, an estimate, or a dated close. */
 function QuoteTag({ q }: { q: Quote }) {
   const { t, lang } = usePrefs();
-  if (q.proxy) return <span className="via" title={t("strip.via", { etf: q.proxy })}>{q.proxy}</span>;
+  // An ETF stand-in's price is never shown as a level: "via FEZ" and its % only.
+  if (q.proxy) return <span className="via" title={t("strip.via", { etf: q.proxy })}>{t("strip.viaShort", { etf: q.proxy })}</span>;
   if (q.estimatedVia) return <span className="via" title={t("strip.est", { etf: q.estimatedVia })}>≈{q.estimatedVia}</span>;
   const date = q.session ?? q.history.at(-1)?.[0];
   if (q.dailyOnly && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {

@@ -4,6 +4,7 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type MsgKey, relTime } from "@/lib/i18n";
 import { type Action, type CalendarEvent, type Digest, type Direction, type Outlook, type Quote } from "@/lib/types";
+import { moverChange } from "@/lib/quote-view";
 import { IconAlert, IconHistory, IconSparkles, IconX } from "./Icons";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { arrow, fmtPct, openOverlay, Ring } from "./primitives";
@@ -16,6 +17,8 @@ interface Snapshot {
   digestAt: string;
   calls: Record<string, { action: Action; direction: Direction; confidence: number }>;
   prices: Record<string, number>;
+  /** The ETF behind each price when it was a stand-in ("" for a real level): moves compare like with like. */
+  bases?: Record<string, string>;
   events: string[];
 }
 
@@ -29,6 +32,7 @@ function snapshot(d: Digest, quotes: Quote[], outlook: Outlook[]): Snapshot {
     digestAt: d.generatedAt,
     calls: Object.fromEntries(outlook.filter((o) => o.horizon === "today").map((o) => [o.ticker, { action: o.action, direction: o.direction, confidence: o.confidence }])),
     prices: Object.fromEntries(quotes.map((q) => [q.symbol, q.price])),
+    bases: Object.fromEntries(quotes.map((q) => [q.symbol, q.proxy ?? ""])),
     events: d.analysis.events.map((e) => e.title),
   };
 }
@@ -58,7 +62,9 @@ export function SinceLastVisit({ digest, calls: outlook = [], quotes, newCount, 
       .filter((o) => o.horizon === "today")
       .map((o) => ({ o, p: prev.calls[o.ticker] }))
       .filter(({ o, p }) => p && (p.action !== o.action || p.direction !== o.direction));
+    // An index level and its ETF's price are different series: no move across a basis change.
     const moves = quotes
+      .filter((q) => (prev.bases?.[q.symbol] ?? "") === (q.proxy ?? ""))
       .map((q) => ({ symbol: q.symbol, pct: prev.prices[q.symbol] ? ((q.price - prev.prices[q.symbol]) / prev.prices[q.symbol]) * 100 : 0 }))
       .filter((m) => Math.abs(m.pct) >= 1)
       .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
@@ -125,7 +131,7 @@ export function SinceLastVisit({ digest, calls: outlook = [], quotes, newCount, 
 }
 
 /** Full-screen, one-idea-per-card walk through the briefing. Tap, swipe or use the arrow keys. */
-export function CatchUp({ digest, calls: outlook = [], calendar, onClose, onAsk }: { digest: Digest; calls?: Outlook[]; calendar: CalendarEvent[]; onClose: () => void; onAsk: () => void }) {
+export function CatchUp({ digest, calls: outlook = [], calendar, quotes = [], onClose, onAsk }: { digest: Digest; calls?: Outlook[]; calendar: CalendarEvent[]; quotes?: Quote[]; onClose: () => void; onAsk: () => void }) {
   const { t, lang } = usePrefs();
   const a = digest.analysis;
   const fmtDay = useMemo(() => new Intl.DateTimeFormat(langInfo(lang).locale, { weekday: "short", month: "short", day: "numeric", timeZone: "UTC" }), [lang]);
@@ -182,7 +188,8 @@ export function CatchUp({ digest, calls: outlook = [], calendar, onClose, onAsk 
               <div key={m.ticker} className="cu-row">
                 <div>
                   <b>{m.ticker}</b>
-                  <span className={`num ${m.changePct >= 0 ? "up" : "down"}`}>{fmtPct(m.changePct)}</span>
+                  {/* Today's move from the current quote, not the number stored with the briefing. */}
+                  <span className={`num ${moverChange(m, quotes) >= 0 ? "up" : "down"}`}>{fmtPct(moverChange(m, quotes))}</span>
                 </div>
                 <p>{m.why}</p>
               </div>

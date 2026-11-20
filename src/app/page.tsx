@@ -505,6 +505,7 @@ function App() {
           digest={shown}
           calls={callsOf(preds[tab] ?? [])}
           calendar={calendar.events}
+          quotes={liveQuotes}
           onClose={() => setSheet(null)}
           onAsk={() => {
             setSheet(null);
