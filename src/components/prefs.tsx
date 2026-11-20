@@ -4,6 +4,7 @@
  * Per-device preferences and helpers: theme, UI language, password, read state, saved headlines.
  * Everything here lives in localStorage (wrapped in try/catch so private mode still works).
  */
+import { isNewsItems, isString, isStringArray, isStringOrNull, oneOf, parseShaped, type Guard } from "@/lib/ls-shape";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { makeT, type T } from "@/lib/i18n";
 import { isLang, langInfo, type LangCode } from "@/lib/languages";
@@ -17,10 +18,10 @@ const K = { theme: "ih-theme", lang: "ih-lang", pw: "ih-password", seen: "ih-see
 const MAX_SEEN = 4000;
 const MAX_SAVED = 200;
 
-export function lsGet<T>(key: string, fallback: T): T {
+/** Read a stored value; it must pass `valid` (the shape the caller expects) or the fallback is returned. */
+export function lsGet<T>(key: string, fallback: T, valid: Guard<T>): T {
   try {
-    const v = localStorage.getItem(key);
-    return v == null ? fallback : (JSON.parse(v) as T);
+    return parseShaped(localStorage.getItem(key), fallback, valid);
   } catch {
     return fallback;
   }
@@ -92,14 +93,14 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<NewsItem[]>([]);
 
   useEffect(() => {
-    setThemeState(lsGet<Theme>(K.theme, "system"));
-    const l = lsGet<string | null>(K.lang, null);
+    setThemeState(lsGet<Theme>(K.theme, "system", oneOf<Theme>("system", "light", "dark")));
+    const l = lsGet<string | null>(K.lang, null, isStringOrNull);
     setLangState(isLang(l) ? l : detectLang());
-    const z = lsGet<string>(K.tz, "auto");
+    const z = lsGet<string>(K.tz, "auto", isString);
     setTzSetting(isZone(z) ? z : "auto");
-    pwRef.current = lsGet<string>(K.pw, "");
-    setSeen(new Set(lsGet<string[]>(K.seen, [])));
-    setSaved(lsGet<NewsItem[]>(K.saved, []));
+    pwRef.current = lsGet<string>(K.pw, "", isString);
+    setSeen(new Set(lsGet<string[]>(K.seen, [], isStringArray)));
+    setSaved(lsGet<NewsItem[]>(K.saved, [], isNewsItems));
     setReady(true);
   }, []);
 
@@ -163,7 +164,7 @@ export function PrefsProvider({ children }: { children: ReactNode }) {
       ...init,
       // Read the saved password at call time too: a child component's first request can run
       // before this provider's mount effect has loaded it, and an empty password would 401.
-      headers: { "Content-Type": "application/json", "x-app-password": encodeURIComponent(pwRef.current || lsGet<string>(K.pw, "")), ...(init?.headers ?? {}) },
+      headers: { "Content-Type": "application/json", "x-app-password": encodeURIComponent(pwRef.current || lsGet<string>(K.pw, "", isString)), ...(init?.headers ?? {}) },
     });
     if (res.status === 401) {
       const body = (await res.clone().json().catch(() => ({}))) as { error?: string };

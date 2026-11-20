@@ -4,6 +4,7 @@
  * The track record sheet: how often the AI's calls were right, against what baseline, how sure it
  * was vs how often it was right, what each action returned, and which calls wait for a close.
  */
+import { isString } from "@/lib/ls-shape";
 import { useEffect, useState } from "react";
 import { relTime, type MsgKey } from "@/lib/i18n";
 import { exchangeTz, symLabel } from "@/lib/symbols";
@@ -272,7 +273,7 @@ export function TrackExtras({ stats, section = "interests" }: { stats: TrackStat
   const exportCsv = async () => {
     try {
       // Fetch with the password header, then hand the browser a file.
-      const pw = lsGet<string>("ih-password", "");
+      const pw = lsGet<string>("ih-password", "", isString);
       const res = await fetch(`/api/track?format=csv${section === "interests" ? "" : `&section=${section}`}`, { headers: { "x-app-password": encodeURIComponent(pw) } });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const url = URL.createObjectURL(await res.blob());

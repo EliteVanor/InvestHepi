@@ -93,6 +93,23 @@ const PAIRS: [string, string, "stock_prices" | "commodities", string, number, nu
   assert.equal(V.staleDayTag(V.overlayQuote(oil, staleLive), open), "2026-11-19", "an overlay that is itself a day old keeps the tag");
   assert.equal(V.staleDayTag(oil, new Date("2026-11-20T13:00:00Z")), null, "before the open the Nov 19 close is the latest session: no tag");
   assert.equal(V.staleDayTag({ ...oil, history: [] }, open), null, "no date, no tag");
+
+  /* ---------------- item 3: stored values are checked for shape, not only parsed */
+  const L = await import("../../src/lib/ls-shape");
+  const theme = L.oneOf("system", "light", "dark");
+  assert.equal(L.parseShaped("42", "system", theme as never), "system", "a number where a theme is expected");
+  assert.equal(L.parseShaped('"purple"', "system", theme as never), "system", "an unknown theme name");
+  assert.equal(L.parseShaped('"dark"', "system", theme as never), "dark");
+  assert.deepEqual(L.parseShaped("42", [] as string[], L.isStringArray), [], "ih-seen as a number");
+  assert.deepEqual(L.parseShaped('{"a":1}', [] as string[], L.isStringArray), [], "ih-seen as an object");
+  assert.deepEqual(L.parseShaped("[1,2]", [] as string[], L.isStringArray), [], "ih-seen with numbers inside");
+  assert.deepEqual(L.parseShaped('["a","b"]', [] as string[], L.isStringArray), ["a", "b"]);
+  assert.deepEqual(L.parseShaped("{oops", [] as string[], L.isStringArray), [], "not JSON");
+  assert.deepEqual(L.parseShaped('[{"id":1}]', [], L.isNewsItems), [], "saved headlines of the wrong shape");
+  assert.equal(L.parseShaped("7", "", L.isString), "", "a number where the password string is expected");
+  assert.deepEqual(L.parseShaped('{"candles":"yes"}', {}, L.isBooleanFlags()), {}, "chart options with a non-boolean");
+  assert.equal(L.parseShaped('{"at":"x"}', null, L.isVisitSnapshot), null, "an incomplete catch-up snapshot");
+  assert.equal(L.parseShaped("null", null, L.isVisitSnapshot), null);
   console.log("STRESS19A OK");
 })().catch((e) => {
   console.error(e);

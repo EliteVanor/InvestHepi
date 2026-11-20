@@ -9,6 +9,7 @@
  *   selected range's change beside it
  * - Re-themes itself when light/dark changes
  */
+import { isBooleanFlags } from "@/lib/ls-shape";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, IPriceLine, SeriesMarker, Time, UTCTimestamp } from "lightweight-charts";
 import type { ChartData, ChartRange } from "@/lib/chart";
@@ -100,7 +101,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   const candleMarks = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const [opts, setOpts] = useState<ChartOpts>(DEFAULT_OPTS);
   const [calls, setCalls] = useState<Call[]>([]);
-  useEffect(() => setOpts({ ...DEFAULT_OPTS, ...lsGet<Partial<ChartOpts>>(OPTS_KEY, {}) }), []);
+  useEffect(() => setOpts({ ...DEFAULT_OPTS, ...lsGet<Partial<ChartOpts>>(OPTS_KEY, {}, isBooleanFlags<ChartOpts>()) }), []);
   const toggle = (k: keyof ChartOpts) => setOpts((o) => (lsSet(OPTS_KEY, { ...o, [k]: !o[k] }), { ...o, [k]: !o[k] }));
   // Past AI calls for this ticker, drawn as markers.
   useEffect(() => {

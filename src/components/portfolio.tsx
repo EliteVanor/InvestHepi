@@ -1,6 +1,7 @@
 "use client";
 
 /** The watchlist, the holdings card and editor, and the ticker search they use. */
+import { isBoolean } from "@/lib/ls-shape";
 import { useEffect, useMemo, useState } from "react";
 import { type MsgKey } from "@/lib/i18n";
 import { type Holding, type Outlook, type Quote } from "@/lib/types";
@@ -142,7 +143,7 @@ export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[
   const { t, lang } = usePrefs();
   const locale = langInfo(lang).locale;
   const [hide, setHide] = useState(false);
-  useEffect(() => setHide(lsGet("ih-pf-hide", false)), []);
+  useEffect(() => setHide(lsGet("ih-pf-hide", false, isBoolean)), []);
   const live = useLiveQuotes(useMemo(() => holdings.map((h) => h.symbol), [holdings]));
   const s = useMemo(() => summarize(holdings, [...live.values()]), [holdings, live]);
 

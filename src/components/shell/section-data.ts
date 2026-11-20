@@ -13,6 +13,7 @@
  * while another tab is showing (owner decision Q11), so its list and new-headline dot stay fresh.
  * A hidden page loads nothing.
  */
+import { isStringArray, parseShaped } from "@/lib/ls-shape";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Api } from "@/components/shell/hooks";
 import type { PredictionSet } from "@/lib/predictions-view";
@@ -273,8 +274,8 @@ export function useSectionData(o: Opts) {
   const [rulesDigests, setRulesDigests] = useState<Digests>({});
   useEffect(() => {
     lsTry(() => {
-      const saved = JSON.parse(localStorage.getItem("ih-rules-view") ?? "[]") as SectionId[];
-      setRulesChosen(new Set(saved.filter((s) => SECTION_IDS.includes(s))));
+      const saved = parseShaped(localStorage.getItem("ih-rules-view"), [] as string[], isStringArray);
+      setRulesChosen(new Set(saved.filter((s): s is SectionId => (SECTION_IDS as string[]).includes(s))));
     });
   }, []);
   const isRulesTab = rulesChosen.has(tab) && !!aiFail[tab];

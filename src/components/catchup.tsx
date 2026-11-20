@@ -1,6 +1,7 @@
 "use client";
 
 /** "Since your last visit" and the full-screen catch-up mode. */
+import { isVisitSnapshot } from "@/lib/ls-shape";
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type MsgKey, relTime } from "@/lib/i18n";
 import { type Action, type CalendarEvent, type Digest, type Direction, type Outlook, type Quote } from "@/lib/types";
@@ -49,7 +50,7 @@ export function SinceLastVisit({ digest, calls: outlook = [], quotes, newCount, 
   useEffect(() => {
     if (loaded.current) return;
     loaded.current = true;
-    const p = lsGet<Snapshot | null>(LAST_KEY, null);
+    const p = lsGet<Snapshot | null>(LAST_KEY, null, isVisitSnapshot as (v: unknown) => v is Snapshot | null);
     if (p && Date.now() - new Date(p.at).getTime() > MIN_GAP_MS) setPrev(p);
     // Record this visit once the page has been on screen for a moment.
     const id = setTimeout(() => lsSet(LAST_KEY, snapshot(latest.current.digest, latest.current.quotes, latest.current.outlook)), 6000);

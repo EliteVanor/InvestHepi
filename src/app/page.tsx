@@ -16,6 +16,7 @@ import { useLiveQuotes, withLive } from "@/components/live";
 import { CommandPalette, type PaletteActions } from "@/components/palette";
 import { PortfolioCard, Watchlist } from "@/components/portfolio";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
+import { isStringOrNull } from "@/lib/ls-shape";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
 import { Briefing, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { PredictionsCard } from "@/components/predictions";
@@ -105,11 +106,11 @@ function App() {
       if (me?.user || (me?.mode === "single" && st?.role !== "viewer")) {
         api<{ briefingLanguage: string; timeZone?: string }>("/api/settings")
           .then((s) => {
-            const chosen = lsGet<string | null>("ih-lang", null);
+            const chosen = lsGet<string | null>("ih-lang", null, isStringOrNull);
             if (!chosen && isLang(s.briefingLanguage) && s.briefingLanguage !== lang) setLang(s.briefingLanguage);
             else if (s.briefingLanguage !== lang) api("/api/settings", { method: "PUT", body: JSON.stringify({ briefingLanguage: lang }) }).catch(() => {});
             // Time zone: same rule (a device without its own choice adopts the account's).
-            const zoneChosen = lsGet<string | null>("ih-tz", null);
+            const zoneChosen = lsGet<string | null>("ih-tz", null, isStringOrNull);
             if (!zoneChosen && s.timeZone && s.timeZone !== tzSetting) setTz(s.timeZone);
             else if (zoneChosen && s.timeZone !== tzSetting) api("/api/settings", { method: "PUT", body: JSON.stringify({ timeZone: tzSetting }) }).catch(() => {});
           })
