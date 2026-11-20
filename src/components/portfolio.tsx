@@ -128,8 +128,8 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
   );
 }
 
-const money = (n: number, locale: string, sign = false) =>
-  `${sign && n > 0 ? "+" : ""}${new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2 }).format(n)}`;
+const money = (n: number, currency: string, locale: string, sign = false) =>
+  `${sign && n > 0 ? "+" : ""}${new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: Math.abs(n) >= 1000 || currency === "VND" ? 0 : 2 }).format(n)}`;
 
 export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[]; onEdit: () => void; onOpen: (s: string) => void }) {
   const { t, lang } = usePrefs();
@@ -149,7 +149,7 @@ export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[
         </button>
       </section>
     );
-  const amt = (n: number, sign = false) => (hide ? "•••" : money(n, locale, sign));
+  const amt = (n: number, currency: string, sign = false) => (hide ? "•••" : money(n, currency, locale, sign));
   return (
     <section className="card" aria-labelledby="pf-h">
       <h2 className="card-title" id="pf-h">
@@ -174,27 +174,33 @@ export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[
         <div className="skeleton" style={{ height: 90 }} />
       ) : (
         <>
-          <div className="pf-total num">{amt(s.value)}</div>
-          <div className="pf-sub">
-            <span className={`num ${s.dayPnl >= 0 ? "up" : "down"}`}>
-              {amt(s.dayPnl, true)} ({fmtPct(s.dayPct)})
-            </span>
-            <span className="muted">{t("pf.today")}</span>
-            <span className={`num ${s.totalPnl >= 0 ? "up" : "down"}`}>{fmtPct(s.totalPct, 1)}</span>
-            <span className="muted">{t("pf.total")}</span>
-          </div>
-          <div className="pf-rows">
-            {s.positions.map((p) => (
-              <button key={p.symbol} className="pf-row" onClick={() => onOpen(p.symbol)}>
-                <b>{p.symbol}</b>
-                <span className="pf-weight" title={`${p.weight.toFixed(0)}%`}>
-                  <i style={{ width: `${p.weight}%` }} />
+          {/* One subtotal per currency: VND and USD are never added together (no conversion). */}
+          {s.groups.map((g) => (
+            <div className="pf-group" key={g.currency}>
+              <div className="pf-total num">{amt(g.value, g.currency)}</div>
+              <div className="pf-sub">
+                <span className={`num ${g.dayPnl >= 0 ? "up" : "down"}`}>
+                  {amt(g.dayPnl, g.currency, true)} ({fmtPct(g.dayPct)})
                 </span>
-                <span className={`num ${p.dayPct >= 0 ? "up" : "down"}`}>{fmtPct(p.dayPct)}</span>
-                <span className="num pf-val">{amt(p.value)}</span>
-              </button>
-            ))}
-          </div>
+                <span className="muted">{t("pf.today")}</span>
+                <span className={`num ${g.totalPnl >= 0 ? "up" : "down"}`}>{fmtPct(g.totalPct, 1)}</span>
+                <span className="muted">{t("pf.total")}</span>
+              </div>
+              <div className="pf-rows">
+                {g.positions.map((p) => (
+                  <button key={p.symbol} className="pf-row" onClick={() => onOpen(p.symbol)}>
+                    <b>{p.symbol}</b>
+                    <span className="pf-weight" title={`${p.weight.toFixed(0)}%`}>
+                      <i style={{ width: `${p.weight}%` }} />
+                    </span>
+                    <span className={`num ${p.dayPct >= 0 ? "up" : "down"}`}>{fmtPct(p.dayPct)}</span>
+                    <span className="num pf-val">{amt(p.value, p.currency)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {s.groups.length > 1 && <p className="hint">{t("pf.perCurrency")}</p>}
         </>
       )}
     </section>
