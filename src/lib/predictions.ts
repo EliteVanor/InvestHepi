@@ -25,7 +25,7 @@ import type { Route } from "./llm/models";
 import { buildPredictSystem, buildPredictUser, parsePrediction, PREDICT_HINT, predictOutputTokens } from "./llm/predict";
 import { loadHeadlines } from "./headlines";
 import { isLang } from "./languages";
-import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, lastFinishedSession, nthWeekday, sectionOfMarket, type Phase, type SlotMarket } from "./markets";
+import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, calendarKey, closeUtc, dailyTarget, lastFinishedSession, nthWeekday, sectionOfMarket, tradesToday, type Phase, type SlotMarket } from "./markets";
 import { alignAction, coverage, headlineMentions, marketData, SHARED_CALLS } from "./pipeline";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
@@ -171,7 +171,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   }
   const stale = new Set(symbols.filter((sym) => fresh(sym)));
   const today = dailyTarget(now, firsts[0]).date;
-  const weekEnd = nthWeekday(today, 5, exchangeTz(firsts[0]));
+  const weekEnd = nthWeekday(today, 5, calendarKey(firsts[0]));
   const input = {
     interests, phase, tz, vn: market === "vn" || market === "ivn",
     quotes: data.quotes, live, opened, macro: data.macro, macroWanted, technicals: data.technicals,
@@ -199,6 +199,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     const it = allowed.get(c.ticker.toUpperCase());
     if (!it) continue;
     if (stale.has(c.ticker.toUpperCase())) continue; // no latest data for this ticker: no call on it
+    if (!tradesToday(c.ticker.toUpperCase(), now)) continue; // its own exchange is closed today (Europe: London on a UK holiday, Frankfurt on Dec 24): no call for a closed market
     // Beyond each market's benchmark, a ticker gets a call only if a headline the model saw names it
     // (the prompt says so; the model once called BID, VND and PNJ "following the sector").
     if (!benchmarks.has(c.ticker.toUpperCase()) && !shown.some((n) => headlineMentions(n.title, c.ticker.toUpperCase()))) continue;
@@ -222,7 +223,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
       madeAt: now.toISOString(),
       gradeDate,
       // The close that grades it (grading itself runs within the hour after, once prices settle).
-      gradesAt: closeUtc(gradeDate, exchangeTz(raw.ticker)).toISOString(),
+      gradesAt: closeUtc(gradeDate, calendarKey(raw.ticker)).toISOString(),
     });
   }
   if (!items.length) throw new Error(`${provider} returned no usable calls`);

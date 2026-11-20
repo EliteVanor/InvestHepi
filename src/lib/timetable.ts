@@ -13,8 +13,7 @@
  *  - Briefings (every day, weekends included): World 4, US 5, Vietnam 5; the admin's interests 6,
  *    everyone else's 4.
  */
-import { isHoliday } from "./holidays";
-import { MARKET_TZ, preDeadline, zonedToUtc, type Phase, type SlotMarket } from "./markets";
+import { MARKET_TZ, marketCloseOn, preDeadline, runPossible, zonedToUtc, type Phase, type SlotMarket } from "./markets";
 
 export type BriefItem = "vn" | "world" | "us" | "interests:all" | "interests:admin";
 export type PredItem = `p:${SlotMarket}:${Phase}`;
@@ -99,13 +98,23 @@ const MIN = 60_000;
 function startsOn(dayMs: number): Occurrence[] {
   const date = new Date(dayMs).toISOString().slice(0, 10);
   const wd = new Date(dayMs).getUTCDay();
-  // A prediction slot doesn't exist on its market's holiday (no run, no "unavailable" note, no late alarm).
-  return TIMETABLE.filter((s) => s.days.includes(wd) && !(s.tz && isHoliday(s.tz, date))).map((slot) => {
+  const out: Occurrence[] = [];
+  for (const slot of TIMETABLE) {
+    if (!slot.days.includes(wd)) continue;
     const [h, m] = slot.at.split(":").map(Number);
     // A local slot happens on that local date; the UTC instant moves with summer time.
     const start = slot.tz ? zonedToUtc(date, h * 60 + m, slot.tz).getTime() : dayMs + (h * 60 + m) * MIN;
-    return { slot, date, start, end: 0 };
-  });
+    // A prediction item doesn't exist on a day its market doesn't trade, or (mid-day) when the session ends less
+    // than two hours later (holidays.ts): no run, no "unavailable" note, no late alarm. The occurrence carries
+    // only the items that remain, so the scheduler needs no holiday logic.
+    const items = slot.items.filter((i) => {
+      if (!isPred(i)) return true;
+      const { market, phase } = predParts(i);
+      return runPossible(market, phase, start);
+    });
+    if (items.length) out.push({ slot: items.length === slot.items.length ? slot : { ...slot, items }, date, start, end: 0 });
+  }
+  return out;
 }
 
 function rawOccurrences(from: number, to: number): Occurrence[] {
@@ -118,13 +127,13 @@ function rawOccurrences(from: number, to: number): Occurrence[] {
 /**
  * When an item of an occurrence stops being runnable:
  *  - before-market predictions: the market's open (a "before market" call made after it would see the session);
- *  - mid-day predictions: 90 minutes after the slot;
+ *  - mid-day predictions: 90 minutes after the slot, never past that day's close;
  *  - briefings: when the same briefing's next run starts, at most 6 hours later.
  */
 export function itemEnd(o: Pick<Occurrence, "start" | "slot">, item: SlotItem, all?: Occurrence[]): number {
   if (isPred(item)) {
     const { market, phase } = predParts(item);
-    return phase === "pre" ? Math.min(preDeadline(market, o.start).getTime(), o.start + MAX_LATE_MIN * MIN) : o.start + MID_LATE_MIN * MIN;
+    return phase === "pre" ? Math.min(preDeadline(market, o.start).getTime(), o.start + MAX_LATE_MIN * MIN) : Math.min(o.start + MID_LATE_MIN * MIN, marketCloseOn(market, o.start));
   }
   const list = all ?? rawOccurrences(o.start, o.start + MAX_LATE_MIN * MIN);
   const next = list.find((x) => x.start > o.start && x.slot.items.some((i) => !isPred(i) && family(i) === family(item)));

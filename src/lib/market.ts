@@ -13,7 +13,7 @@ import { isVnSymbol, pool, vnDaily, vndirectDaily } from "./vnmarket";
 import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
 import { emSession, hasEastmoney } from "./eastmoney";
-import { lastFinishedSession, localNow, prevWeekday, sessionHours } from "./markets";
+import { calendarKey, lastFinishedSession, localNow, prevWeekday, sessionHours, zoneOf } from "./markets";
 import { exchangeTz } from "./symbols";
 import { dayIn } from "./dates";
 
@@ -137,7 +137,7 @@ export async function freshenQuotes(quotes: Quote[], now = new Date()): Promise<
   await pool(lagging.slice(0, 48), 4, async (q) => {
     const want = lastFinishedSession(q.symbol, now, q.proxy);
     const last = q.history.at(-1)!;
-    const tz = q.proxy ? "America/New_York" : exchangeTz(q.symbol);
+    const tz = calendarKey(q.symbol, q.proxy);
     const close = await latestClose(q.proxy ?? q.symbol, want).catch(() => null);
     if (!close) return;
     // Eastmoney's previous close must match ours when both are for the same day (a mislabeled series is caught here),
@@ -152,7 +152,9 @@ export async function freshenQuotes(quotes: Quote[], now = new Date()): Promise<
 
 /** A finished session's close from an intraday series: { value, prev (that series' previous close), via }. */
 async function latestClose(symbol: string, want: string): Promise<{ value: number; prev?: number; via: string } | null> {
-  const tz = exchangeTz(symbol);
+  // Oil and gold futures use CME's calendar (Globex trades on Thanksgiving), not NYSE's: Eastmoney's previous close on the
+  // Friday after is Thursday's shortened session.
+  const tz = calendarKey(symbol);
   if (hasEastmoney(symbol)) {
     const em = await emSession(symbol);
     if (em?.session === want) return { value: em.last, prev: em.preClose, via: "eastmoney" };
@@ -168,7 +170,7 @@ async function latestClose(symbol: string, want: string): Promise<{ value: numbe
   // An early close (13:00 on the day after US Thanksgiving) ends the session then: later prints are after hours.
   const { open, close } = sessionHours(tz, want);
   const inSession = d.bars.filter((b) => {
-    const l = localNow(b.t * 1000, tz);
+    const l = localNow(b.t * 1000, zoneOf(tz));
     return l.date === want && l.mins >= open && l.mins <= close;
   });
   return inSession.length ? { value: inSession.at(-1)!.c, via: d.source } : null;

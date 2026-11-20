@@ -25,7 +25,7 @@
  * is in `provisional`.
  */
 
-export type CalendarId = "NYSE" | "HOSE" | "JPX" | "HKEX" | "LSE" | "XETRA" | "EURONEXT";
+export type CalendarId = "NYSE" | "CME" | "HOSE" | "JPX" | "HKEX" | "LSE" | "XETRA" | "EURONEXT";
 
 export interface YearTable {
   /** Full-day closures on weekdays, YYYY-MM-DD. */
@@ -38,7 +38,10 @@ export interface YearTable {
   src: string[];
 }
 
-/** Calendar of each exchange time zone (those that have a table). */
+/**
+ * Calendar of each exchange time zone (those that have a table). A "key" is either one of these zones or a
+ * calendar id ("CME": oil and gold futures, which trade on New York's clock but not on NYSE's calendar).
+ */
 export const CALENDAR_OF_TZ: Record<string, CalendarId> = {
   "America/New_York": "NYSE",
   "Asia/Ho_Chi_Minh": "HOSE",
@@ -50,6 +53,27 @@ export const CALENDAR_OF_TZ: Record<string, CalendarId> = {
 };
 
 export const HOLIDAYS: Record<CalendarId, Record<number, YearTable>> = {
+  CME: {
+    // CME Globex (oil CL=F, gold GC=F): the futures trade on most NYSE holidays (abbreviated sessions, settlement
+    // times in https://www.cmegroup.com/tools-information/holiday-calendar.html), so only the full closures are
+    // listed: New Year's Day, Good Friday, Christmas (observed). Thanksgiving is NOT a closure: Globex follows CME trading
+    // hours that day (https://www.cmegroup.com/tools-information/holiday-calendar/files/2026/2026-thanksgiving-clearing-advisory.pdf)
+    // and halts early. The early times (13:00 ET Thanksgiving and Christmas Eve, 13:15 the day after) are from a
+    // third-party calendar; CME finalizes product hours about two weeks before each holiday: all provisional.
+    2026: {
+      closed: ["2026-01-01", "2026-04-03", "2026-12-25"],
+      early: { "2026-11-26": "13:00", "2026-11-27": "13:15", "2026-12-24": "13:00" },
+      provisional: ["2026-11-26", "2026-11-27", "2026-12-24"],
+      src: ["https://www.cmegroup.com/tools-information/holiday-calendar.html", "https://www.cmegroup.com/trading-hours.html"],
+    },
+    2027: {
+      closed: ["2027-01-01", "2027-03-26", "2027-12-24"],
+      early: { "2027-11-25": "13:00", "2027-11-26": "13:15" },
+      provisional: ["2027-12-24", "2027-11-25", "2027-11-26"],
+      src: ["https://www.cmegroup.com/tools-information/holiday-calendar.html", "https://www.cmegroup.com/tools-information/holiday-calendar/files/2027/thanksgiving-holiday-settlement-times-2027.pdf"],
+    },
+  },
+
   NYSE: {
     // Dates and early closes: NYSE Group's "2026, 2027 and 2028 Holiday and Early Closings Calendar"
     // release (Dec 23 2025) and nyse.com/trade/hours-calendars. Early closes are 13:00 ET (13:15 for options).
@@ -217,25 +241,25 @@ export const HOLIDAYS: Record<CalendarId, Record<number, YearTable>> = {
     // Euronext Paris: https://live.euronext.com/en/resources/trading-hours-holidays (2026 and 2027 holiday calendars).
     // Closed Jan 1, Good Friday, Easter Monday, May 1, Dec 25 (Dec 26 2026 is a Saturday; May 1 and Dec 25 2027 are weekends).
     // Christmas Eve is a half trading day on most venues; the closing time (14:05 Paris) is the usual one, not read from the
-    // calendar: provisional. Dec 31 is a normal day.
+    // calendar: provisional. Dec 31 is also a half day (same time, provisional; source: the Euronext page above).
     2026: {
       closed: ["2026-01-01", "2026-04-03", "2026-04-06", "2026-05-01", "2026-12-25"],
-      early: { "2026-12-24": "14:05" },
-      provisional: ["2026-12-24"],
+      early: { "2026-12-24": "14:05", "2026-12-31": "14:05" },
+      provisional: ["2026-12-24", "2026-12-31"],
       src: ["https://live.euronext.com/en/resources/trading-hours-holidays"],
     },
     2027: {
       closed: ["2027-01-01", "2027-03-26", "2027-03-29"],
-      early: { "2027-12-24": "14:05" },
-      provisional: ["2027-12-24"],
+      early: { "2027-12-24": "14:05", "2027-12-31": "14:05" },
+      provisional: ["2027-12-24", "2027-12-31"],
       src: ["https://live.euronext.com/en/resources/trading-hours-holidays"],
     },
   },
 };
 
 const mins = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
-const tableOf = (tz: string, date: string): YearTable | undefined => {
-  const cal = CALENDAR_OF_TZ[tz];
+const tableOf = (key: string, date: string): YearTable | undefined => {
+  const cal = key === "CME" ? "CME" : CALENDAR_OF_TZ[key];
   return cal ? HOLIDAYS[cal][Number(date.slice(0, 4))] : undefined;
 };
 

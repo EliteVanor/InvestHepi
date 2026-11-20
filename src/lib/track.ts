@@ -18,7 +18,7 @@
  */
 import { freshenQuotes, getQuotes } from "./market";
 import { isHoliday } from "./holidays";
-import { SETTLE_MINS, closeUtc, dailyTarget, localNow, nextTradingDay, nthWeekday, sessionClosed, type Phase } from "./markets";
+import { SETTLE_MINS, calendarKey, closeUtc, dailyTarget, localNow, nextTradingDay, nthWeekday, sessionClosed, type Phase } from "./markets";
 import { exchangeTz } from "./symbols";
 import { getJSON, setJSON } from "./store";
 import type { Call, Interest, Outlook } from "./types";
@@ -31,7 +31,7 @@ const MAX_CALLS = 3000;
 export const horizonOf = (c: Pick<Call, "id">): "d" | "w" => (c.id.endsWith(":w") ? "w" : "d");
 export const phaseOf = (c: Pick<Call, "id" | "phase">): Phase => c.phase ?? (c.id.endsWith(":m") ? "mid" : "pre");
 /** The session a call is graded on: its own for daily calls, the 5th trading day counting it (holidays skipped) for weekly ones. */
-export const gradeDateOf = (c: Pick<Call, "id" | "date" | "endDate" | "ticker">) => c.endDate ?? (horizonOf(c) === "w" ? nthWeekday(c.date, 5, exchangeTz(c.ticker)) : c.date);
+export const gradeDateOf = (c: Pick<Call, "id" | "date" | "endDate" | "ticker">) => c.endDate ?? (horizonOf(c) === "w" ? nthWeekday(c.date, 5, calendarKey(c.ticker)) : c.date);
 
 /**
  * Date of the next regular session that has not opened yet on the ticker's own exchange. Calls before v18 targeted this; it's kept for reports and old tests.
@@ -93,7 +93,7 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
  * The clock that decides when a ticker's session is over: its own exchange, except an ETF stand-in
  * (`proxy`), whose bars follow New York hours whatever index it tracks.
  */
-const gradeTz = (ticker: string, proxy?: string) => (proxy ? "America/New_York" : exchangeTz(ticker));
+const gradeTz = (ticker: string, proxy?: string) => calendarKey(ticker, proxy);
 
 /** When a pending call can be graded: its graded session's close plus settling, in UTC. */
 export function gradesAfter(c: Pick<Call, "date" | "ticker" | "id"> & { endDate?: string }): string {
