@@ -91,7 +91,7 @@ export function parseSpark(j: unknown): Map<string, SparkSeries> {
 }
 
 /** Closes for many symbols in as few requests as possible (20 per request). Missing symbols are simply absent. */
-export async function yahooSpark(symbols: string[], range: "1d" | "5d" | "1mo" | "1y", interval: "5m" | "15m" | "1d"): Promise<Map<string, SparkSeries>> {
+export async function yahooSpark(symbols: string[], range: "1d" | "5d" | "1mo" | "3mo" | "1y", interval: "5m" | "15m" | "1d"): Promise<Map<string, SparkSeries>> {
   const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))];
   const out = new Map<string, SparkSeries>();
   const batches: string[][] = [];

@@ -8,7 +8,9 @@ import { IconEye, IconPlus, IconSearch, IconTarget, IconX } from "./Icons";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { fmtPct, fmtPrice } from "./primitives";
 import { langInfo } from "@/lib/languages";
+import { priceDigits } from "@/lib/symbols";
 import { summarize } from "@/lib/portfolioMath";
+import { windowChange, type QuoteWindow } from "@/lib/quote-view";
 import { type SearchHit } from "@/lib/search";
 import { type Technicals } from "@/lib/technicals";
 import { useLiveQuotes } from "./live";
@@ -28,15 +30,18 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
         const o = outlook.find((x) => x.ticker === s);
         if (!q && !tech) return null;
         const price = q?.price ?? tech!.price;
-        const h = q?.history ?? [];
-        const back = (n: number) => (h.length > n ? ((price - h[h.length - 1 - n][1]) / h[h.length - 1 - n][1]) * 100 : undefined);
+        // 5D and 1M: the one window rule, on the quote's own series when there is one.
+        const win = (w: QuoteWindow) => (q ? windowChange(q.history, price, w, q.session) ?? undefined : undefined);
         const range = tech?.high52 != null && tech.low52 != null && tech.high52 > tech.low52 ? ((price - tech.low52) / (tech.high52 - tech.low52)) * 100 : undefined;
         return {
           symbol: s,
           price,
+          proxy: q?.proxy,
+          estimated: !!q?.estimatedVia,
+          stale: !!q?.stale,
           day: q?.changePct,
-          d5: tech?.chg5d ?? back(5),
-          m1: tech?.chg1m ?? back(Math.min(21, h.length - 1)),
+          d5: win("5d") ?? tech?.chg5d,
+          m1: win("1mo") ?? tech?.chg1m,
           rsi: tech?.rsi14,
           vs50: tech?.sma50 ? ((price - tech.sma50) / tech.sma50) * 100 : undefined,
           range,
@@ -93,7 +98,7 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
             {rows.map((r) => (
               <tr key={r.symbol} onClick={() => onOpen(r.symbol)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpen(r.symbol)}>
                 <td className="wl-sticky"><b>{r.symbol}</b></td>
-                <td className="num">{fmtPrice(r.price)}</td>
+                <td className={`num${r.stale ? " stale" : ""}`} title={r.stale ? t("strip.stale") : undefined}>{r.proxy ? t("strip.viaShort", { etf: r.proxy }) : `${r.estimated ? "≈" : ""}${fmtPrice(r.price, priceDigits(r.symbol, r.price))}`}</td>
                 <td>{pct(r.day, 2)}</td>
                 <td className="wl-m-hide">{pct(r.d5)}</td>
                 <td>{pct(r.m1)}</td>

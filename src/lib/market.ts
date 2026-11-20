@@ -16,6 +16,7 @@ import { emSession, hasEastmoney } from "./eastmoney";
 import { calendarKey, lastFinishedSession, localNow, prevWeekday, sessionHours, zoneOf } from "./markets";
 import { exchangeTz } from "./symbols";
 import { dayIn } from "./dates";
+import { windowChange } from "./quote-view";
 
 const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
 
@@ -24,7 +25,7 @@ export function quoteFromCloses(symbol: string, points: [number, number][], sour
   // One close per calendar day (Yahoo can append today's live point with an intraday timestamp).
   const byDay = new Map<string, number>();
   for (const [t, c] of points) byDay.set(day(t), c);
-  const history = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-25) as [string, number][];
+  const history = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-30) as [string, number][]; // enough for 1M across a long holiday
   if (history.length < 2) return null;
   const price = history.at(-1)![1];
   const prior = history.at(-2)![1];
@@ -90,7 +91,7 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
   await Promise.all([
     (async () => {
       if (!other.length) return;
-      const sp = await yahooSpark(other, "1mo", "1d");
+      const sp = await yahooSpark(other, "3mo", "1d"); // 1M needs the close on or before the same date a month back
       for (const [s, v] of sp) {
         const q = quoteFromCloses(s, v.points, "yahoo");
         if (q) got.set(s, q);
@@ -145,7 +146,7 @@ export async function freshenQuotes(quotes: Quote[], now = new Date()): Promise<
     if (close.prev != null && last[0] === prevWeekday(want, tz) && Math.abs(close.prev / last[1] - 1) > 0.003) return;
     if (Math.abs(close.value / last[1] - 1) > 0.25) return;
     const prevClose = last[0] === prevWeekday(want, tz) ? last[1] : (close.prev ?? last[1]);
-    fixed.set(q.symbol, { ...q, price: close.value, prevClose, changePct: ((close.value - prevClose) / prevClose) * 100, history: [...q.history, [want, close.value] as [string, number]].slice(-25), closeVia: close.via });
+    fixed.set(q.symbol, { ...q, price: close.value, prevClose, changePct: ((close.value - prevClose) / prevClose) * 100, history: [...q.history, [want, close.value] as [string, number]].slice(-30), closeVia: close.via });
   });
   return quotes.map((q) => fixed.get(q.symbol) ?? q);
 }
@@ -180,9 +181,8 @@ export function quotesAsText(quotes: Quote[]): string {
   if (!quotes.length) return "(price data unavailable)";
   return quotes
     .map((q) => {
-      const h = q.history;
-      const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
-      const mo = h.length > 1 ? ((q.price - h[0][1]) / h[0][1]) * 100 : NaN;
+      const wk = windowChange(q.history, q.price, "5d") ?? NaN;
+      const mo = windowChange(q.history, q.price, "1mo") ?? NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       const name = symLabel(q.symbol);
       const label = `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}`;
@@ -216,7 +216,7 @@ export function macroAsText(quotes: Quote[], wanted: string[] = []): string {
   return [...quotes
     .map((q) => {
       const h = q.history;
-      const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
+      const wk = windowChange(h, q.price, "5d") ?? NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       // Yields move in basis points, not percent of themselves (5.10% → 5.15% is +5 bp, not "+1.0%").
       if (isPercentQuote(q.symbol)) {
