@@ -120,6 +120,11 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.deepEqual(heads[1], heads[0], "5D header = 1D header");
   assert.deepEqual(heads[2], heads[0], "1M header = 1D header (not the last daily bar, 98)");
 
+  // Nasdaq's daily row for the same evening carried the 20:00 after-hours print (SPY, Nov 19 2026): never the price.
+  reset();
+  nas.days = [[usDate("2026-11-20"), 102], ...weekdays("2026-11-19", 30, 98)];
+  assert.equal((await Q.currentQuotes(["AAPL"]))[0].price, 100, "the same evening's daily row doesn't replace the regular-session close");
+
   /* ---------------- pre-market: same rule */
   reset();
   nas.days = weekdays("2026-11-20", 30, 100);

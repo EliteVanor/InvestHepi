@@ -42,7 +42,8 @@ async function singleQuote(symbol: string): Promise<Quote | null> {
       const { bars, source } = await vnDaily(symbol, 30);
       return fromBars(symbol, bars, source);
     }
-    const d = await getChart(symbol, "1mo");
+    // World levels: 6 months of daily closes (the 1-month chart keeps only 22, too few for 1M across a holiday).
+    const d = await getChart(symbol, hasWorldDaily(symbol) ? "6mo" : "1mo");
     // 1mo charts are hourly; collapse to daily closes.
     const q = quoteFromCloses(symbol, d.bars.map((b) => [b.t, b.c]), d.source);
     if (!q) return null;

@@ -93,7 +93,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(nk.history.at(-1)![0], sessions(30, false).at(-1), "dated to its last close");
   assert.match(M.levelText(nk), /\[close of \d{4}-\d{2}-\d{2}\]/, "the AI is told the date");
   const vnd = q.find((x) => x.symbol === "VND=X")!;
-  assert.equal(vnd.history.length, 22, "one month of sessions");
+  assert.equal(vnd.history.length, 30, "30 sessions: enough for 1M across a long holiday (v19 row 4)");
   const dup = W.parseWorld({ data: ["VN", "EN_GB"].flatMap((locale) => [{ code: "USD_VND", tradingDate: "2026-11-12", closePrice: 25684, locale }, { code: "USD_VND", tradingDate: "2026-11-13", closePrice: 25707, locale }]) }, "currencies");
   assert.equal(dup.get("USD_VND")!.length, 2, "duplicate language rows merged into one per day");
   const tnx = q.find((x) => x.symbol === "^TNX")!;

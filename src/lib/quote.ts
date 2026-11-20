@@ -168,11 +168,10 @@ function finish(r: Reading, h: Quote | undefined, now: Date, windows: boolean): 
     intraday = false;
   } else if (r.source === "nasdaq" && closes.length) {
     // Nasdaq's previous-close field is unreliable: the daily history's close before the session is.
+    // The session's own price stays the last regular-session bar: Nasdaq's daily row for the same
+    // evening matched the 20:00 after-hours print (SPY Nov 19: row 715.87 = 20:00 print, 16:00 bar 715.06).
     const before = closes.filter(([d]) => d < session).at(-1);
     if (before) prevClose = before[1];
-    // Once the daily history has posted the session's official close, that is the price.
-    const own = closes.find(([d]) => d === session);
-    if (own && sessionState(r.symbol, now, r.proxy) !== "open") price = own[1];
   }
   const changePct = pct(price, prevClose);
   if (!Number.isFinite(price) || !Number.isFinite(changePct)) return null;
