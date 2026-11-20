@@ -56,7 +56,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 }) as typeof fetch;
 
 async function main() {
-  await fs.rm(".data", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || ".data", { recursive: true, force: true });
 
   // ---- technicals
   const T = await import("../src/lib/technicals");

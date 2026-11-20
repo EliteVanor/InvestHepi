@@ -61,7 +61,7 @@ const reset = () => {
 };
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const M = await import("../src/lib/llm/models");
   const { dayIn } = await import("../src/lib/dates");
   const { complete } = await import("../src/lib/llm");

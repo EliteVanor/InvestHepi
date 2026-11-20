@@ -61,7 +61,7 @@ const at = (iso: string) => new Date(iso);
 const T = (iso: string) => Date.parse(iso);
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const TT = await import("../src/lib/timetable");
   const MK = await import("../src/lib/markets");
   const TR = await import("../src/lib/track");

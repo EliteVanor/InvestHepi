@@ -53,7 +53,7 @@ const digest = (generatedAt: string, strings = 3, len = 40) => ({
 });
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const U = await import("../../src/lib/users");
   const { setJSON, getJSON } = await import("../../src/lib/store");
   const { withUser, OWNER } = await import("../../src/lib/context");

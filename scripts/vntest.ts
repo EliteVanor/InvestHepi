@@ -104,7 +104,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const V = await import("../src/lib/vnmarket");
   const C = await import("../src/lib/chart");
   const M = await import("../src/lib/market");

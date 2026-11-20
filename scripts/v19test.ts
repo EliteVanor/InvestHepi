@@ -7,6 +7,8 @@
 import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 import path from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const dir = path.join(__dirname, "v19");
 const parts = readdirSync(dir).filter((f) => f.endsWith(".ts")).sort();
@@ -17,7 +19,8 @@ if (!parts.length) {
 let failed = 0;
 for (const p of parts) {
   // A part passes only if it exits 0 AND prints its "<TOPIC> OK" line, so a part that quits early can't pass.
-  const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, p)], { encoding: "utf8", env: process.env, timeout: 120_000 });
+  // Each run gets a fresh store directory: no state shared between suites or with other worktrees.
+  const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, p)], { encoding: "utf8", env: { ...process.env, STORE_DIR: mkdtempSync(path.join(tmpdir(), "ih-store-")) }, timeout: 120_000 });
   process.stdout.write(r.stdout ?? "");
   process.stderr.write(r.stderr ?? "");
   if (r.status !== 0 || !/\bOK\b/.test(r.stdout ?? "")) {

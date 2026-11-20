@@ -45,7 +45,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm(".data", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || ".data", { recursive: true, force: true });
   const { refreshSection } = await import("../src/lib/pipeline");
   const { saveSettings } = await import("../src/lib/interests");
   await saveSettings({ briefingLanguage: "vi" });

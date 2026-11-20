@@ -13,7 +13,8 @@ const redis = url && token ? new Redis({ url, token }) : null;
 
 export const storeKind = redis ? "redis" : process.env.VERCEL ? "ephemeral" : "file";
 
-const dir = process.env.VERCEL ? "/tmp/invest-helper" : path.join(process.cwd(), ".data");
+// STORE_DIR lets each test process use its own directory (the test runners set it), so parallel runs never share state.
+const dir = process.env.STORE_DIR || (process.env.VERCEL ? "/tmp/invest-helper" : path.join(process.cwd(), ".data"));
 const fileFor = (key: string) => path.join(dir, key.replace(/[^a-z0-9_-]/gi, "_") + ".json");
 
 export async function getJSON<T>(key: string): Promise<T | null> {

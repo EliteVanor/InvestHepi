@@ -49,7 +49,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 }) as typeof fetch;
 
 async function main() {
-  await fs.rm(".data", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || ".data", { recursive: true, force: true });
   const { makeT } = await import("../src/lib/i18n");
   const t = makeT("en");
   const A = await import("../src/lib/alerts");

@@ -53,7 +53,7 @@ const until = async (cond: () => Promise<boolean>, ms = 8000) => {
 };
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   const C = await import("../src/lib/config");
   const U = await import("../src/lib/users");

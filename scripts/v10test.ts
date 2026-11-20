@@ -67,7 +67,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const C = await import("../src/lib/chart");
   const W = await import("../src/lib/worldmarket");
   const M = await import("../src/lib/market");

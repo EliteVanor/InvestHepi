@@ -71,7 +71,7 @@ const C = "carol@example.com";
 const OWNER_EMAIL = "owner@example.com";
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const U = await import("../src/lib/users");
   // Session = the x-who header in these tests.
   U.setSessionResolver(async (req) => {

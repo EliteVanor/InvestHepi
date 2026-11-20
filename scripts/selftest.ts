@@ -77,7 +77,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 async function main() {
-  await fs.rm(".data", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || ".data", { recursive: true, force: true });
   const { parseFeed, dedupe } = await import("../src/lib/news");
   const items = parseFeed(FIXTURE, "Google News: test");
   assert.equal(items.length, 6);
@@ -131,7 +131,7 @@ async function main() {
   for (let i = 0; i < 11; i++) await refreshSection("us", new Date(now + i * 60_000));
   const hist = await loadHistory("us");
   assert.equal(hist.length, 10, "history capped at 10");
-  const files = (await fs.readdir(".data")).filter((f) => /^digest_us_en_\d+\.json$/.test(f));
+  const files = (await fs.readdir(process.env.STORE_DIR || ".data")).filter((f) => /^digest_us_en_\d+\.json$/.test(f));
   assert.equal(files.length, 10, "old archived digests deleted");
 
   // Track record: rules calls are not logged; simulate an AI call and grade it.

@@ -87,7 +87,7 @@ const T = (s: string) => Date.parse(s);
 const MIN = 60_000;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const TT = await import("../src/lib/timetable");
   const S = await import("../src/lib/scheduler");
   S.setTimetableSince(0); // these tests replay mid-November 2026, before the v18 timetable went live

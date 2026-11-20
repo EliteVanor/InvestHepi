@@ -7,6 +7,8 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const SUITES = [
   "i18ntest",
@@ -58,7 +60,8 @@ function main() {
   const results: { name: string; ok: boolean; secs: number }[] = [];
   for (const name of todo) {
     const t0 = Date.now();
-    const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, `${name}.ts`)], { stdio: "inherit", env: process.env, timeout: SUITE_TIMEOUT_MS });
+    // Each suite gets a fresh store directory: no state shared between suites or with other worktrees.
+    const r = spawnSync(process.execPath, ["--import", "tsx", path.join(dir, `${name}.ts`)], { stdio: "inherit", env: { ...process.env, STORE_DIR: mkdtempSync(path.join(tmpdir(), "ih-store-")) }, timeout: SUITE_TIMEOUT_MS });
     const ok = r.status === 0;
     results.push({ name, ok, secs: (Date.now() - t0) / 1000 });
     if (!ok) console.error(`\n>>> ${name} FAILED (${r.signal ?? `exit ${r.status}`})\n`);
