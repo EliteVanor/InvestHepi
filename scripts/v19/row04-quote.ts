@@ -168,6 +168,12 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.deepEqual(r.fired.sort(), ["pct", "real"], "S&P below 6000 doesn't fire on SPY at 680; the % rule and real levels still work");
   assert.deepEqual(r.paused, ["lvl"], "the level rule is reported paused");
 
+  /* ---------------- briefings: a snapshot with a stale price is reused for a minute, not 10 */
+  const Pl = await import("../../src/lib/pipeline");
+  const fresh = { symbol: "SPY", price: 1, prevClose: 1, changePct: 0, history: [], source: "nasdaq" as const };
+  assert.equal(Pl.marketTtl({ quotes: [fresh], macro: [], sectors: [] }), 10 * 60_000);
+  assert.equal(Pl.marketTtl({ quotes: [fresh], macro: [], sectors: [{ ...fresh, symbol: "XLK", stale: true }] }), 60_000, "a stale sector price expires after a minute");
+
   /* ---------------- portfolio: subtotals per currency, never summed across */
   const PM = await import("../../src/lib/portfolioMath");
   const s = PM.summarize([{ symbol: "AAPL", shares: 10, cost: 100 }, { symbol: "FPT.VN", shares: 100, cost: 90000 }], [{ symbol: "AAPL", price: 150, prevClose: 140 }, { symbol: "FPT.VN", price: 100000, prevClose: 98000 }]);
