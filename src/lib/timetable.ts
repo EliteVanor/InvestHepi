@@ -6,13 +6,14 @@
  * cron-job.org, GitHub) only call /api/cron/tick on a plain interval and never repeat these times.
  *
  * Two kinds of slots:
- *  - Predictions (the market's weekdays only): two runs per market, "before market" and "mid-day",
+ *  - Predictions (the market's trading days only: weekdays minus the holidays in holidays.ts): two runs per market, "before market" and "mid-day",
  *    each calling only its own market. Every World market (Japan, China & Hong Kong, Europe, US
  *    stocks, oil, gold) has its own pair; each interest set runs its US part on the New York clock and
  *    its Vietnam part on the Hanoi clock. Only the before-market run makes weekly calls.
  *  - Briefings (every day, weekends included): World 4, US 5, Vietnam 5; the admin's interests 6,
  *    everyone else's 4.
  */
+import { isHoliday } from "./holidays";
 import { MARKET_TZ, preDeadline, zonedToUtc, type Phase, type SlotMarket } from "./markets";
 
 export type BriefItem = "vn" | "world" | "us" | "interests:all" | "interests:admin";
@@ -98,7 +99,8 @@ const MIN = 60_000;
 function startsOn(dayMs: number): Occurrence[] {
   const date = new Date(dayMs).toISOString().slice(0, 10);
   const wd = new Date(dayMs).getUTCDay();
-  return TIMETABLE.filter((s) => s.days.includes(wd)).map((slot) => {
+  // A prediction slot doesn't exist on its market's holiday (no run, no "unavailable" note, no late alarm).
+  return TIMETABLE.filter((s) => s.days.includes(wd) && !(s.tz && isHoliday(s.tz, date))).map((slot) => {
     const [h, m] = slot.at.split(":").map(Number);
     // A local slot happens on that local date; the UTC instant moves with summer time.
     const start = slot.tz ? zonedToUtc(date, h * 60 + m, slot.tz).getTime() : dayMs + (h * 60 + m) * MIN;

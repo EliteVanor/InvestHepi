@@ -171,7 +171,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   }
   const stale = new Set(symbols.filter((sym) => fresh(sym)));
   const today = dailyTarget(now, firsts[0]).date;
-  const weekEnd = nthWeekday(today, 5);
+  const weekEnd = nthWeekday(today, 5, exchangeTz(firsts[0]));
   const input = {
     interests, phase, tz, vn: market === "vn" || market === "ivn",
     quotes: data.quotes, live, opened, macro: data.macro, macroWanted, technicals: data.technicals,
@@ -210,7 +210,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     const action = alignAction(raw.direction, raw.action, holdings.length > 0);
     const cal = calibrate(raw.confidence, stats);
     const target = targets.get(raw.ticker) ?? dailyTarget(now, raw.ticker);
-    const gradeDate = raw.horizon === "this week" ? nthWeekday(target.date, 5) : target.date;
+    const gradeDate = raw.horizon === "this week" ? nthWeekday(target.date, 5, target.tz) : target.date;
     items.push({
       ...raw,
       action,

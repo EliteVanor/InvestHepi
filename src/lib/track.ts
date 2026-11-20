@@ -17,7 +17,8 @@
  * no phase and count as before market (they came from the 08:15 Hanoi run).
  */
 import { freshenQuotes, getQuotes } from "./market";
-import { SETTLE_MINS, addDays, closeUtc, dailyTarget, localNow, nthWeekday, sessionClosed, type Phase } from "./markets";
+import { isHoliday } from "./holidays";
+import { SETTLE_MINS, closeUtc, dailyTarget, localNow, nextTradingDay, nthWeekday, sessionClosed, type Phase } from "./markets";
 import { exchangeTz } from "./symbols";
 import { getJSON, setJSON } from "./store";
 import type { Call, Interest, Outlook } from "./types";
@@ -29,19 +30,15 @@ const MAX_CALLS = 3000;
 
 export const horizonOf = (c: Pick<Call, "id">): "d" | "w" => (c.id.endsWith(":w") ? "w" : "d");
 export const phaseOf = (c: Pick<Call, "id" | "phase">): Phase => c.phase ?? (c.id.endsWith(":m") ? "mid" : "pre");
-/** The session a call is graded on: its own for daily calls, the 5th weekday counting it for weekly ones. */
-export const gradeDateOf = (c: Pick<Call, "id" | "date" | "endDate">) => c.endDate ?? (horizonOf(c) === "w" ? nthWeekday(c.date, 5) : c.date);
+/** The session a call is graded on: its own for daily calls, the 5th trading day counting it (holidays skipped) for weekly ones. */
+export const gradeDateOf = (c: Pick<Call, "id" | "date" | "endDate" | "ticker">) => c.endDate ?? (horizonOf(c) === "w" ? nthWeekday(c.date, 5, exchangeTz(c.ticker)) : c.date);
 
 /**
- * Date of the next regular session that has not opened yet on the ticker's own exchange (holidays
- * ignored). Calls before v18 targeted this; it's kept for reports and old tests.
+ * Date of the next regular session that has not opened yet on the ticker's own exchange. Calls before v18 targeted this; it's kept for reports and old tests.
  */
 export function targetSession(now: Date, ticker = "SPY"): string {
   const t = dailyTarget(now, ticker);
-  if (!t.opened) return t.date;
-  let d = addDays(t.date, 1);
-  while ([0, 6].includes(new Date(d + "T12:00:00Z").getUTCDay())) d = addDays(d, 1);
-  return d;
+  return t.opened ? nextTradingDay(t.date, t.tz) : t.date;
 }
 
 export async function loadCalls(key = KEY): Promise<Call[]> {
@@ -79,7 +76,7 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
       action: o.action,
       provider,
       phase,
-      ...(weekly ? { endDate: nthWeekday(target.date, 5) } : {}),
+      ...(weekly ? { endDate: nthWeekday(target.date, 5, target.tz) } : {}),
       // Made after the open: measured from the price then; without one it can't count in the headline.
       ...(target.opened ? (chg != null && Number.isFinite(chg) ? { baseChg: Number(chg.toFixed(3)) } : { noLiveBase: true }) : {}),
     };
@@ -117,7 +114,7 @@ export function flatBand(closes: number[], weekly: boolean): number {
   return Number((weekly ? day * Math.sqrt(5) : day).toFixed(2));
 }
 
-/** Without a bar for a weekday, it counts as a holiday once a later session exists or two days have passed. */
+/** Without a bar for a weekday the table doesn't know as a holiday, it counts as one once a later session exists or two days have passed. */
 const CLOSED_AFTER_MS = 48 * 3600_000;
 
 export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
@@ -160,7 +157,8 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     if (!out) {
       if (c.provisional) continue;
       // No bar for the graded session yet: still being posted, or the market was closed that day.
-      const later = hist.some(([d]) => d > end);
+      // A holiday in the table is known to be closed: no waiting for a later bar or 48 hours.
+      const later = hist.some(([d]) => d > end) || isHoliday(tz, end);
       const overdue = now.getTime() - closeUtc(end, tz).getTime() > CLOSED_AFTER_MS;
       if (!later && !overdue) continue;
       const inside = weekly ? hist.filter(([d]) => d >= c.date && d < end).at(-1) : undefined;
