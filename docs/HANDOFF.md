@@ -166,6 +166,22 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Next step: run `improve-codebase-architecture` (with `codebase-design`) to design module shapes for the story pipeline (group, rank, explain, concept cards, analog library) and for row 30, then build v19a (phases A → B → C, see the report), ask to merge, then v19b (D → E), one fix per commit, pin behavior first, regression tests in `scripts/v19test.ts`, `review-code` + thermo-nuclear per fix. Count AI tokens and calls per day for the story and concept cards before building them. Stress test on real data (`invest-helper` environment for market hosts), docs, ask before merging.
 - Skills to load next: how-i-work, how-i-think, improve-codebase-architecture, codebase-design, review-code, thermo-nuclear-code-quality-review; debugging for bugs; better-interface for UI.
 
+## v19 row 9 (holidays and early closes, Nov 20 2026)
+
+What changed: one table, `src/lib/holidays.ts` (per exchange and year: closed weekdays, early closes with local time, `provisional` dates, source URLs). Wired into `markets.ts` (trading days, `dailyTarget`, `nthWeekday(date, n, tz)`, `closeUtc`/`sessionClosed` with early closes, `preDeadline`, `lastFinishedSession`), `timetable.ts` (a prediction slot does not exist on its market's holiday), `track.ts` (holiday daily call closed at once; weekly end skips holidays), `predictions.ts` (weekEnd and gradeDate), `market.ts` (`freshenQuotes`: an early close ends the session at that time, so an after-hours print can't be the close; previous session skips holidays), `marketTime.ts` (the open/closed clocks) and `llm/prompt.ts` (market phase text). FOMC 2027 added to `calendar.ts` (decision days from the Fed's revised schedule of Nov 12 2026: Jan 27, Mar 17, Apr 28, Jun 9, Jul 28, Sep 15, Nov 17; Oct 26-27 is strategy-only). Test: `scripts/v19/row09-holidays.ts`, including the year guard (`holidayGaps`): from Dec 1 2027 it fails until 2028 tables exist.
+
+How the dates were checked: the exchanges' own sites were not reachable from the build sandbox, so every date comes from search results that quote the official pages (NYSE Group's Dec 2025 release, JPX calendar, HKEX circulars CT/075/25 and CT/077/2026, gov.hk gazette lists, Deutsche Boerse's 2026 calendar, Euronext's calendar pages), cross-checked where a second source existed. **Someone should open each source URL (listed in the table's comments) and tick off the provisional dates.**
+
+Provisional (treated as closed or early, but not confirmed on the exchange's own notice):
+- HOSE 2027, all but Jan 1: Tet Feb 4, 5, 8, 9, 10 (government 7-day break Feb 4-10; some sites still show a longer variant to Feb 14), Hung Kings Fri Apr 16, Apr 30 and Mon May 3, National Day Thu Sep 2 and Fri Sep 3. HOSE/HNX normally publish these about a month ahead.
+- HKEX 2026 half days Feb 16, Dec 24, Dec 31 (usual pattern; only seen on third-party calendars). 2027 half days (Feb 5, Dec 24, Dec 31) are in HKEX's circular.
+- LSE Dec 24 and Dec 31 12:30 early closes (2026 and 2027): LSE's business-days page was not readable; two calendar sites and Cboe Europe agree.
+- Xetra 2027 closures (Jan 1, Mar 26, Mar 29, Dec 24, Dec 31): Deutsche Boerse's standing rule; its 2027 PDF was not seen. Euronext Dec 24 close time 14:05 Paris (the usual time, not read from the calendar).
+- JPX Sep 23 2027 (autumn equinox, by the Act on National Holidays).
+- Also unchecked: NYSE option-only hours (13:15), FOMC Nov 17 2027 having projections (the code adds them by month, so it doesn't).
+
+Known limits: calls stored before this change keep their stored `endDate` (a weekly call made Nov 23 before the table was deployed ends Nov 27, not Nov 30). The US mid-day prediction slot still runs at 12:00 ET on Nov 27 and Dec 24 (one hour before the early close). Oil and gold use New York's calendar although CME has its own holiday hours. The price-alert window is still weekday-based (a wasted tick on a holiday, no AI).
+
 ## Session summary, Nov 17 2026 (v18)
 
 One long session; the details are in the v18 section below.
@@ -377,7 +393,7 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 - `/api/status` tells anonymous visitors which AI providers and services are configured (no secrets).
 
 - Translations are covered by tests with a fake AI but haven't been checked with a real AI key; verify output quality on the live site.
-- No holiday calendars: a daily call on a holiday is marked "market closed, not graded" once a later bar exists or two days pass; a weekly call whose 5th day is a holiday grades on the previous session. The timetable still runs prediction slots on holidays (cost: one wasted run per market) and the open/closed pill doesn't know them.
+- Holidays (v19 row 9): `src/lib/holidays.ts` covers NYSE, HOSE, JPX, HKEX, LSE, Xetra and Euronext for 2026-2027; Seoul, Shanghai and Mumbai have no table (weekends only; Shanghai's 000001.SS is the one benchmark that matters). A closure the table lacks still falls back to the old rule (closed once a later bar exists or 48 h pass). Still weekday-based: price-alert window (13:00-22:00 UTC weekdays), `predictionAlerts` date, VN30 expiry. See the v19 row 9 note for provisional dates.
 - Nasdaq's 1-day series includes extended hours (04:00-20:00 New York), so the strip's evening "live" price for US ETFs is an after-hours print (briefing and prediction data now take the regular-session close; the strip itself doesn't yet).
 - Shanghai (000001.SS) has no intraday source from the cloud: China & HK's benchmark is the Hang Seng, so Shanghai calls are dropped when its data isn't current.
 - cron-job.org: if the owner's job runs on weekdays only, set it to every day (briefings run on weekends now). Vercel Schedules and GitHub were changed in the repo.
