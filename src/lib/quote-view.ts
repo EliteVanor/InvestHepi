@@ -251,3 +251,20 @@ export function currencyOf(symbol: string): string | undefined {
 
 /** How often the page polls a set of symbols: every minute while any of them trades, else every 5 minutes. */
 export const pollInterval = (symbols: string[], now: Date | number = Date.now()) => (symbols.some((s) => liveHours(s, now)) ? 60_000 : 300_000);
+
+const FULL_MS = 5 * 60_000;
+/**
+ * Which symbols one poll asks for (Q8 follows each symbol's hours without polling more): the whole set
+ * when 5 minutes have passed since the last full request, otherwise only the symbols trading now, at
+ * most every `everyMs`; nothing when none trades. Pure, for tests.
+ */
+export function pollPlan(symbols: string[], now: number, last: { lastFull: number; lastAny: number; everyMs?: number }): string[] {
+  const slack = 1000; // the page's minute timer drifts a little
+  if (now - last.lastFull >= FULL_MS - slack) return symbols;
+  if (now - last.lastAny < (last.everyMs ?? 60_000) - slack) return [];
+  const open = symbols.filter((s) => liveHours(s, now));
+  // FX, futures and crypto alone don't earn a minute step (they trade around the clock, so they would
+  // keep every page polling all night): they ride along while an exchange in the set is open, and
+  // refresh with the full set every 5 minutes otherwise.
+  return open.some((s) => !isNear24h(s)) ? open : [];
+}

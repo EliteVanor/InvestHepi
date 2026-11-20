@@ -262,6 +262,14 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(V.sessionState("FPT.VN", T("2026-02-18T03:00:00Z")), "closed", "Tet: Hanoi closed");
   assert.equal(V.liveHours("CL=F", T("2026-12-25T15:00:00Z")), false, "CME closed on Christmas");
   assert.equal(V.isStale({ symbol: "AAPL", intraday: false, asOf: 0, session: "2026-11-25" }, T("2026-11-26T20:00:00Z")), false, "on Thanksgiving, Wednesday's close is the latest session");
+  // One poll: the full set every 5 minutes, otherwise only what trades now.
+  const at3 = T("2026-11-20T03:00:00Z");
+  assert.deepEqual(V.pollPlan(["AAPL", "FPT.VN", "^GSPC"], at3, { lastFull: at3 - 60_000, lastAny: at3 - 60_000 }), ["FPT.VN"], "minute step: only Hanoi trades");
+  assert.deepEqual(V.pollPlan(["AAPL", "FPT.VN"], at3, { lastFull: at3 - 300_000, lastAny: at3 - 60_000 }), ["AAPL", "FPT.VN"], "every 5 minutes: the whole set");
+  assert.deepEqual(V.pollPlan(["AAPL", "^GSPC"], at3, { lastFull: at3 - 60_000, lastAny: at3 - 60_000 }), [], "nothing trades: no request between full ones");
+  assert.deepEqual(V.pollPlan(["XLK"], T("2026-11-20T16:00:00Z"), { lastFull: T("2026-11-20T15:59:00Z"), lastAny: T("2026-11-20T15:59:00Z"), everyMs: 120_000 }), [], "heatmap: at most every 2 minutes");
+  assert.deepEqual(V.pollPlan(["AAPL", "BTC-USD"], at3, { lastFull: at3 - 60_000, lastAny: at3 - 60_000 }), [], "Bitcoin alone doesn't keep a page polling every minute");
+  assert.deepEqual(V.pollPlan(["FPT.VN", "BTC-USD"], at3, { lastFull: at3 - 60_000, lastAny: at3 - 60_000 }), ["FPT.VN", "BTC-USD"], "it rides along while Hanoi is open");
   assert.equal(V.pollInterval(["AAPL", "FPT.VN"], T("2026-11-20T03:00:00Z")), 60_000, "a strip with one open market polls every minute");
   assert.equal(V.pollInterval(["AAPL", "^GSPC"], T("2026-11-20T03:00:00Z")), 300_000, "every 5 minutes when none is open");
 
