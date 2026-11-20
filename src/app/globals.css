@@ -682,7 +682,7 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .cu-bar { display: flex; align-items: center; gap: 10px; height: 48px; }
 .cu-kicker { font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--label-2); }
 .cu-count { font-size: 13px; color: var(--label-3); }
-.cu-stage { flex: 1; min-height: 0; overflow-y: auto; display: flex; align-items: center; justify-content: center; padding: 8px 20px 20px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+.cu-stage { flex: 1 1 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; display: flex; align-items: center; justify-content: center; padding: 8px 20px 32px; -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent); cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .cu-card { width: 100%; max-width: 640px; margin: auto 0; animation: cu-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1); cursor: default; }
 @keyframes cu-in { from { opacity: 0; transform: translateX(18px); } }
 .cu-title { font-size: 34px; line-height: 1.14; font-weight: 700; letter-spacing: -0.028em; margin: 14px 0 18px; text-wrap: balance; }
@@ -703,7 +703,7 @@ footer.foot { text-align: center; font-size: 12px; color: var(--label-3); margin
 .cu-row p { margin: 4px 0 0; color: var(--label-2); font-size: 16px; }
 .cu-done { text-align: center; }
 .cu-check { width: 76px; height: 76px; margin: 0 auto 8px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px; font-weight: 700; color: #fff; background: linear-gradient(135deg, #30d158, #34c759); box-shadow: 0 0 48px rgba(48, 209, 88, 0.35); }
-.cu-hint { text-align: center; font-size: 12px; color: var(--label-3); padding: 0 16px calc(14px + var(--safe-bottom)); }
+.cu-hint { flex: none; text-align: center; font-size: 12px; line-height: 16px; color: var(--label-3); padding: 6px 16px calc(14px + var(--safe-bottom)); }
 @media (max-width: 719px) {
   .cu-title { font-size: 27px; }
   .cu-title.sm { font-size: 22px; }
