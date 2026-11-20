@@ -11,8 +11,8 @@ import {
 } from "./Icons";
 import { usePrefs } from "./prefs";
 import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
-import { isPercentQuote, priceDigits } from "@/lib/symbols";
-import { moverChange, showsLevel } from "@/lib/quote-view";
+import { isPercentQuote } from "@/lib/symbols";
+import { levelLabel, moverChange } from "@/lib/quote-view";
 import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";
 import { dayIn } from "@/lib/dates";
 import { safeHttpUrl } from "@/lib/safe-url";
@@ -147,7 +147,8 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
                   <span className={`chg num ${q.changePct >= 0 ? "up" : "down"}`}>{fmtPct(q.changePct)}</span>
                 </div>
                 <div className="px num">
-                  {showsLevel(q) && `${q.estimatedVia ? "≈" : ""}${fmtPrice(q.price, priceDigits(q.symbol, q.price))}`}
+                  {/* A stand-in shows no level; its tag says "via <ETF>". */}
+                  {levelLabel(q, { fmt: fmtPrice, via: () => "" })}
                   <QuoteTag q={q} />
                 </div>
                 <ExtendedLine q={q} />
@@ -170,7 +171,7 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
               <span>{symName(t, q.symbol)}</span>
             </div>
             <div className="px num">
-              {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : showsLevel(q) ? `${q.estimatedVia ? "≈" : ""}${fmtPrice(q.price, priceDigits(q.symbol, q.price))}` : ""}
+              {isPercentQuote(q.symbol) ? `${q.price.toFixed(2)}%` : levelLabel(q, { fmt: fmtPrice, via: () => "" })}
               <QuoteTag q={q} />
             </div>
             <div className={`chg num ${q.changePct >= 0 ? "up" : "down"}`} style={{ fontSize: 12, fontWeight: 600 }}>

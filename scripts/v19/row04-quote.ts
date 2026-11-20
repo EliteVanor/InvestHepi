@@ -195,6 +195,18 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(V.overlayQuote({ ...snap, symbol: "^GSPC" }, cur({ symbol: "^GSPC", basis: "proxy", via: "SPY", stale: false })).price, 500, "an ETF price never replaces a real level");
   assert.equal(V.showsLevel(V.quoteFromCurrent(cur({ symbol: "^STOXX50E", basis: "proxy", via: "FEZ" }))), false, "an ETF stand-in's price is never shown as a level");
 
+  /* ---------------- one way to write a price; one header path; daily history keeps its dates */
+  assert.equal(V.levelLabel({ symbol: "^GSPC", price: 680, basis: "proxy", via: "SPY" }), "via SPY", "stand-in: never the ETF's price");
+  assert.equal(V.levelLabel({ symbol: "^GSPC", price: 6000.5, estimatedVia: "SPY" }), "≈6000.50");
+  assert.equal(V.levelLabel({ symbol: "EURUSD=X", price: 1.0975 }), "1.0975", "currency pairs keep 4 decimals");
+  const hq = V.headerQuote({ symbol: "^STOXX50E", price: 30, prevClose: 29, changePct: 3.4, asOf: 1, proxy: "FEZ", range: "5d", quote: null });
+  assert.deepEqual([hq.basis, hq.via, hq.intraday], ["proxy", "FEZ", false], "a chart without a quote goes through the same header fields");
+  const dailyQ = V.quoteFromCurrent(cur({ symbol: "^N225", intraday: false, closes: [["2026-11-19", 1], ["2026-11-20", 2]] }));
+  assert.deepEqual(dailyQ.history, [["2026-11-19", 1], ["2026-11-20", 2]], "dated closes, not '0'..'n'");
+  const pf = (await import("../../src/lib/portfolioMath")).summarize([{ symbol: "^GSPC", shares: 2, cost: 5000 }, { symbol: "AAPL", shares: 1, cost: 100 }], [{ symbol: "^GSPC", price: 680, prevClose: 690, basis: "proxy", via: "SPY" }, { symbol: "AAPL", price: 110, prevClose: 100 }]);
+  const spxRow = pf.positions.find((x) => x.symbol === "^GSPC")!;
+  assert.deepEqual([spxRow.via, spxRow.value, pf.groups[0].value], ["SPY", 0, 110], "a stand-in holding shows its % only, never 2 x 680 as its value");
+
   /* ---------------- alerts on an ETF stand-in: % rules only, level rules paused */
   const A = await import("../../src/lib/alerts");
   const t = ((k: string) => k) as never;

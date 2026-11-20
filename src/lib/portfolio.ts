@@ -20,5 +20,6 @@ export function positionsAsText(holdings: Holding[], quotes: Quote[]): string | 
   if (!s.positions.length) return undefined;
   // Weights are within each currency (amounts are never converted).
   const of = (c: string) => (s.groups.length > 1 ? `of ${c} holdings` : "of portfolio");
-  return s.positions.map((p) => `${p.symbol}: ${p.weight.toFixed(0)}% ${of(p.currency)}, ${p.totalPct >= 0 ? "+" : ""}${p.totalPct.toFixed(0)}% vs cost`).join("\n");
+  // A holding priced only by an ETF stand-in has no amount to weigh: left out.
+  return s.positions.filter((p) => !p.via).map((p) => `${p.symbol}: ${p.weight.toFixed(0)}% ${of(p.currency)}, ${p.totalPct >= 0 ? "+" : ""}${p.totalPct.toFixed(0)}% vs cost`).join("\n");
 }

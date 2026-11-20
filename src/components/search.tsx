@@ -9,7 +9,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SearchHit } from "@/lib/search";
 import { queryFor } from "@/lib/follow";
-import { SYMBOL_LABELS, priceDigits, symLabel } from "@/lib/symbols";
+import { SYMBOL_LABELS, symLabel } from "@/lib/symbols";
+import { levelLabel } from "@/lib/quote-view";
 import type { Interest } from "@/lib/types";
 import { IconSearch } from "./Icons";
 import { usePrefs } from "./prefs";
@@ -222,7 +223,7 @@ export function StockSearchSheet({
                 </div>
                 {l && (
                   <div className="ss-px">
-                    <span className="num">{l.basis === "proxy" ? t("strip.viaShort", { etf: l.via ?? "" }) : `${l.basis === "estimate" ? "≈" : ""}${fmtPrice(l.price, priceDigits(h.symbol, l.price))}`}</span>
+                    <span className="num">{levelLabel(l, { fmt: fmtPrice, via: (etf) => t("strip.viaShort", { etf }) })}</span>
                     <span className={`ss-chg num ${Math.abs(l.changePct) < 0.005 ? "flat-bg" : l.changePct > 0 ? "up-bg" : "down-bg"}`}>{fmtPct(l.changePct)}</span>
                   </div>
                 )}

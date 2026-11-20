@@ -31,7 +31,7 @@ import assert from "node:assert/strict";
   /* ---------------- live vs snapshot */
   const shown = digest({ quotes: [q("SPY", 500), q("^GSPC", 5000), q("BAD", NaN)] as never, macro: [] });
   const plan = { groups: [{ symbols: ["SPY", "^GSPC", "BAD", "ONLYLIVE", "MISSING"] }], macro: [] };
-  const rows = S.stripRows(shown, plan, new Map([live("SPY", 510), live("^GSPC", 520, { basis: "proxy", via: "SPY" }), live("ONLYLIVE", 42, { intraday: false })]));
+  const rows = S.stripRows(shown, plan, new Map([live("SPY", 510), live("^GSPC", 520, { basis: "proxy", via: "SPY" }), live("ONLYLIVE", 42, { intraday: false, closes: [["2026-11-13", 40], ["2026-11-14", 41], ["2026-11-17", 42]] })]));
   const [spy, gspc, onlyLive] = rows.groups[0].quotes;
   assert.deepEqual([spy.symbol, spy.price, spy.changePct, spy.stale, spy.spark], ["SPY", 510, 1.5, false, [1, 2, 3]], "live wins, with its intraday path");
   assert.equal(gspc.price, 5000, "an ETF's live price never replaces a real index level (canOverlay)");

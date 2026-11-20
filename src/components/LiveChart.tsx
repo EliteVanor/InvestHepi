@@ -14,7 +14,7 @@ import type { IChartApi, ISeriesApi, ISeriesMarkersPluginApi, IPriceLine, Series
 import type { ChartData, ChartRange } from "@/lib/chart";
 import type { MsgKey } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
-import { liveHours, type CurrentQuote } from "@/lib/quote-view";
+import { headerQuote, levelLabel, liveHours, type CurrentQuote } from "@/lib/quote-view";
 import { exchangeTz, priceDigits } from "@/lib/symbols";
 import type { Call } from "@/lib/types";
 import { lsGet, lsSet, usePrefs } from "./prefs";
@@ -193,7 +193,9 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
       const ref = d.range === "1d" ? d.prevClose : d.bars[0]?.c ?? d.prevClose;
       const up = d.price >= ref;
       const color = cssVar(up ? "--green" : "--red");
-      area.applyOptions({ lineColor: color, topColor: alpha(color, 0.26), bottomColor: alpha(color, 0) });
+      area.applyOptions({ lineColor: color, topColor: alpha(color, 0.26), bottomColor: alpha(color, 0), lastValueVisible: !d.proxy });
+      // An ETF stand-in's chart is the ETF's series: no price axis or crosshair price, never its price as the level.
+      chart.applyOptions({ rightPriceScale: { visible: !d.proxy }, crosshair: { horzLine: { labelVisible: !d.proxy } } });
       area.setData(d.bars.map((b) => ({ time: b.t as UTCTimestamp, value: b.c })));
       const candle = candleRef.current;
       candle?.setData(d.bars.map((b) => ({ time: b.t as UTCTimestamp, open: b.o, high: b.h, low: b.l, close: b.c })));
@@ -305,20 +307,22 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   }, [data, paint]);
 
   // Hovering reads the chart (change vs the range's start); otherwise the header is the current quote.
-  const q = data?.quote ?? null;
+  // One path: the reply's current quote, or the same fields read from the series (headerQuote).
+  const q = data ? headerQuote(data) : null;
   const ref = data ? (data.range === "1d" ? data.prevClose : data.bars[0]?.c ?? data.prevClose) : 0;
-  const shown = hover?.price ?? q?.price ?? data?.price;
-  const chg = !data || shown == null ? 0 : hover ? shown - ref : q ? q.price - q.prevClose : data.price - data.prevClose;
-  const chgPct = !data ? 0 : hover ? (ref ? (chg / ref) * 100 : 0) : q?.changePct ?? data.changePct;
-  const proxyVia = q ? (q.basis === "proxy" ? q.via : undefined) : data?.proxy;
-  const estimated = q ? q.basis === "estimate" : !!data?.estimatedVia;
+  const shown = hover?.price ?? q?.price;
+  const chg = !q || shown == null ? 0 : hover ? shown - ref : q.price - q.prevClose;
+  const chgPct = !q ? 0 : hover ? (ref ? (chg / ref) * 100 : 0) : q.changePct;
+  const proxyVia = q?.basis === "proxy" ? q.via : undefined;
+  const estimated = q?.basis === "estimate";
   const rangeLabel: Record<ChartRange, string> = { "1d": "1D", "5d": "5D", "1mo": "1M", "6mo": "6M", "1y": "1Y" };
-  const stale = q ? q.stale : !!data?.stale;
-  const asOf = q?.asOf ?? data?.asOf ?? 0;
+  const stale = !!q?.stale;
+  const asOf = q?.asOf ?? 0;
   // Daily-only data is never "live"; and the day change says which session it is when it isn't today's.
-  const isLive = live && !stale && (q ? q.intraday : !data?.dailyOnly);
+  const isLive = live && !stale && !!q?.intraday;
   const dayOf = (sec: number) => dayIn(tz, sec * 1000);
   const session = q?.session ?? dayOf(asOf);
+  const viaText = (etf: string) => t("strip.viaShort", { etf });
   const sessionLabel = data
     ? session === dayOf(Date.now() / 1000)
       ? t("chart.today")
@@ -331,7 +335,7 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
     : proxyVia
       ? t("strip.via", { etf: proxyVia })
       : estimated
-        ? t("strip.est", { etf: q?.via ?? data.estimatedVia ?? "" })
+        ? t("strip.est", { etf: q?.via ?? "" })
         : data.shapeVia
           ? t("chart.shape", { etf: data.shapeVia })
           : (q?.dailyOnly ?? data.dailyOnly)
@@ -345,10 +349,10 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
           <div>
             <div className="chart-price num">
               {/* An ETF stand-in's price is never shown as the symbol's level (only its %, "via <ETF>"). */}
-              <span className={flash}>{shown == null ? "—" : proxyVia && !hover ? t("strip.viaShort", { etf: proxyVia }) : `${estimated && !hover ? "≈" : ""}${fmtPrice(shown, priceDigits(symbol, shown))}`}</span>
+              <span className={flash}>{!q || shown == null ? "—" : levelLabel({ ...q, price: shown, ...(hover ? { basis: q.basis === "estimate" ? "level" : q.basis } : {}) }, { fmt: fmtPrice, via: viaText })}</span>
             </div>
             <div className={`chart-chg num ${chg >= 0 ? "up" : "down"}`}>
-              {data ? (proxyVia && !hover ? fmtPct(chgPct) : `${chg >= 0 ? "+" : ""}${fmtPrice(Math.abs(chg) < 1000 ? chg : Math.round(chg))} (${fmtPct(chgPct)})`) : " "}
+              {data ? (proxyVia ? fmtPct(chgPct) : `${chg >= 0 ? "+" : ""}${fmtPrice(Math.abs(chg) < 1000 ? chg : Math.round(chg))} (${fmtPct(chgPct)})`) : " "}
               <span className="chart-when">{hover ? fmtTime(hover.time, range !== "1d" || !!data?.dailyOnly) : sessionLabel}</span>
               {rangeChg != null && (
                 <span className={`chart-range-chg ${rangeChg >= 0 ? "up" : "down"}`}>

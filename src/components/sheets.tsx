@@ -10,7 +10,7 @@ import { SECTION_IDS, type Digest, type Holding, type Interest, type Outlook, ty
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart, type ChartReply } from "./LiveChart";
-import { showsLevel, windowChange, type CurrentQuote } from "@/lib/quote-view";
+import { showsLevel, type CurrentQuote } from "@/lib/quote-view";
 import { Ring, Sheet, arrow, fmtPct, fmtPrice, symLabel, openOverlay } from "./primitives";
 import { AlertsTab } from "./alerts-tab";
 import { useAccount } from "./account";
@@ -462,8 +462,9 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
       .slice(0, 10);
   }, [digests, symbol]);
   const price = cq?.price ?? quote?.price;
-  const chg5 = cq ? cq.changes?.["5d"] ?? null : quote ? windowChange(quote.history, quote.price, "5d", quote.session) : null;
-  const chg1m = cq ? cq.changes?.["1mo"] ?? null : quote ? windowChange(quote.history, quote.price, "1mo", quote.session) : null;
+  // 5D and 1M only from the current quote (the same numbers as the watchlist and the chart header).
+  const chg5 = cq?.changes?.["5d"] ?? null;
+  const chg1m = cq?.changes?.["1mo"] ?? null;
   // An ETF stand-in's levels are the ETF's: no day range, 52-week range or level alerts for the symbol (Q5).
   const levels = cq ? showsLevel(cq) : quote ? showsLevel(quote) : true;
   const fmtVol = (v?: number) => (v == null ? "–" : new Intl.NumberFormat(langInfo(lang).locale, { notation: "compact", maximumFractionDigits: 1 }).format(v));
@@ -499,7 +500,7 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
         <div className="stat"><small>{t("tk.52w")}</small><b className="num range" style={{ fontSize: 15 }}>{!levels ? "–" : cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : tech?.low52 != null && tech.high52 != null ? `${fmtPrice(tech.low52)} – ${fmtPrice(tech.high52)}` : "–"}</b></div>
         <div className="stat"><small>{t("tk.volume")}</small><b className="num">{fmtVol(cd?.volume)}</b></div>
       </div>
-      {tech && (
+      {tech && levels && (
         <div className="sheet-section">
           <h3>
             {t("tk.levels")} · <span className={tech.trend === "up" ? "up" : tech.trend === "down" ? "down" : "flat"}>{t(`trend.${tech.trend}` as MsgKey)}</span> <span className="muted">({t("trend.span")})</span>

@@ -10,6 +10,7 @@
  * and there's a daily cap so a bad day can't flood the inbox.
  */
 import { currentQuotes, type CurrentQuote } from "./quote";
+import { levelLabel } from "./quote-view";
 import { appUrl, emailProvider, sendEmail } from "./email";
 import { makeT, type MsgKey, type T } from "./i18n";
 import { isLang, langInfo, type LangCode } from "./languages";
@@ -161,7 +162,7 @@ async function mailLang(): Promise<LangCode> {
 const fmtPct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 const fmtPx = (n: number) => (n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2));
 /** An ETF stand-in's price is never written as the symbol's level. */
-const shownPx = (q: CurrentQuote) => (q.basis === "proxy" ? `via ${q.via}` : `${q.basis === "estimate" ? "≈" : ""}${fmtPx(q.price)}`);
+const shownPx = (q: CurrentQuote) => levelLabel(q, { fmt: fmtPx });
 
 /* --------------------------------------------------------- price checks */
 

@@ -8,9 +8,8 @@ import { IconEye, IconPlus, IconSearch, IconTarget, IconX } from "./Icons";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { fmtPct, fmtPrice } from "./primitives";
 import { langInfo } from "@/lib/languages";
-import { priceDigits } from "@/lib/symbols";
 import { summarize } from "@/lib/portfolioMath";
-import { windowChange, type QuoteWindow } from "@/lib/quote-view";
+import { levelLabel, overlayQuote, quoteFromCurrent, type QuoteWindow } from "@/lib/quote-view";
 import { type SearchHit } from "@/lib/search";
 import { type Technicals } from "@/lib/technicals";
 import { useLiveQuotes } from "./live";
@@ -21,23 +20,26 @@ type SortKey = "symbol" | "price" | "day" | "d5" | "m1" | "rsi" | "vs50" | "rang
 export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { symbols: string[]; quotes: Quote[]; technicals?: Record<string, Technicals>; outlook: Outlook[]; onOpen: (s: string) => void }) {
   const { t } = usePrefs();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "day", dir: -1 });
+  // 5D and 1M come from the current quote (quote.ts windows), the same numbers as the ticker sheet.
+  const live = useLiveQuotes(symbols, { windows: true });
 
   const rows = useMemo(() => {
     const list = symbols
       .map((s) => {
-        const q = quotes.find((x) => x.symbol === s);
+        const known = quotes.find((x) => x.symbol === s);
+        const cur = live.get(s);
+        const q = known ? overlayQuote(known, cur) : cur ? quoteFromCurrent(cur) : undefined;
         const tech = technicals?.[s];
         const o = outlook.find((x) => x.ticker === s);
         if (!q && !tech) return null;
         const price = q?.price ?? tech!.price;
-        // 5D and 1M: the one window rule, on the quote's own series when there is one.
-        const win = (w: QuoteWindow) => (q ? windowChange(q.history, price, w, q.session) ?? undefined : undefined);
+        // A window change only from the quote's own series (an ETF stand-in's windows aren't the index's).
+        const win = (w: QuoteWindow) => (cur && (q?.proxy ?? "") === (cur.basis === "proxy" ? cur.via ?? "" : "") ? cur.changes?.[w] ?? undefined : undefined);
         const range = tech?.high52 != null && tech.low52 != null && tech.high52 > tech.low52 ? ((price - tech.low52) / (tech.high52 - tech.low52)) * 100 : undefined;
         return {
           symbol: s,
           price,
-          proxy: q?.proxy,
-          estimated: !!q?.estimatedVia,
+          label: q ? levelLabel(q, { fmt: fmtPrice, via: (etf) => t("strip.viaShort", { etf }) }) : fmtPrice(price),
           stale: !!q?.stale,
           day: q?.changePct,
           d5: win("5d") ?? tech?.chg5d,
@@ -61,7 +63,7 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
       const vb = val(b);
       return (typeof va === "string" ? va.localeCompare(vb as string) : (va as number) - (vb as number)) * sort.dir;
     });
-  }, [symbols, quotes, technicals, outlook, sort]);
+  }, [symbols, quotes, live, technicals, outlook, sort, t]);
 
   if (!rows.length) return null;
   const th = (key: SortKey, label: string, cls = "") => (
@@ -98,7 +100,7 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
             {rows.map((r) => (
               <tr key={r.symbol} onClick={() => onOpen(r.symbol)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpen(r.symbol)}>
                 <td className="wl-sticky"><b>{r.symbol}</b></td>
-                <td className={`num${r.stale ? " stale" : ""}`} title={r.stale ? t("strip.stale") : undefined}>{r.proxy ? t("strip.viaShort", { etf: r.proxy }) : `${r.estimated ? "≈" : ""}${fmtPrice(r.price, priceDigits(r.symbol, r.price))}`}</td>
+                <td className={`num${r.stale ? " stale" : ""}`} title={r.stale ? t("strip.stale") : undefined}>{r.label}</td>
                 <td>{pct(r.day, 2)}</td>
                 <td className="wl-m-hide">{pct(r.d5)}</td>
                 <td>{pct(r.m1)}</td>
@@ -199,7 +201,7 @@ export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[
                       <i style={{ width: `${p.weight}%` }} />
                     </span>
                     <span className={`num ${p.dayPct >= 0 ? "up" : "down"}`}>{fmtPct(p.dayPct)}</span>
-                    <span className="num pf-val">{amt(p.value, p.currency)}</span>
+                    <span className="num pf-val">{p.via ? t("strip.viaShort", { etf: p.via }) : amt(p.value, p.currency)}</span>
                   </button>
                 ))}
               </div>
