@@ -1,5 +1,6 @@
 import { EVENT_KEYWORDS, PLAYBOOK, type EventType, type PlaybookEntry } from "../analogs";
 import { calendarAsText } from "../calendar";
+import { isHoliday } from "../holidays";
 import { SECTION_MACRO } from "../config";
 import { sectorsAsText } from "../chart";
 import { langInfo } from "../languages";
@@ -114,6 +115,7 @@ export function vnMarketPhase(d: Date): string {
   const wd = ict.getUTCDay();
   const mins = ict.getUTCHours() * 60 + ict.getUTCMinutes();
   if (wd === 0 || wd === 6) return "weekend, HOSE closed (next session Monday)";
+  if (isHoliday("Asia/Ho_Chi_Minh", ict.toISOString().slice(0, 10))) return "market holiday, HOSE closed";
   if (mins < 540) return "before the HOSE open (9:00 ICT)";
   if (mins < 690) return "HOSE morning session in progress";
   if (mins < 780) return "HOSE lunch break (reopens 13:00 ICT)";
@@ -131,12 +133,13 @@ VIETNAM SECTION:
 
 export function marketPhase(d: Date): string {
   const parts = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "numeric", minute: "numeric", hour12: false })
+    new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", weekday: "short", hour: "numeric", minute: "numeric", hour12: false })
       .formatToParts(d)
       .map((p) => [p.type, p.value]),
   );
   const mins = (Number(parts.hour) % 24) * 60 + Number(parts.minute);
   if (parts.weekday === "Sat" || parts.weekday === "Sun") return "weekend, market closed (next session Monday)";
+  if (isHoliday("America/New_York", `${parts.year}-${parts.month}-${parts.day}`)) return "market holiday, US exchanges closed";
   if (mins < 570) return "pre-market (regular session opens 9:30 ET)";
   if (mins < 960) return "regular session in progress";
   return "after the close (next session tomorrow)";
