@@ -96,6 +96,21 @@ export function sessionState(symbol: string, now: Date | number, via?: string): 
 }
 
 /**
+ * The date to tag on a card whose shown quote is not today's session (a day-old number must never look
+ * current, before or after a live overlay): the quote's session date (or its last daily close) when it is
+ * older than the session that is on now (open, lunch break, just closed) or, outside session hours, than
+ * the latest finished one. null when the quote is current. `dailyOnly` quotes are always dated.
+ */
+export function staleDayTag(q: { symbol: string; session?: string; history: [string, number][]; proxy?: string; dailyOnly?: boolean }, now: Date | number): string | null {
+  const date = q.session ?? q.history.at(-1)?.[0];
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (q.dailyOnly) return date;
+  const st = sessionState(q.symbol, now, q.proxy);
+  const expected = st === "open" || st === "break" || st === "after" ? localNow(now, quoteTz(q.symbol, q.proxy)).date : lastFinishedSession(q.symbol, now, q.proxy);
+  return date < expected ? date : null;
+}
+
+/**
  * Whether a symbol's price moves now, so the page polls it every minute (Q8): crypto always; FX from
  * Sunday 17:00 to Friday 17:00 New York; futures the same with their 17:00-18:00 daily pause; everything
  * else during its own exchange's regular session.

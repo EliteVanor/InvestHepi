@@ -12,7 +12,7 @@ import {
 import { usePrefs } from "./prefs";
 import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
 import { isPercentQuote } from "@/lib/symbols";
-import { levelLabel, moverChange } from "@/lib/quote-view";
+import { levelLabel, moverChange, staleDayTag } from "@/lib/quote-view";
 import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";
 import { dayIn } from "@/lib/dates";
 import { safeHttpUrl } from "@/lib/safe-url";
@@ -461,8 +461,8 @@ function QuoteTag({ q }: { q: Quote }) {
   // An ETF stand-in's price is never shown as a level: "via FEZ" and its % only.
   if (q.proxy) return <span className="via" title={t("strip.via", { etf: q.proxy })}>{t("strip.viaShort", { etf: q.proxy })}</span>;
   if (q.estimatedVia) return <span className="via" title={t("strip.est", { etf: q.estimatedVia })}>≈{q.estimatedVia}</span>;
-  const date = q.session ?? q.history.at(-1)?.[0];
-  if (q.dailyOnly && date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+  const date = staleDayTag(q, Date.now());
+  if (date) {
     const d = new Intl.DateTimeFormat(lang, { day: "numeric", month: "numeric", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
     return <span className="via" title={t("strip.closeOf", { date: d })}>{d}</span>;
   }

@@ -81,6 +81,18 @@ const PAIRS: [string, string, "stock_prices" | "commodities", string, number, nu
     const ch2 = await C.getChart(sym, "1d");
     assert.equal(ch2.shapeVia, etf, `${sym}: the ETF only gives the shape`);
   }
+
+  /* ---------------- item 2: a day-old number always carries its date, also after a live overlay */
+  const V = await import("../../src/lib/quote-view");
+  const open = new Date("2026-11-20T18:00:00Z"); // Friday 13:00 New York, open
+  const oil = { symbol: "CL=F", price: 83.21, prevClose: 83.26, changePct: -0.06, history: [["2026-11-18", 83.26], ["2026-11-19", 83.21]] as [string, number][], source: "vndirect-world" as const };
+  assert.equal(V.staleDayTag(oil, open), "2026-11-19", "the stored digest quote's close of Nov 19 is dated while Nov 20 trades");
+  const live = { symbol: "CL=F", price: 83.55, prevClose: 82.44, changePct: 1.35, intraday: true, session: "2026-11-20", state: "open", basis: "level", asOf: 1, source: "yahoo", spark: [1, 2], stale: false } as unknown as import("../../src/lib/quote-view").CurrentQuote;
+  assert.equal(V.staleDayTag(V.overlayQuote(oil, live), open), null, "an overlay with today's session drops the tag");
+  const staleLive = { ...live, session: "2026-11-19", intraday: false } as typeof live;
+  assert.equal(V.staleDayTag(V.overlayQuote(oil, staleLive), open), "2026-11-19", "an overlay that is itself a day old keeps the tag");
+  assert.equal(V.staleDayTag(oil, new Date("2026-11-20T13:00:00Z")), null, "before the open the Nov 19 close is the latest session: no tag");
+  assert.equal(V.staleDayTag({ ...oil, history: [] }, open), null, "no date, no tag");
   console.log("STRESS19A OK");
 })().catch((e) => {
   console.error(e);
