@@ -16,7 +16,7 @@
  */
 import { predictionAlerts } from "./alerts";
 import { getCalendar } from "./calendar";
-import { getLiveQuotes } from "./chart";
+import { currentQuotes, type CurrentQuote } from "./quote";
 import { SECTION_MACRO, US_GROUPS, VN_GROUPS, WORLD_GROUPS } from "./config";
 import { withUser } from "./context";
 import { currentInterestSet } from "./interests";
@@ -137,17 +137,17 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   const opened = new Set(symbols.filter((s) => targets.get(s)!.opened));
   const live = new Map<string, { price?: number; chg: number; at: number; via?: string }>();
   if (opened.size) {
-    const sessionOk = (q: { symbol: string; session?: string; intraday?: boolean; dailyOnly?: boolean; changePct: number }, sym: string) =>
-      q.session === targets.get(sym)?.date && q.intraday !== false && !q.dailyOnly && Number.isFinite(q.changePct);
-    for (const q of await getLiveQuotes([...opened]).catch(() => [])) {
-      // Only a price from the graded session itself; a last close or an ETF on another day won't do.
-      if (sessionOk(q, q.symbol)) live.set(q.symbol, { price: q.proxy ? undefined : q.price, chg: q.changePct, at: q.asOf * 1000, ...(q.proxy ? { via: q.proxy } : {}) });
+    // Only a live price from the graded session itself; a last close, a stale print or an ETF on another day won't do.
+    const sessionOk = (q: CurrentQuote, sym: string) => q.session === targets.get(sym)?.date && q.intraday && !q.dailyOnly && !q.stale && Number.isFinite(q.changePct);
+    for (const q of await currentQuotes([...opened], { now }).catch(() => [])) {
+      const proxy = q.basis === "proxy" ? q.via : undefined;
+      if (sessionOk(q, q.symbol)) live.set(q.symbol, { price: proxy ? undefined : q.price, chg: q.changePct, at: q.asOf * 1000, ...(proxy ? { via: proxy } : {}) });
     }
     // A US-hours index or future with no live level of its own: its same-hours ETF's move today is the
     // same % move (calls made during the session are measured as a % from the previous close).
     const viaEtf = [...opened].filter((sym) => !live.has(sym) && PROXIES[sym] && exchangeTz(sym) === "America/New_York");
     if (viaEtf.length) {
-      const etfs = new Map((await getLiveQuotes(viaEtf.map((sym) => PROXIES[sym])).catch(() => [])).map((q) => [q.symbol, q]));
+      const etfs = new Map((await currentQuotes(viaEtf.map((sym) => PROXIES[sym]), { now }).catch(() => [])).map((q) => [q.symbol, q]));
       for (const sym of viaEtf) {
         const q = etfs.get(PROXIES[sym]);
         if (q && sessionOk(q, sym)) live.set(sym, { chg: q.changePct, at: q.asOf * 1000, via: q.symbol });

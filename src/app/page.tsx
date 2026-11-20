@@ -12,7 +12,7 @@ import { AskPanel, AskSheet } from "@/components/ask";
 import { ChartCard, MoodGaugeCard, ScenariosCard, SectorHeatmap } from "@/components/cards";
 import { CatchUp, SinceLastVisit } from "@/components/catchup";
 import { IconAlert, IconPanelRight, IconSearch, IconSparkles } from "@/components/Icons";
-import { mergeLive, useLiveQuotes } from "@/components/live";
+import { useLiveQuotes, withLive } from "@/components/live";
 import { CommandPalette, type PaletteActions } from "@/components/palette";
 import { PortfolioCard, Watchlist } from "@/components/portfolio";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
@@ -160,11 +160,11 @@ function App() {
   /* -------------------------------------------------------- prices */
   const plan = useMemo(() => stripPlan(shown, tab), [shown, tab]);
   const stripSyms = useMemo(() => planSymbols(plan), [plan]);
-  const live = useLiveQuotes(stripSyms, tab === "vn" ? "vn" : tab === "world" ? "world" : "us");
+  const live = useLiveQuotes(stripSyms);
   const strip = useMemo(() => buildStripRows(shown, plan, live), [shown, plan, live]);
-  const liveQuotes = useMemo(() => (shown ? mergeLive(shown.quotes, live) : []), [shown, live]);
+  const liveQuotes = useMemo(() => (shown ? withLive(shown.quotes, live) : []), [shown, live]);
   const interestsDigest = digests.interests;
-  const interestsLive = useMemo(() => (interestsDigest ? mergeLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
+  const interestsLive = useMemo(() => (interestsDigest ? withLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
   const chartSymbols = useMemo(() => chartSymbolsFor(interests), [interests]);
   const watchSymbols = useMemo(() => [...new Set([...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)])], [interests, holdings]);
   const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);

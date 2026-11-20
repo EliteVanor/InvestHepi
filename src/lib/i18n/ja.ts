@@ -565,4 +565,9 @@ export const ja: Dict = {
   "pred.noClose": "{sym} の {day} 終値がまだ出ていません",
   "pred.noPrice": "{sym} の価格なし",
   "track.provisional": "公式終値待ち：発表後に再確認",
+  "strip.viaShort": "{etf} 経由",
+  "quote.after": "時間外",
+  "quote.pre": "プレマーケット",
+  "pf.perCurrency": "合計は通貨ごとで、換算はしていません。",
+  "al.levelPaused": "一時停止中：今は {etf} ETF の価格しかないため、価格水準のアラートは実際の水準が戻るまで待ちます。% のアラートは動作します。",
 };

@@ -563,6 +563,11 @@ export const en = {
   "pred.noClose": "{sym}'s close for {day} isn't out yet",
   "pred.noPrice": "no price for {sym}",
   "track.provisional": "official close pending: re-checked when it's posted",
+  "strip.viaShort": "via {etf}",
+  "quote.after": "After hours",
+  "quote.pre": "Pre-market",
+  "pf.perCurrency": "Totals are per currency, without conversion.",
+  "al.levelPaused": "Paused: only the {etf} ETF's price is available right now, so level alerts wait for the real level. % alerts still work.",
 };
 
 export type MsgKey = keyof typeof en;

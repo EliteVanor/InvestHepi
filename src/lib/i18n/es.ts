@@ -565,4 +565,9 @@ export const es: Dict = {
   "pred.noClose": "aún no hay cierre de {sym} del {day}",
   "pred.noPrice": "sin precio de {sym}",
   "track.provisional": "cierre oficial pendiente: se revisa cuando se publique",
+  "strip.viaShort": "vía {etf}",
+  "quote.after": "Fuera de horario",
+  "quote.pre": "Preapertura",
+  "pf.perCurrency": "Los totales son por moneda, sin conversión.",
+  "al.levelPaused": "En pausa: ahora solo hay el precio del ETF {etf}, así que las alertas de nivel esperan al nivel real. Las alertas de % siguen funcionando.",
 };

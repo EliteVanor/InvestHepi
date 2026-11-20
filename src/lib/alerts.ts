@@ -9,7 +9,7 @@
  * Every alert has a de-dupe key per ET day, all alerts from one check go out as one email,
  * and there's a daily cap so a bad day can't flood the inbox.
  */
-import { getLiveQuotes, type LiveQuote } from "./chart";
+import { currentQuotes, type CurrentQuote } from "./quote";
 import { appUrl, emailProvider, sendEmail } from "./email";
 import { makeT, type MsgKey, type T } from "./i18n";
 import { isLang, langInfo, type LangCode } from "./languages";
@@ -164,7 +164,7 @@ const fmtPx = (n: number) => (n >= 1000 ? n.toLocaleString("en-US", { maximumFra
 /** Pure evaluation of price rules against quotes. Exported for tests. */
 export function evaluatePriceRules(
   settings: AlertSettings,
-  quotes: LiveQuote[],
+  quotes: CurrentQuote[],
   followed: string[],
   date: string,
   t: T,
@@ -232,7 +232,7 @@ export async function checkPriceAlerts(interests: Interest[], now = new Date()) 
   const t = makeT(lang);
   const followed = [...new Set(interests.flatMap((i) => i.tickers))];
   const symbols = [...new Set([...followed, ...settings.priceAlerts.filter((a) => a.active).map((a) => a.symbol)])];
-  const quotes = await getLiveQuotes(symbols);
+  const quotes = await currentQuotes(symbols, { now });
   const { events, fired } = evaluatePriceRules(settings, quotes, followed, dayIn(NY, now), t);
 
   const result = await dispatch(events, settings, lang, now);

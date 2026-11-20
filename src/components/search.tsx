@@ -9,7 +9,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SearchHit } from "@/lib/search";
 import { queryFor } from "@/lib/follow";
-import { SYMBOL_LABELS, symLabel } from "@/lib/symbols";
+import { SYMBOL_LABELS, priceDigits, symLabel } from "@/lib/symbols";
 import type { Interest } from "@/lib/types";
 import { IconSearch } from "./Icons";
 import { usePrefs } from "./prefs";
@@ -166,7 +166,7 @@ export function StockSearchSheet({
   // Once something is typed, never show the popular list (a tap mid-search must hit a real result).
   const list = typing ? hits ?? [] : lang === "vi" ? [...POPULAR.filter((p) => p.region === "vn"), ...POPULAR.filter((p) => p.region !== "vn")] : POPULAR;
   const syms = useMemo(() => list.slice(0, 12).map((h) => h.symbol), [list]);
-  const live = useLiveQuotes(syms, "world");
+  const live = useLiveQuotes(syms);
 
   return (
     <Sheet title={t("search.title")} onClose={onClose} wide>
@@ -222,7 +222,7 @@ export function StockSearchSheet({
                 </div>
                 {l && (
                   <div className="ss-px">
-                    <span className="num">{fmtPrice(l.price)}</span>
+                    <span className="num">{l.basis === "proxy" ? t("strip.viaShort", { etf: l.via ?? "" }) : `${l.basis === "estimate" ? "≈" : ""}${fmtPrice(l.price, priceDigits(h.symbol, l.price))}`}</span>
                     <span className={`ss-chg num ${Math.abs(l.changePct) < 0.005 ? "flat-bg" : l.changePct > 0 ? "up-bg" : "down-bg"}`}>{fmtPct(l.changePct)}</span>
                   </div>
                 )}

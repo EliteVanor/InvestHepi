@@ -565,4 +565,9 @@ export const de: Dict = {
   "pred.noClose": "Schlusskurs von {sym} für {day} noch nicht da",
   "pred.noPrice": "kein Kurs für {sym}",
   "track.provisional": "offizieller Schluss ausstehend: wird dann neu geprüft",
+  "strip.viaShort": "über {etf}",
+  "quote.after": "Nachbörslich",
+  "quote.pre": "Vorbörslich",
+  "pf.perCurrency": "Summen je Währung, ohne Umrechnung.",
+  "al.levelPaused": "Pausiert: Gerade gibt es nur den Kurs des {etf}-ETF, daher warten Kursalarme auf das echte Niveau. %-Alarme laufen weiter.",
 };

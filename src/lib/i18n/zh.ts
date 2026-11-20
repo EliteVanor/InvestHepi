@@ -565,4 +565,9 @@ export const zh: Dict = {
   "pred.noClose": "{sym} {day} 的收盘价尚未发布",
   "pred.noPrice": "{sym} 无价格",
   "track.provisional": "等待官方收盘价：发布后重新核对",
+  "strip.viaShort": "经 {etf}",
+  "quote.after": "盘后",
+  "quote.pre": "盘前",
+  "pf.perCurrency": "按币种分别合计，不做换算。",
+  "al.levelPaused": "已暂停：目前只有 {etf} ETF 的价格，价位提醒需等待真实点位。百分比提醒照常。",
 };

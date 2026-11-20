@@ -57,9 +57,9 @@ async function main() {
 
   // ---- pure price rules
   const quotes = [
-    { symbol: "NVDA", price: 210, prevClose: 200, changePct: 5, asOf: 0, spark: [] },
-    { symbol: "AMD", price: 190, prevClose: 200, changePct: -5, asOf: 0, spark: [] },
-    { symbol: "QQQ", price: 560, prevClose: 561, changePct: -0.18, asOf: 0, spark: [] },
+    { symbol: "NVDA", price: 210, prevClose: 200, changePct: 5, asOf: 0, spark: [], session: "2026-11-16", state: "open" as const, intraday: true, basis: "level" as const, stale: false, source: "yahoo" },
+    { symbol: "AMD", price: 190, prevClose: 200, changePct: -5, asOf: 0, spark: [], session: "2026-11-16", state: "open" as const, intraday: true, basis: "level" as const, stale: false, source: "yahoo" },
+    { symbol: "QQQ", price: 560, prevClose: 561, changePct: -0.18, asOf: 0, spark: [], session: "2026-11-16", state: "open" as const, intraday: true, basis: "level" as const, stale: false, source: "yahoo" },
   ];
   const rules = {
     ...base,
@@ -156,14 +156,15 @@ async function main() {
   await saveSettings({ briefingLanguage: "en" });
 
   // ---- chart parsing + live quotes
-  const { getChart, getLiveQuotes, parseYahooChart } = await import("../src/lib/chart");
+  const { getChart, parseYahooChart } = await import("../src/lib/chart");
+  const { currentQuotes } = await import("../src/lib/quote");
   const cd = await getChart("NVDA", "1d");
   assert.equal(cd.price, 210);
   assert.equal(cd.prevClose, 200);
   assert.equal(Math.round(cd.changePct), 5);
   assert.equal(cd.name, "NVDA Inc.");
   assert.equal(cd.bars.length, 30);
-  const lq = await getLiveQuotes(["NVDA", "AMD", "bad symbol!"]);
+  const lq = await currentQuotes(["NVDA", "AMD", "bad symbol!"]);
   assert.equal(lq.length, 2, "skips symbols that fail");
   assert.throws(() => parseYahooChart({ chart: { result: [] } }, "X", "1d"));
 

@@ -58,7 +58,7 @@ function heatColor(pct: number): { background: string; color: string } {
 
 export function SectorHeatmap({ sectors, onOpen }: { sectors?: Quote[]; onOpen: (s: string) => void }) {
   const { t } = usePrefs();
-  const live = useLiveQuotes(SECTOR_LIST.map(([s]) => s), "us", 120_000);
+  const live = useLiveQuotes(SECTOR_LIST.map(([s]) => s));
   const tiles = SECTOR_LIST.map(([sym, key]) => {
     const l = live.get(sym);
     const d = sectors?.find((x) => x.symbol === sym);

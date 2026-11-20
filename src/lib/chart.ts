@@ -1,16 +1,19 @@
 /**
- * Chart data and live quotes. Sources, in order, per symbol type:
+ * Chart series (the source adapters behind the current quote, quote.ts). Sources, in order, per symbol type:
  *   Vietnamese (*.VN):  DNSE → Vietcap → VNDirect (daily only) → Yahoo (stocks only)
  *   Everything else:    Yahoo (rate-limit aware, see yahoo.ts) → Nasdaq public API (US stocks, ETFs, NDX, COMP)
  * Stooq was dropped (it now serves a JavaScript bot check). Results are cached in memory per range.
  */
-import { VN_INDEXES, dnseBars, ictDay, isVnSymbol, pool, vietcapBars, vndirectDaily, type DnseRes, type VietcapFrame } from "./vnmarket";
+import { VN_INDEXES, dnseBars, ictDay, isVnSymbol, vietcapBars, vndirectDaily, type DnseRes, type VietcapFrame } from "./vnmarket";
 import { getJSON, setJSON } from "./store";
 import { PROXIES, exchangeTz, symLabel } from "./symbols";
 import { SAME_HOURS_ETF, estimateFromEtf, hasWorldDaily, worldDaily } from "./worldmarket";
-import { yahooCooling, yahooJson, yahooSpark } from "./yahoo";
+import { yahooCooling, yahooJson } from "./yahoo";
 import { dayIn } from "./dates";
 import { emSession, hasEastmoney } from "./eastmoney";
+import { SESSIONS as EXCHANGE_HOURS, localNow } from "./markets";
+
+const NY_TZ = "America/New_York";
 
 export type ChartRange = "1d" | "5d" | "1mo" | "6mo" | "1y";
 export const CHART_RANGES: ChartRange[] = ["1d", "5d", "1mo", "6mo", "1y"];
@@ -52,6 +55,8 @@ export interface ChartData {
   dailyOnly?: boolean;
   /** Price and previous close are official; only the intraday path is this same-hours ETF's, rescaled. */
   shapeVia?: string;
+  /** 1-day only: the latest pre-market or after-hours print, kept out of `price` and `bars` (Nasdaq). */
+  extended?: { kind: "pre" | "after"; price: number; asOf: number };
 }
 
 const INTERVAL: Record<ChartRange, string> = { "1d": "1m", "5d": "5m", "1mo": "60m", "6mo": "1d", "1y": "1d" };
@@ -59,6 +64,7 @@ const TTL_MS: Record<ChartRange, number> = { "1d": 20_000, "5d": 60_000, "1mo": 
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
 const cache = new Map<string, { at: number; data: ChartData }>();
+const STALE_CACHE_MS = 15 * 60_000;
 const pct = (a: number, b: number) => (b ? ((a - b) / b) * 100 : 0);
 
 /** Parse Yahoo's v8 chart JSON. Exported for tests. */
@@ -144,19 +150,39 @@ export function nyWallToUtc(sec: number): number {
   return sec + (sec - wallAsUtc); // offset is negative in New York, so this adds 4-5 hours
 }
 
-/** Exported for tests. */
+/**
+ * Nasdaq's 1-day series runs 04:00-20:00 New York and its `lastSalePrice` includes after hours, so the
+ * bars and the price are the latest day's regular session only (9:30-16:00); the last print outside it
+ * is `extended`. Before the open there is no regular price yet: the bars are the pre-market path and
+ * the price is the previous close. Its `previousClose` field is unreliable and sometimes missing; it is
+ * never replaced by the first (04:00) bar: the current-quote module takes it from the daily history.
+ * Exported for tests.
+ */
 export function parseNasdaqIntraday(d: unknown, symbol: string): ChartData {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const data = d as any;
   const pts: { x: number; y: unknown }[] = data?.chart ?? [];
-  const bars: Bar[] = pts
+  const all: Bar[] = pts
     .map((p) => ({ t: nyWallToUtc(Math.floor(Number(p.x) / 1000)), c: nasdaqNum(p.y) }))
     .filter((p) => p.t > 0 && p.c > 0)
+    .sort((a, b) => a.t - b.t)
     .map((p) => ({ t: p.t, o: p.c, h: p.c, l: p.c, c: p.c, v: 0 }));
-  if (bars.length < 2) throw new Error("nasdaq: no intraday data");
-  const price = nasdaqNum(data?.lastSalePrice) || bars.at(-1)!.c;
-  const prevClose = nasdaqNum(data?.previousClose) || bars[0].c;
-  return { symbol, range: "1d", bars, price, prevClose, changePct: pct(price, prevClose), asOf: bars.at(-1)!.t, source: "nasdaq" };
+  if (all.length < 2) throw new Error("nasdaq: no intraday data");
+  const ny = (b: Bar) => localNow(b.t * 1000, NY_TZ);
+  const lastDay = ny(all.at(-1)!).date;
+  const day = all.filter((b) => ny(b).date === lastDay);
+  const { open, close } = EXCHANGE_HOURS[NY_TZ];
+  const regular = day.filter((b) => ny(b).mins >= open && ny(b).mins <= close);
+  const after = day.filter((b) => ny(b).mins > close);
+  const pre = day.filter((b) => ny(b).mins < open);
+  const prevClose = nasdaqNum(data?.previousClose) || NaN;
+  const ext = (kind: "pre" | "after", b?: Bar) => (b ? { extended: { kind, price: b.c, asOf: b.t } } : {});
+  if (regular.length) {
+    const price = regular.at(-1)!.c;
+    return { symbol, range: "1d", bars: regular, price, prevClose, changePct: pct(price, prevClose), asOf: regular.at(-1)!.t, source: "nasdaq", ...ext("after", after.at(-1)) };
+  }
+  const bars = pre.length ? pre : day;
+  return { symbol, range: "1d", bars, price: prevClose, prevClose, changePct: 0, asOf: bars.at(-1)!.t, source: "nasdaq", ...ext("pre", pre.at(-1)) };
 }
 
 /** Exported for tests. */
@@ -388,7 +414,8 @@ export async function getChart(symbol: string, range: ChartRange): Promise<Chart
       errors.push((e as Error).message.slice(0, 80));
     }
   }
-  if (hit) return hit.data; // serve stale rather than nothing
+  // Serve the last good series rather than nothing; once it is older than 15 minutes it is stale, not live.
+  if (hit) return Date.now() - hit.at > STALE_CACHE_MS ? { ...hit.data, stale: true } : hit.data;
   const px = PROXIES[symbol];
   if (px) {
     try {
@@ -428,119 +455,9 @@ async function savedDaily(symbol: string, range: ChartRange): Promise<ChartData 
   return { ...d, range, bars, price: last.c, prevClose: prev, changePct: pct(last.c, prev), asOf: last.t, stale: true };
 }
 
-export interface LiveQuote {
-  symbol: string;
-  price: number;
-  prevClose: number;
-  changePct: number;
-  asOf: number;
-  /** Intraday closes for a mini sparkline. */
-  spark: number[];
-  /** Priced from this tracking ETF (see PROXIES). */
-  proxy?: string;
-  /** Exchange-local date of the session the price and spark belong to (YYYY-MM-DD). */
-  session?: string;
-  /** True when `spark` is that session's intraday path (baseline: prevClose); false for daily closes. */
-  intraday?: boolean;
-  /** Real level estimated from this same-hours ETF's move (see worldmarket.ts). */
-  estimatedVia?: string;
-  /** Only daily closes exist for this market; the price is the last close. */
-  dailyOnly?: boolean;
-}
-
-/** Exchange-local date of a timestamp (Hanoi for Vietnamese symbols, the exchange's zone otherwise). */
-function sessionDate(symbol: string, t: number): string {
-  return dayIn(exchangeTz(symbol), t * 1000);
-}
-
-/** A live quote from a 1-day chart: identical numbers to the chart sheet, by construction. */
-function liveFromChart(s: string, d: ChartData): LiveQuote {
-  // An ETF-priced index trades on the ETF's exchange (New York), so date its session there.
-  const intraday = d.range === "1d" && d.source !== "vndirect" && !d.stale;
-  return {
-    symbol: s, price: d.price, prevClose: d.prevClose, changePct: d.changePct, asOf: d.asOf, spark: thin(d.bars.map((b) => b.c)),
-    session: sessionDate(d.estimatedVia ?? d.shapeVia ?? d.proxy ?? s, d.asOf), intraday: intraday && !d.dailyOnly,
-    ...(d.proxy ? { proxy: d.proxy } : {}), ...(d.estimatedVia ? { estimatedVia: d.estimatedVia } : {}), ...(d.dailyOnly ? { dailyOnly: true } : {}),
-  };
-}
-
-const liveCache = new Map<string, { at: number; q: LiveQuote }>();
-const LIVE_TTL_MS = 25_000;
-const thin = (xs: number[], n = 48) => {
-  const step = Math.max(1, Math.floor(xs.length / n));
-  return xs.filter((_, i) => i % step === 0 || i === xs.length - 1);
-};
-
-/**
- * Live quotes for many symbols with as few upstream requests as possible: one Yahoo spark request
- * per 20 symbols, DNSE for Vietnamese symbols (VNDirect batch as backup), and per-symbol charts only
- * for what's still missing. Failures are skipped. Shared by every user for 25 seconds.
- */
-export async function getLiveQuotes(symbols: string[]): Promise<LiveQuote[]> {
-  const uniq = [...new Set(symbols.map((s) => s.trim().toUpperCase()))].filter((s) => /^[A-Z0-9.^=\-]{1,12}$/.test(s)).slice(0, 60);
-  const now = Date.now();
-  const out = new Map<string, LiveQuote>();
-  for (const s of uniq) {
-    const c = liveCache.get(s);
-    if (c && now - c.at < LIVE_TTL_MS) out.set(s, c.q);
-  }
-  const need = uniq.filter((s) => !out.has(s));
-  const put = (q: LiveQuote) => {
-    out.set(q.symbol, q);
-    liveCache.set(q.symbol, { at: Date.now(), q });
-  };
-  const vn = need.filter(isVnSymbol);
-  const other = need.filter((s) => !isVnSymbol(s));
-
-  await Promise.all([
-    // Yahoo: 1 request per 20 symbols.
-    (async () => {
-      if (!other.length) return;
-      const sp = await yahooSpark(other, "1d", "5m");
-      for (const s of other) {
-        const v = sp.get(s);
-        if (!v || !v.points.length) continue;
-        const price = v.points.at(-1)![1];
-        const prev = v.chartPreviousClose ?? v.points[0][1];
-        const asOf = v.points.at(-1)![0];
-        put({ symbol: s, price, prevClose: prev, changePct: pct(price, prev), asOf, spark: thin(v.points.map((p) => p[1])), session: sessionDate(s, asOf), intraday: true });
-      }
-    })(),
-    // Vietnam: the same 1-day chart the chart sheet shows (DNSE 1-minute bars, Vietcap backup), so the
-    // strip and the chart can't disagree; VNDirect's daily batch (today's row is live) as a last resort.
-    (async () => {
-      await pool(vn, 6, async (s) => {
-        try {
-          put(liveFromChart(s, await getChart(s, "1d")));
-        } catch {}
-      });
-      const missing = vn.filter((s) => !out.has(s));
-      if (!missing.length) return;
-      const m = await vndirectDaily(missing, 10).catch(() => new Map<string, Bar[]>());
-      for (const [s, bars] of m) {
-        const last = bars.at(-1)!;
-        const prev = bars.at(-2)!.c;
-        put({ symbol: s, price: last.c, prevClose: prev, changePct: pct(last.c, prev), asOf: last.t, spark: bars.map((b) => b.c), session: sessionDate(s, last.t), intraday: false });
-      }
-    })(),
-  ]);
-
-  // Per symbol for whatever is still missing. With Yahoo refusing the server that's the whole
-  // non-VN strip (Nasdaq, one request per symbol, cached 20 s), so the bound covers a full strip.
-  const rest = uniq.filter((s) => !out.has(s)).slice(0, 32);
-  await pool(rest, 4, async (s) => {
-    try {
-      put(liveFromChart(s, await getChart(s, "1d")));
-    } catch {}
-  });
-  if (liveCache.size > 800) for (const k of [...liveCache.keys()].slice(0, 200)) liveCache.delete(k);
-  return uniq.map((s) => out.get(s)).filter((q): q is LiveQuote => q != null);
-}
-
 /** Tests only. */
 export function clearPriceCaches() {
   cache.clear();
-  liveCache.clear();
 }
 
 export { yahooCooling };

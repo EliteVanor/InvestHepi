@@ -565,4 +565,9 @@ export const ko: Dict = {
   "pred.noClose": "{sym}의 {day} 종가가 아직 없습니다",
   "pred.noPrice": "{sym} 가격 없음",
   "track.provisional": "공식 종가 대기: 발표되면 다시 확인",
+  "strip.viaShort": "{etf} 기준",
+  "quote.after": "시간외",
+  "quote.pre": "장전",
+  "pf.perCurrency": "합계는 통화별로 따로 계산하며 환산하지 않습니다.",
+  "al.levelPaused": "일시 중지: 지금은 {etf} ETF 가격만 있어 가격 수준 알림은 실제 수준을 기다립니다. % 알림은 계속 작동합니다.",
 };

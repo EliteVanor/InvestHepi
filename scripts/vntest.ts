@@ -162,7 +162,7 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   // ---- live quotes: one spark for US symbols, DNSE for VN
   C.clearPriceCaches();
   hits.length = 0;
-  const lq = await C.getLiveQuotes(["AAPL", "MSFT", "^GSPC", "FPT.VN", "bad symbol!"]);
+  const lq = await (await import("../src/lib/quote")).currentQuotes(["AAPL", "MSFT", "^GSPC", "FPT.VN", "bad symbol!"]);
   assert.deepEqual(lq.map((q) => q.symbol).sort(), ["AAPL", "FPT.VN", "MSFT", "^GSPC"].sort());
   assert.equal(count(/\/spark\?/), 1);
   assert.equal(lq.find((q) => q.symbol === "AAPL")!.prevClose, 99, "previous session close from spark");

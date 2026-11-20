@@ -565,4 +565,9 @@ export const vi: Dict = {
   "pred.noClose": "chưa có giá đóng cửa {day} của {sym}",
   "pred.noPrice": "không có giá của {sym}",
   "track.provisional": "chờ giá đóng cửa chính thức: sẽ kiểm tra lại khi có",
+  "strip.viaShort": "qua {etf}",
+  "quote.after": "Ngoài giờ",
+  "quote.pre": "Trước giờ mở cửa",
+  "pf.perCurrency": "Tổng được tính riêng theo từng loại tiền, không quy đổi.",
+  "al.levelPaused": "Tạm dừng: hiện chỉ có giá của quỹ ETF {etf}, nên cảnh báo theo mức giá chờ có mức thật. Cảnh báo theo % vẫn chạy.",
 };

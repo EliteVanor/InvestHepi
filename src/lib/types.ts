@@ -50,6 +50,8 @@ export interface Quote {
   session?: string;
   /** The latest close came from an intraday series because the daily source hadn't posted it yet (freshenQuotes). */
   closeVia?: string;
+  /** Live overlay only: the latest pre-market or after-hours print (quote-view.ts ExtendedPrint). */
+  extended?: { kind: "pre" | "after"; price: number; changePct: number; asOf: number };
 }
 
 export type Direction = "up" | "down" | "flat";

@@ -73,7 +73,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   const M = await import("../src/lib/market");
 
   /* ---------------- Vietnam: strip == chart sheet, today's session, not DNSE's lagging daily bar */
-  const [lq] = await C.getLiveQuotes(["^UPCOM.VN"]);
+  const [lq] = await (await import("../src/lib/quote")).currentQuotes(["^UPCOM.VN"]);
   const chart = await C.getChart("^UPCOM.VN", "1d");
   assert.equal(lq.price, 121.27, "live price is today's last minute, not Friday's daily close");
   assert.equal(lq.prevClose, chart.prevClose, "same previous close as the chart sheet");
@@ -166,7 +166,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(Pl.headlineMentions("Cổ phiếu VIC tăng trần", "VIC.VN") && !Pl.headlineMentions("VICTORY Securities tăng", "VIC.VN"), "codes match as whole words only");
 
   /* ---------------- live overlay: a real level may replace an ETF stand-in, never the reverse */
-  const V3 = await import("../src/components/live");
+  const V3 = await import("../src/lib/quote-view");
   assert.equal(V3.canOverlay("SPY", undefined), true, "real S&P level replaces SPY's price");
   assert.equal(V3.canOverlay(undefined, "SPY"), false, "SPY's price never replaces the real level");
   assert.equal(V3.canOverlay("EWJ", "EWJ"), true);

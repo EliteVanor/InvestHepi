@@ -13,11 +13,11 @@ import assert from "node:assert/strict";
   const { makeT } = await import("../src/lib/i18n");
   const { SECTION_STRIPS, SECTION_MACRO } = await import("../src/lib/config");
   type Digest = import("../src/lib/types").Digest;
-  type LiveQuote = import("../src/lib/chart").LiveQuote;
+  type CurrentQuote = import("../src/lib/quote-view").CurrentQuote;
 
   const q = (symbol: string, price: number, extra: object = {}) => ({ symbol, price, prevClose: price, changePct: 0, history: [], source: "yahoo" as const, ...extra });
   const digest = (o: Partial<Digest>) => ({ quotes: [], macro: [], news: [], ...o }) as unknown as Digest;
-  const live = (symbol: string, price: number, extra: Partial<LiveQuote> = {}) => [symbol, { symbol, price, prevClose: price - 1, changePct: 1.5, spark: [1, 2, 3], intraday: true, ...extra } as LiveQuote] as const;
+  const live = (symbol: string, price: number, extra: Partial<CurrentQuote> = {}) => [symbol, { symbol, price, prevClose: price - 1, changePct: 1.5, spark: [1, 2, 3], intraday: true, session: "2026-11-17", state: "open", basis: "level", stale: false, asOf: 0, source: "yahoo", ...extra } as CurrentQuote] as const;
 
   /* ---------------- which symbols the strip shows */
   assert.deepEqual(S.stripPlan(null, "us"), { groups: [], macro: [] }, "no briefing: empty strip");
@@ -31,7 +31,7 @@ import assert from "node:assert/strict";
   /* ---------------- live vs snapshot */
   const shown = digest({ quotes: [q("SPY", 500), q("^GSPC", 5000), q("BAD", NaN)] as never, macro: [] });
   const plan = { groups: [{ symbols: ["SPY", "^GSPC", "BAD", "ONLYLIVE", "MISSING"] }], macro: [] };
-  const rows = S.stripRows(shown, plan, new Map([live("SPY", 510), live("^GSPC", 520, { proxy: "SPY" }), live("ONLYLIVE", 42, { intraday: false })]));
+  const rows = S.stripRows(shown, plan, new Map([live("SPY", 510), live("^GSPC", 520, { basis: "proxy", via: "SPY" }), live("ONLYLIVE", 42, { intraday: false })]));
   const [spy, gspc, onlyLive] = rows.groups[0].quotes;
   assert.deepEqual([spy.symbol, spy.price, spy.changePct, spy.stale, spy.spark], ["SPY", 510, 1.5, false, [1, 2, 3]], "live wins, with its intraday path");
   assert.equal(gspc.price, 5000, "an ETF's live price never replaces a real index level (canOverlay)");
