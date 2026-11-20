@@ -321,6 +321,20 @@ async function worldChart(symbol: string, range: ChartRange): Promise<ChartData>
     try {
       const etfDaily = await getChart(etf, "1mo");
       const closes = collapseDaily(etf, etfDaily.bars);
+      const offLast = daily.at(-1)!;
+      const offDate = etfDate(etf, offLast.t);
+      // The ETF's intraday session is the newest data: when it is newer than the official close, the
+      // quote is an estimate for THAT session (official close x the ETF's move since its own previous
+      // close), even if the ETF's daily history hasn't posted the session yet. Never the old close
+      // relabelled as today.
+      if (range === "1d" || range === "5d") {
+        const intra = await getChart(etf, range);
+        if (!intra.stale && etfDate(etf, intra.asOf) > offDate && intra.prevClose > 0) {
+          const k = offLast.c / intra.prevClose;
+          const bars = intra.bars.map((b) => ({ ...b, o: b.o * k, h: b.h * k, l: b.l * k, c: b.c * k, v: 0 }));
+          return { symbol, range, bars, price: intra.price * k, prevClose: offLast.c, changePct: pct(intra.price, intra.prevClose), asOf: intra.asOf, source: "vndirect-world", estimatedVia: etf, name };
+        }
+      }
       const est = estimateFromEtf(daily, closes, (t) => etfDate(etf, t));
       if (est) {
         if (range === "1d" || range === "5d") {
@@ -336,9 +350,9 @@ async function worldChart(symbol: string, range: ChartRange): Promise<ChartData>
       }
       // Same session in both: the official close is known; the ETF only supplies the intraday shape,
       // scaled so it ends exactly on the official close.
-      const offLast = daily.at(-1)!;
-      if ((range === "1d" || range === "5d") && closes.at(-1)?.[0] === etfDate(etf, offLast.t)) {
+      if (range === "1d" || range === "5d") {
         const intra = await getChart(etf, range);
+        if (etfDate(etf, intra.asOf) !== offDate) throw new Error("sessions differ");
         const k = offLast.c / intra.price;
         const bars = intra.bars.map((b) => ({ ...b, o: b.o * k, h: b.h * k, l: b.l * k, c: b.c * k, v: 0 }));
         const prev = daily.at(-2)!.c;
