@@ -230,6 +230,20 @@ const OWNER = "owner@example.com";
   assert.notEqual((await quotes.GET(px("/api/quotes?symbols=SPY", "5.5.5.5"))).status, 429, "another address is unaffected");
   assert.equal(RL.clientIp(new Request("http://x", { headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" } })), "9.9.9.9");
 
+  /* ===== Row 19: no GET refresh, security headers ===== */
+  assert.equal((refresh as Record<string, unknown>).GET, undefined, "/api/refresh has no GET (the browser and cron never used it)");
+  assert.equal(typeof refresh.POST, "function");
+  const cfg = (await import("../../next.config.mjs")).default as { headers: () => Promise<{ source: string; headers: { key: string; value: string }[] }[]> };
+  const rules = await cfg.headers();
+  assert.equal(rules[0].source, "/:path*", "applies to every path");
+  const hv = Object.fromEntries(rules[0].headers.map((h) => [h.key.toLowerCase(), h.value]));
+  assert.equal(hv["x-content-type-options"], "nosniff");
+  assert.equal(hv["referrer-policy"], "strict-origin-when-cross-origin");
+  assert.equal(hv["x-frame-options"], "DENY");
+  assert.match(hv["permissions-policy"], /camera=\(\)/);
+  assert.match(hv["content-security-policy"], /frame-ancestors 'none'/);
+  assert.ok(!/script-src|default-src/.test(hv["content-security-policy"]), "no script policy that could break Next, sign-in or analytics");
+
   void otherFetch;
   console.log("SECURITY ROW16 OK");
 })().catch((e) => {
