@@ -53,7 +53,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const Q = await import("../../src/lib/quote");
   const V = await import("../../src/lib/quote-view");
   const C = await import("../../src/lib/chart");
@@ -218,6 +218,13 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(V.liveHours("EURUSD=X", T("2026-11-22T23:00:00Z")), true, "FX opens Sunday 17:00 New York");
   assert.equal(V.liveHours("CL=F", T("2026-11-18T21:30:00Z")), true, "oil futures at 16:30 New York");
   assert.equal(V.liveHours("CL=F", T("2026-11-18T22:30:00Z")), false, "futures' daily pause 17:00-18:00");
+  // Holidays and early closes from the exchange calendars (holidays.ts), all through sessionState.
+  assert.equal(V.sessionState("AAPL", T("2026-11-26T15:00:00Z")), "closed", "Thanksgiving: New York closed");
+  assert.equal(V.liveHours("AAPL", T("2026-11-26T15:00:00Z")), false, "no minute polling on Thanksgiving");
+  assert.equal(V.sessionState("AAPL", T("2026-11-27T18:30:00Z")), "after", "Nov 27: early close at 13:00 New York");
+  assert.equal(V.sessionState("FPT.VN", T("2026-02-18T03:00:00Z")), "closed", "Tet: Hanoi closed");
+  assert.equal(V.liveHours("CL=F", T("2026-12-25T15:00:00Z")), false, "CME closed on Christmas");
+  assert.equal(V.isStale({ symbol: "AAPL", intraday: false, asOf: 0, session: "2026-11-25" }, T("2026-11-26T20:00:00Z")), false, "on Thanksgiving, Wednesday's close is the latest session");
   assert.equal(V.pollInterval(["AAPL", "FPT.VN"], T("2026-11-20T03:00:00Z")), 60_000, "a strip with one open market polls every minute");
   assert.equal(V.pollInterval(["AAPL", "^GSPC"], T("2026-11-20T03:00:00Z")), 300_000, "every 5 minutes when none is open");
 

@@ -3,10 +3,10 @@
  * (session state, stale, window changes, polling hours, overlaying a live quote on a briefing's
  * snapshot, currency). The server part that fetches it is `quote.ts`.
  *
- * Holidays are not modeled yet: a holiday looks like an ordinary weekday session with no bar.
- * TODO(row 9): use the holiday table from markets.ts for session state, stale and polling once it exists.
+ * `sessionState` is the one place that answers "is this symbol's market open now": holidays and early
+ * closes come from the exchange calendars (holidays.ts via markets.ts isTradingDay / closeMinsOn).
  */
-import { SESSIONS, lastFinishedSession, localNow, zonedToUtc } from "./markets";
+import { SESSIONS, calendarKey, closeMinsOn, isTradingDay, lastFinishedSession, localNow, zonedToUtc } from "./markets";
 import { exchangeTz } from "./symbols";
 import type { Quote } from "./types";
 
@@ -66,14 +66,18 @@ export const quoteTz = (symbol: string, via?: string) => (via ? NY : exchangeTz(
 /** FX, futures and crypto trade (nearly) around the clock. */
 export const isNear24h = (symbol: string) => /=X$|=F$|-USD$/.test(symbol);
 
-/** The state of a symbol's exchange at `now` (regular session; weekends closed; holidays not known). */
+/**
+ * The state of a symbol's exchange at `now`: its regular session on its own calendar (weekends and
+ * holidays closed, early closes end the session early). The one "is this market open now" function:
+ * polling (liveHours), stale (isStale), the quote's `state` and the chart's live dot all ask it.
+ */
 export function sessionState(symbol: string, now: Date | number, via?: string): SessionState {
   const tz = quoteTz(symbol, via);
-  const { mins, wd } = localNow(now, tz);
-  if (wd === 0 || wd === 6) return "closed";
+  const { date, mins } = localNow(now, tz);
+  if (!isTradingDay(date, calendarKey(symbol, via))) return "closed";
   const s = SESSIONS[tz] ?? SESSIONS[NY];
   if (mins < s.open) return "pre";
-  if (mins >= s.close) return "after";
+  if (mins >= closeMinsOn(tz, date)) return "after";
   if (tz === "Asia/Ho_Chi_Minh" && mins >= VN_BREAK.from && mins < VN_BREAK.to) return "break";
   return "open";
 }
@@ -86,8 +90,10 @@ export function sessionState(symbol: string, now: Date | number, via?: string): 
 export function liveHours(symbol: string, now: Date | number): boolean {
   if (/-USD$/.test(symbol)) return true;
   if (/=X$|=F$/.test(symbol)) {
-    const { mins, wd } = localNow(now, NY);
+    const { date, mins, wd } = localNow(now, NY);
     if (wd === 6) return false;
+    // CME holidays (Thanksgiving, Christmas...) for futures; FX has no exchange calendar.
+    if (symbol.endsWith("=F") && wd !== 0 && !isTradingDay(date, "CME")) return false;
     if (wd === 0) return mins >= (symbol.endsWith("=F") ? 1080 : 1020);
     if (wd === 5 && mins >= 1020) return false;
     return !(symbol.endsWith("=F") && mins >= 1020 && mins < 1080);
