@@ -13,7 +13,9 @@ import { getLiveQuotes, type LiveQuote } from "./chart";
 import { appUrl, emailProvider, sendEmail } from "./email";
 import { makeT, type MsgKey, type T } from "./i18n";
 import { isLang, langInfo, type LangCode } from "./languages";
-import { ukey } from "./context";
+import { currentUid, OWNER, ukey } from "./context";
+import { multiUser } from "./mode";
+import { listUsers } from "./users";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Digest, Interest, Outlook } from "./types";
 import { dayIn, NY } from "./dates";
@@ -90,6 +92,24 @@ export async function loadAlertSettings(): Promise<AlertSettings> {
     highConfidence: { ...DEFAULT_ALERTS.highConfidence, ...s.highConfidence },
     priceAlerts: s.priceAlerts ?? [],
   };
+}
+
+/**
+ * Multi-user: a non-owner's alerts go only to the Google account's own address (the registry's
+ * email, written when they open the app), so nobody can use the app to email strangers. The owner
+ * may use any address. Old settings that don't match are kept but never sent to.
+ */
+export async function emailBlocked(email: string): Promise<boolean> {
+  if (!email || !multiUser()) return false;
+  const uid = currentUid();
+  if (uid === OWNER) return false;
+  const rec = (await listUsers()).find((u) => u.uid === uid);
+  return !rec || rec.email.trim().toLowerCase() !== email.trim().toLowerCase();
+}
+
+async function sendToAccount(to: string, mail: { subject: string; html: string; text: string }) {
+  if (await emailBlocked(to)) return { ok: false, provider: emailProvider(), error: "Alerts only go to your own account address." };
+  return sendEmail({ to, ...mail });
 }
 
 export async function saveAlertSettings(s: AlertSettings): Promise<void> {
@@ -204,6 +224,7 @@ export function evaluatePriceRules(
 export async function checkPriceAlerts(interests: Interest[], now = new Date()) {
   const settings = await loadAlertSettings();
   if (!settings.enabled) return { skipped: "alerts disabled", sent: 0 };
+  if (await emailBlocked(settings.email)) return { skipped: "address is not the account's", sent: 0 };
   const lang = await mailLang();
   const t = makeT(lang);
   const followed = [...new Set(interests.flatMap((i) => i.tickers))];
@@ -290,6 +311,7 @@ function nextWeekday(iso: string): string {
 export async function predictionAlerts(next: Outlook[], prev: Outlook[], interests: Interest[], now = new Date()) {
   const settings = await loadAlertSettings();
   if (!settings.enabled) return { skipped: "alerts disabled" };
+  if (await emailBlocked(settings.email)) return { skipped: "address is not the account's" };
   const lang = await mailLang();
   const t = makeT(lang);
   const date = dayIn(NY, now);
@@ -311,6 +333,7 @@ export interface RefreshContext {
 export async function afterRefresh(ctx: RefreshContext, now = new Date()) {
   const settings = await loadAlertSettings();
   if (!settings.enabled) return { skipped: "alerts disabled" };
+  if (await emailBlocked(settings.email)) return { skipped: "address is not the account's" };
   const lang = await mailLang();
   const t = makeT(lang);
   const date = dayIn(NY, now);
@@ -359,7 +382,7 @@ async function dispatch(events: AlertEvent[], settings: AlertSettings, lang: Lan
 
   const t = makeT(lang);
   const mail = renderAlerts(batch, t, lang, now);
-  const res = await sendEmail({ to: settings.email, ...mail });
+  const res = await sendToAccount(settings.email, mail);
   await appendLog(batch.map((e) => ({ at: now.toISOString(), kind: e.kind, title: e.title, ok: res.ok, error: res.error })));
   if (!res.ok) return { sentKeys: [] as string[], error: res.error };
   ledger.keys.push(...batch.map((e) => e.key));
@@ -369,7 +392,7 @@ async function dispatch(events: AlertEvent[], settings: AlertSettings, lang: Lan
 }
 
 async function sendTracked(settings: AlertSettings, key: string, kind: AlertKind, title: string, mail: { subject: string; html: string; text: string }, now: Date) {
-  const res = await sendEmail({ to: settings.email, ...mail });
+  const res = await sendToAccount(settings.email, mail);
   await appendLog([{ at: now.toISOString(), kind, title, ok: res.ok, error: res.error }]);
   if (res.ok) {
     const ledger = await loadLedger(now);
@@ -391,7 +414,7 @@ export async function sendTestEmail(to: string) {
       <p style="margin:0;font-size:14px;color:#6e6e73">${esc(t("mail.provider", { p: emailProvider() }))}</p>`,
     t,
   });
-  const res = await sendEmail({ to, subject: t("mail.testTitle"), html, text: t("mail.testBody") });
+  const res = await sendToAccount(to, { subject: t("mail.testTitle"), html, text: t("mail.testBody") });
   await appendLog([{ at: new Date().toISOString(), kind: "test", title: t("mail.testTitle"), ok: res.ok, error: res.error }]);
   return res;
 }

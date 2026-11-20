@@ -1,7 +1,8 @@
 import { gate } from "@/lib/users";
 import { z } from "zod";
-import { DEFAULT_ALERTS, loadAlertLog, loadAlertSettings, saveAlertSettings } from "@/lib/alerts";
+import { DEFAULT_ALERTS, emailBlocked, loadAlertLog, loadAlertSettings, saveAlertSettings } from "@/lib/alerts";
 import { emailProvider } from "@/lib/email";
+import { multiUser } from "@/lib/mode";
 
 export const dynamic = "force-dynamic";
 
@@ -32,16 +33,20 @@ const Settings = z.object({
 export async function GET(req: Request) {
   return gate(req, { user: true }, async () => {
     const [settings, log] = await Promise.all([loadAlertSettings(), loadAlertLog()]);
-    return Response.json({ settings, log: log.slice(0, 30), provider: emailProvider(), defaults: DEFAULT_ALERTS });
+    // emailBlocked: the saved address isn't this account's, so nothing is sent to it (the tab says so).
+    return Response.json({ settings, log: log.slice(0, 30), provider: emailProvider(), defaults: DEFAULT_ALERTS, emailBlocked: await emailBlocked(settings.email) });
   });
 }
 
 export async function PUT(req: Request) {
-  return gate(req, { user: true }, async () => {
-
+  return gate(req, { user: true }, async (user) => {
     const parsed = Settings.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
+    // Multi-user: a non-owner can only use their own Google address (or none). The owner may use any.
+    if (multiUser() && user && !user.admin && parsed.data.email && parsed.data.email.toLowerCase() !== (user.email ?? "").toLowerCase()) {
+      return Response.json({ error: "email" }, { status: 400 });
+    }
     await saveAlertSettings(parsed.data);
-    return Response.json({ settings: parsed.data });
+    return Response.json({ settings: parsed.data, emailBlocked: false });
   });
 }

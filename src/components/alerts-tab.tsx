@@ -13,18 +13,20 @@ export function AlertsTab({ prefillSymbol }: { prefillSymbol?: string }) {
   const [s, setS] = useState<AlertSettings | null>(null);
   const [saved, setSaved] = useState<AlertSettings | null>(null);
   const [provider, setProvider] = useState<string>("none");
+  const [blocked, setBlocked] = useState(false);
   const [log, setLog] = useState<AlertLogEntry[]>([]);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [form, setForm] = useState<{ symbol: string; op: PriceOp; value: string; repeat: boolean }>({ symbol: prefillSymbol ?? "", op: "above", value: "", repeat: false });
 
   useEffect(() => {
-    api<{ settings: AlertSettings; log: AlertLogEntry[]; provider: string }>("/api/alerts")
+    api<{ settings: AlertSettings; log: AlertLogEntry[]; provider: string; emailBlocked?: boolean }>("/api/alerts")
       .then((j) => {
         setS(j.settings);
         setSaved(j.settings);
         setLog(j.log);
         setProvider(j.provider);
+        setBlocked(!!j.emailBlocked);
       })
       .catch((e) => setMsg({ ok: false, text: (e as Error).message }));
   }, [api]);
@@ -35,12 +37,14 @@ export function AlertsTab({ prefillSymbol }: { prefillSymbol?: string }) {
     setBusy(true);
     setMsg(null);
     try {
-      const j = await api<{ settings: AlertSettings }>("/api/alerts", { method: "PUT", body: JSON.stringify(next) });
+      const j = await api<{ settings: AlertSettings; emailBlocked?: boolean }>("/api/alerts", { method: "PUT", body: JSON.stringify(next) });
+      setBlocked(!!j.emailBlocked);
       setS(j.settings);
       setSaved(j.settings);
       setMsg({ ok: true, text: t("set.saved") });
     } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
+      const m = (e as Error).message;
+      setMsg({ ok: false, text: m === "email" ? t("al.emailOwn") : m });
     } finally {
       setBusy(false);
     }
@@ -54,7 +58,8 @@ export function AlertsTab({ prefillSymbol }: { prefillSymbol?: string }) {
       await api("/api/alerts/test", { method: "POST", body: "{}" });
       setMsg({ ok: true, text: t("al.testSent", { email: s.email }) });
     } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
+      const m = (e as Error).message;
+      setMsg({ ok: false, text: m === "limit" ? t("al.testLimit") : m });
     } finally {
       setBusy(false);
     }
@@ -87,6 +92,7 @@ export function AlertsTab({ prefillSymbol }: { prefillSymbol?: string }) {
   return (
     <>
       <p className="hint" style={{ marginTop: 16 }}>{t("al.intro")}</p>
+      {blocked && <p className="hint" role="status" style={{ color: "var(--red)" }}>{t("al.blocked")}</p>}
       <div className="sheet-section">
         <div className="group">
           <div className="row">

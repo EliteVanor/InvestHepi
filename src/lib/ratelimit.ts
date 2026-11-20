@@ -32,6 +32,8 @@ export const limits = {
   rules: () => Number(process.env.RULES_DAILY_LIMIT) || 30,
   /** Background briefings per user per day: a new set's first one, and the catch-up after an absence. */
   autogen: () => Number(process.env.AUTOGEN_DAILY_LIMIT) || 6,
+  /** "Send test email" presses per person per day. */
+  alertTest: () => Number(process.env.ALERT_TEST_DAILY_LIMIT) || 3,
 };
 
 /** Counts one background briefing against the caller's daily cap; false when the cap is reached. */
