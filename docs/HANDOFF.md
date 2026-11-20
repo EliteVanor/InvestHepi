@@ -89,7 +89,7 @@ Checked against production. Fixed on the branch (not deployed yet):
 
 ## v19 (branch `v19-overhaul`, started Nov 19 2026): full overhaul, news first
 
-**Status: audit done, decisions settled, nothing built yet.** Next session starts at the design step.
+**Status (Nov 20): design step done for the quote module; v19a being built (see Progress).**
 
 **Owner decisions (Nov 19)**
 - Overhaul scope: code health plus product direction (1B); deep audit (2B); Claude builds each fix itself, `plans/` optional as a record (3A); product rules are open to change (4B); split sessions at handoff points (5A); branch `v19-overhaul` (6); no reference apps (8).
@@ -121,6 +121,14 @@ Checked against production. Fixed on the branch (not deployed yet):
 8. Predictions on phones sit below the markets, folded by default to each market's main call.
 9. Holiday dates live in a table in code; a test fails from Dec 1 if next year's dates are missing.
 10. v18 briefings keep showing until the first v19 run replaces them; history shows both formats.
+
+**Design decisions (owner, Nov 20, architecture grilling round 1, all as recommended unless noted)**
+- Architecture report: 6 candidates (current-quote module, story clustering, story explainer + past-event library, section data module, story job + store, file splits). Order: 1 (quote), then 2+3 (stories) for v19b; 4 and 6 built as described; story cards stored beside `Digest.analysis` so v18 briefings stay readable.
+- Quote module (row 4, also rows 6, 7, 15): Q1 one server module (`src/lib/quote.ts`) returns, per symbol, the regular-session price (the close once the session ends), previous close, day change, session date and state, a separate after-hours or pre-market figure, basis (real level / ETF stand-in / estimate), currency, stale + as-of, source; every screen reads only it. Q2 pre-market treated like after hours. Q3 the chart header always shows the current quote and day change, with the selected range's change beside it. Q4 stale = live price 15 min without an update during its session, or a daily-only price older than the latest finished session; the label is never dropped by an overlay. Q5 an ETF stand-in price is never shown as a level (its % with "via <ETF>"); alerts on stand-ins are % only, existing level alerts on them are paused with a note. Q6 portfolio: separate subtotals per currency, no conversion. Q7 (owner condition: must handle holidays across up to a month) 5D = the close 5 sessions back (holidays have no bar); 1M = the last close on or before the same calendar date one month earlier on the exchange's calendar (not 21 sessions, which drifts over Tet). Q8 live polling follows each symbol's exchange hours (FX, futures, Bitcoin near-24h). Q9 pin the untested behaviours first, then build the module, then move callers one commit at a time.
+- Q10 pre-translation of My Interests capped at `PRETRANSLATE_DAILY_TOKENS` (default 50K qwen tokens/day, 25%): admin's set first, then sets with most followers; the rest translates on read (built, row 5).
+- Q11 My Interests headlines also polled every 30 min while its tab isn't visible (2 small requests per reader per hour) so its list and dots stay fresh.
+
+**Progress (Nov 20)**: on `v19-overhaul`: phase A (clock-pinned tests, one runner `scripts/run-tests.ts`, CI `.github/workflows/ci.yml`, v19 parts in `scripts/v19/`), row 2 (safe areas), row 3 (`shell/section-data.ts`), row 5 + fix-plan items 4, 5 (translations, 04:35 slot). Each reviewed with review-code + thermo-nuclear; findings fixed before merge. Not verified yet: real iPhone, Upstash lock-release script, real translation token counts.
 
 **Audit (Nov 19)**: report https://claude.ai/artifact/PHWikthAG3dygy7usaAzEy (private), working notes with file:line in `docs/AUDIT-v19.md`. Baseline: typecheck passes; `selftest` and `vntest` fail on the real clock (test bugs), and `npm test` stops at the first failure so 17 suites don't run; no CI; `npm audit` highs not reachable (postcss build-time, nodemailer in an unused Auth.js provider).
 - Causes of the reported problems: (a) `black-translucent` + `viewport-fit: cover` in `layout.tsx` with no `env(safe-area-inset-top)` on `.topbar` (`globals.css:171-178`); (b) Nasdaq 1-day uses after-hours `lastSalePrice` and an unreliable previous close (`chart.ts:157-158`), the chart header follows the selected range (`LiveChart.tsx:342`), the strip overlay drops `stale` (`strip.ts:36`); (c) the page loads briefings only on mount (`page.tsx:126`), My Interests is never pre-translated (`scheduler.ts:205`).
