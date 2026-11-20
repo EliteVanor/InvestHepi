@@ -34,6 +34,8 @@ export interface PriceAlert {
   note?: string;
   createdAt: string;
   lastFiredAt?: string;
+  /** A level rule (above/below) waiting because only this ETF stand-in's price is available (Q5). */
+  pausedVia?: string;
 }
 
 export interface AlertSettings {
@@ -158,25 +160,36 @@ async function mailLang(): Promise<LangCode> {
 
 const fmtPct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 const fmtPx = (n: number) => (n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2));
+/** An ETF stand-in's price is never written as the symbol's level. */
+const shownPx = (q: CurrentQuote) => (q.basis === "proxy" ? `via ${q.via}` : `${q.basis === "estimate" ? "≈" : ""}${fmtPx(q.price)}`);
 
 /* --------------------------------------------------------- price checks */
 
-/** Pure evaluation of price rules against quotes. Exported for tests. */
+/**
+ * Pure evaluation of price rules against current quotes. A level rule (above/below) never compares a
+ * level with an ETF stand-in's price: it is reported in `paused` instead; % rules work on any basis.
+ * Exported for tests.
+ */
 export function evaluatePriceRules(
   settings: AlertSettings,
   quotes: CurrentQuote[],
   followed: string[],
   date: string,
   t: T,
-): { events: AlertEvent[]; fired: string[] } {
+): { events: AlertEvent[]; fired: string[]; paused: string[] } {
   const events: AlertEvent[] = [];
   const fired: string[] = [];
+  const paused: string[] = [];
   const q = new Map(quotes.map((x) => [x.symbol, x]));
 
   for (const a of settings.priceAlerts) {
     if (!a.active) continue;
     const quote = q.get(a.symbol);
     if (!quote) continue;
+    if ((a.op === "above" || a.op === "below") && quote.basis === "proxy") {
+      paused.push(a.id);
+      continue;
+    }
     let hit = false;
     let title = "";
     if (a.op === "above" && quote.price >= a.value) {
@@ -198,7 +211,7 @@ export function evaluatePriceRules(
       kind: "price",
       symbol: a.symbol,
       title,
-      detail: `${fmtPx(quote.price)} (${fmtPct(quote.changePct)})${a.note ? ` · ${a.note}` : ""}`,
+      detail: `${shownPx(quote)} (${fmtPct(quote.changePct)})${a.note ? ` · ${a.note}` : ""}`,
       tone: quote.changePct >= 0 ? "up" : "down",
     });
     fired.push(a.id);
@@ -216,12 +229,12 @@ export function evaluatePriceRules(
         kind: "move",
         symbol: sym,
         title: t("alert.move", { symbol: sym, chg: fmtPct(quote.changePct) }),
-        detail: fmtPx(quote.price),
+        detail: shownPx(quote),
         tone: quote.changePct >= 0 ? "up" : "down",
       });
     }
   }
-  return { events, fired };
+  return { events, fired, paused };
 }
 
 export async function checkPriceAlerts(interests: Interest[], now = new Date()) {
@@ -233,7 +246,20 @@ export async function checkPriceAlerts(interests: Interest[], now = new Date()) 
   const followed = [...new Set(interests.flatMap((i) => i.tickers))];
   const symbols = [...new Set([...followed, ...settings.priceAlerts.filter((a) => a.active).map((a) => a.symbol)])];
   const quotes = await currentQuotes(symbols, { now });
-  const { events, fired } = evaluatePriceRules(settings, quotes, followed, dayIn(NY, now), t);
+  const { events, fired, paused } = evaluatePriceRules(settings, quotes, followed, dayIn(NY, now), t);
+  // Mark level rules paused on an ETF stand-in (and clear the mark once a real level is back), so the
+  // alerts tab can say why they wait; saved only when a mark changed.
+  const viaOf = new Map(quotes.map((q) => [q.symbol, q.basis === "proxy" ? q.via : undefined]));
+  let marksChanged = false;
+  settings.priceAlerts = settings.priceAlerts.map((a) => {
+    if (!viaOf.has(a.symbol)) return a;
+    const via = paused.includes(a.id) ? viaOf.get(a.symbol) : undefined;
+    if (via === a.pausedVia) return a;
+    marksChanged = true;
+    const next = { ...a, pausedVia: via };
+    if (!via) delete next.pausedVia;
+    return next;
+  });
 
   const result = await dispatch(events, settings, lang, now);
   // Disarm once-only alerts that actually went out; stamp repeating ones.
@@ -243,7 +269,7 @@ export async function checkPriceAlerts(interests: Interest[], now = new Date()) 
       sentIds.has(a.id) ? { ...a, active: a.repeat ? a.active : false, lastFiredAt: now.toISOString() } : a,
     );
     await saveAlertSettings(settings);
-  }
+  } else if (marksChanged) await saveAlertSettings(settings);
   return { sent: result.sentKeys.length, checked: quotes.length, error: result.error };
 }
 

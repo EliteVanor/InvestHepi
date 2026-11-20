@@ -16,6 +16,7 @@ const PriceAlert = z.object({
   note: z.string().max(120).optional(),
   createdAt: z.string(),
   lastFiredAt: z.string().optional(),
+  pausedVia: z.string().max(12).optional(),
 });
 
 const Settings = z.object({

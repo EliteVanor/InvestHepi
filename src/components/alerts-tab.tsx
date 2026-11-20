@@ -155,6 +155,7 @@ export function AlertsTab({ prefillSymbol }: { prefillSymbol?: string }) {
                   {a.lastFiredAt ? ` · ${t("al.fired", { t: relTime(a.lastFiredAt, lang) })}` : ""}
                   {!a.active ? ` · ${t("al.paused")}` : ""}
                 </span>
+                {a.active && a.pausedVia && !a.op.startsWith("pct") && <span className="sub">{t("al.levelPaused", { etf: a.pausedVia })}</span>}
               </span>
               <button
                 className="icon-btn"
