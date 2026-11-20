@@ -10,7 +10,7 @@ import { SECTION_IDS, type Digest, type Holding, type Interest, type Outlook, ty
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
 import { LiveChart, type ChartReply } from "./LiveChart";
-import { showsLevel, type CurrentQuote } from "@/lib/quote-view";
+import { showsLevel, windowChange, type CurrentQuote } from "@/lib/quote-view";
 import { Ring, Sheet, arrow, fmtPct, fmtPrice, symLabel, openOverlay } from "./primitives";
 import { AlertsTab } from "./alerts-tab";
 import { useAccount } from "./account";
@@ -463,8 +463,9 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
   }, [digests, symbol]);
   const price = cq?.price ?? quote?.price;
   // 5D and 1M only from the current quote (the same numbers as the watchlist and the chart header).
-  const chg5 = cq?.changes?.["5d"] ?? null;
-  const chg1m = cq?.changes?.["1mo"] ?? null;
+  // While it loads (or if it fails) the briefing quote's own daily history gives the same windows.
+  const chg5 = cq ? cq.changes?.["5d"] ?? null : quote?.history ? windowChange(quote.history, quote.price, "5d") : null;
+  const chg1m = cq ? cq.changes?.["1mo"] ?? null : quote?.history ? windowChange(quote.history, quote.price, "1mo") : null;
   // An ETF stand-in's levels are the ETF's: no day range, 52-week range or level alerts for the symbol (Q5).
   const levels = cq ? showsLevel(cq) : quote ? showsLevel(quote) : true;
   const fmtVol = (v?: number) => (v == null ? "–" : new Intl.NumberFormat(langInfo(lang).locale, { notation: "compact", maximumFractionDigits: 1 }).format(v));

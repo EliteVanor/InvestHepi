@@ -17,7 +17,8 @@
 import { getChart, type Bar, type ChartData, type ChartRange } from "./chart";
 import { dayIn } from "./dates";
 import { getQuotes } from "./market";
-import { currencyOf, isStale, sessionState, windowChange, type CurrentQuote, type QuoteWindow } from "./quote-view";
+import { closeUtc, lastFinishedSession } from "./markets";
+import { currencyOf, isStale, quoteTz, sessionState, windowChange, type CurrentQuote, type QuoteWindow } from "./quote-view";
 import { exchangeTz } from "./symbols";
 import type { Quote } from "./types";
 import { isVnSymbol, pool, vndirectDaily } from "./vnmarket";
@@ -174,6 +175,9 @@ function withRegularCloses(series: string, closes: [string, number][]): [string,
   return [...out.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 }
 
+/** A session's close is only taken from the 1-day series this long after the bell (the last bar can lag). */
+const CLOSE_SETTLE_MS = 5 * 60_000;
+
 /** The symbol whose daily series matches a reading: the ETF for a stand-in, the symbol itself otherwise. */
 const seriesOf = (r: Reading) => r.proxy ?? r.symbol;
 
@@ -182,12 +186,22 @@ const seriesOf = (r: Reading) => r.proxy ?? r.symbol;
 /** Apply the rules to one reading (Q1-Q5). Exported for tests through currentQuotes only. */
 function finish(r: Reading, h: Quote | undefined, now: Date, windows: boolean): CurrentQuote | null {
   let { price, prevClose, session, intraday } = r;
-  if (r.source === "nasdaq" && r.intraday && r.extended?.kind !== "pre" && sessionState(r.symbol, now, r.proxy) !== "open") noteRegularClose(seriesOf(r), session, price);
-  const closes = withRegularCloses(seriesOf(r), h?.history ?? []);
+  const series = seriesOf(r);
+  // Nasdaq's 1-day series for a session that ended (and settled): its last regular-session bar is the
+  // close, whatever the daily row says (that row can carry the 20:00 after-hours print). Taken from
+  // this reading itself, so a cold instance needs no remembered close.
+  const settled = now.getTime() >= closeUtc(session, quoteTz(r.symbol, r.proxy)).getTime() + CLOSE_SETTLE_MS;
+  const ownClose = r.source === "nasdaq" && r.intraday && r.extended?.kind !== "pre" && session === lastFinishedSession(r.symbol, now, r.proxy) && sessionState(r.symbol, now, r.proxy) !== "open" && settled;
+  if (ownClose) noteRegularClose(series, session, price);
+  let closes = withRegularCloses(series, h?.history ?? []);
+  if (ownClose) closes = closes.filter(([d]) => d !== session).concat([[session, price]]).sort((a, b) => a[0].localeCompare(b[0]));
+  let provisional = false;
   if (r.extended?.kind === "pre") {
     // Before the open: the last close is the price, its session's change the day change.
     const last = closes.at(-1);
     if (last) {
+      // No 1-day series for that session here: unless a close was remembered, the row may be the after-hours print.
+      provisional = r.source === "nasdaq" && last[0] === lastFinishedSession(r.symbol, now, r.proxy) && regularCloses.get(series)?.get(last[0]) !== last[1];
       price = last[1];
       prevClose = closes.at(-2)?.[1] ?? NaN;
       session = last[0];
@@ -210,6 +224,7 @@ function finish(r: Reading, h: Quote | undefined, now: Date, windows: boolean): 
     ...(via ? { via } : {}),
     ...(r.dailyOnly ? { dailyOnly: true } : {}),
     ...(r.currency ?? currencyOf(r.symbol) ? { currency: r.currency ?? currencyOf(r.symbol) } : {}),
+    ...(provisional ? { provisional: true } : {}),
     stale: isStale({ symbol: r.symbol, intraday, asOf: r.asOf, session, via: r.proxy, stale: r.stale }, now),
     asOf: r.asOf, source: r.source, spark: r.spark, ...(r.closes ? { closes: r.closes } : {}),
   };

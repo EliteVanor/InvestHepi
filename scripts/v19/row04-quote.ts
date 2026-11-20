@@ -154,6 +154,43 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   nas.chart = [{ x: ny("2026-11-23", 9, 30), y: "101.00" }, { x: ny("2026-11-23", 9, 59), y: "101.50" }];
   assert.equal((await Q.currentQuotes(["AAPL"]))[0].prevClose, 100, "Monday's previous close is Friday's regular close");
 
+  /* ---------------- cold instance: no remembered closes at all */
+  pinClock("2026-11-20T22:30:00Z"); // Friday 17:30 New York
+  reset();
+  nas.days = [[usDate("2026-11-20"), 102], ...weekdays("2026-11-19", 30, 98)];
+  nas.chart = [{ x: ny("2026-11-20", 9, 30), y: "99.00" }, { x: ny("2026-11-20", 15, 59), y: "100.00" }, { x: ny("2026-11-20", 19, 59), y: "102.00" }];
+  nas.lastSale = "$102.00";
+  const [cold] = await Q.currentQuotes(["AAPL"], { windows: true });
+  assert.deepEqual([cold.price, cold.prevClose, cold.provisional], [100, 98, undefined], "cold evening: the 15:59 bar from the 1-day series, not the 20:00 row");
+  assert.equal(cold.changes?.["5d"], V.windowChange([...nas.days.slice(1).map(([d, c]) => [`${d.slice(6)}-${d.slice(0, 2)}-${d.slice(3, 5)}`, c] as [string, number]).reverse(), ["2026-11-20", 100]], 100, "5d", "2026-11-20"), "windows use the series close too");
+  // Monday pre-market on a cold instance: no series for Friday here, so the row is marked provisional.
+  C.clearPriceCaches();
+  Q.clearQuoteCaches();
+  nas.chart = [{ x: ny("2026-11-23", 4, 0), y: "101.00" }, { x: ny("2026-11-23", 7, 59), y: "103.00" }];
+  const [coldPre] = await Q.currentQuotes(["AAPL"], { now: new Date("2026-11-23T13:00:00Z") });
+  assert.equal(coldPre.provisional, true, "cold pre-market: Friday's close from the daily row is provisional");
+  // 16:01 with the last bar lagging (15:50): not noted as the close, so Monday pre-market is provisional too.
+  pinClock("2026-11-20T21:01:00Z"); // Friday 16:01 New York
+  reset();
+  nas.days = weekdays("2026-11-19", 30, 98);
+  nas.chart = [{ x: ny("2026-11-20", 9, 30), y: "99.00" }, { x: ny("2026-11-20", 15, 50), y: "99.60" }];
+  const [lag] = await Q.currentQuotes(["AAPL"]);
+  assert.equal(lag.price, 99.6);
+  nas.days = [[usDate("2026-11-20"), 102], ...weekdays("2026-11-19", 30, 98)];
+  C.clearPriceCaches();
+  Q.clearQuoteCaches(true);
+  nas.chart = [{ x: ny("2026-11-23", 4, 0), y: "101.00" }, { x: ny("2026-11-23", 7, 59), y: "103.00" }];
+  const [lagPre] = await Q.currentQuotes(["AAPL"], { now: new Date("2026-11-23T13:00:00Z") });
+  assert.deepEqual([lagPre.price, lagPre.provisional], [102, true], "a lagging 16:01 bar was not remembered as the close");
+  pinClock("2026-11-20T22:30:00Z");
+  reset();
+  nas.chart = [{ x: ny("2026-11-20", 9, 30), y: "99.00" }, { x: ny("2026-11-20", 15, 59), y: "100.00" }];
+  await Q.currentQuotes(["AAPL"]);
+  C.clearPriceCaches();
+  Q.clearQuoteCaches(true);
+  nas.chart = [{ x: ny("2026-11-23", 4, 0), y: "101.00" }, { x: ny("2026-11-23", 7, 59), y: "103.00" }];
+  assert.deepEqual((await Q.currentQuotes(["AAPL"], { now: new Date("2026-11-23T13:00:00Z") })).map((x) => [x.price, x.provisional]), [[100, undefined]], "settled close remembered: confirmed");
+
   /* ---------------- Nov 27: early close at 13:00 New York; later prints are after hours */
   pinClock("2026-11-27T18:30:00Z"); // 13:30 New York
   reset();

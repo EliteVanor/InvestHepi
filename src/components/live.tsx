@@ -29,9 +29,10 @@ export function useLiveQuotes(symbols: string[], opts: { windows?: boolean; ever
       const want = pollPlan(syms, Date.now(), { lastFull: force ? 0 : lastFull, lastAny: force ? 0 : lastAny, everyMs });
       if (!want.length) return;
       lastAny = Date.now();
-      if (want.length === syms.length) lastFull = lastAny;
       try {
         const j = await api<{ quotes: CurrentQuote[] }>(`/api/quotes?symbols=${encodeURIComponent(want.join(","))}${windows ? "&windows=1" : ""}`);
+        // A failed full poll doesn't count: the next minute tick asks again.
+        if (want.length === syms.length) lastFull = lastAny;
         if (!stop) setMap((m) => new Map([...[...m].filter(([k]) => syms.includes(k)), ...j.quotes.map((q) => [q.symbol, q] as const)]));
       } catch {}
     };

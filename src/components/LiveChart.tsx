@@ -319,7 +319,8 @@ export function LiveChart({ symbol, height = 280, initialRange = "1d", showHeade
   const stale = !!q?.stale;
   const asOf = q?.asOf ?? 0;
   // Daily-only data is never "live"; and the day change says which session it is when it isn't today's.
-  const isLive = live && !stale && !!q?.intraday;
+  // 5D/1M with no quote in the reply: live unless daily-only (the old rule); otherwise the quote's own flag.
+  const isLive = live && !stale && (!data?.quote && (data?.range === "5d" || data?.range === "1mo") ? !data.dailyOnly : !!q?.intraday);
   const dayOf = (sec: number) => dayIn(tz, sec * 1000);
   const session = q?.session ?? dayOf(asOf);
   const viaText = (etf: string) => t("strip.viaShort", { etf });

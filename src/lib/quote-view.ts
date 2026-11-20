@@ -46,6 +46,8 @@ export interface CurrentQuote {
   currency?: string;
   /** Live and not updated for 15 min during its session, or a daily close older than the latest finished session. */
   stale: boolean;
+  /** The close comes from a daily row that may carry the after-hours print (no 1-day series to confirm it). */
+  provisional?: boolean;
   /** Unix seconds of `price`. */
   asOf: number;
   source: string;
