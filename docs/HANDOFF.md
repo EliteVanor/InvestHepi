@@ -130,6 +130,25 @@ Checked against production. Fixed on the branch (not deployed yet):
 
 **Progress (Nov 20)**: on `v19-overhaul`: phase A (clock-pinned tests, one runner `scripts/run-tests.ts`, CI `.github/workflows/ci.yml`, v19 parts in `scripts/v19/`), row 2 (safe areas), row 3 (`shell/section-data.ts`), row 5 + fix-plan items 4, 5 (translations, 04:35 slot). Each reviewed with review-code + thermo-nuclear; findings fixed before merge. Not verified yet: real iPhone, Upstash lock-release script, real translation token counts.
 
+**Story design decisions (owner, Nov 20, grilling round 2, all as recommended unless noted)**
+- Q12 grouping: word matching with no AI, Unicode-aware (Vietnamese accents) plus character trigrams, within one language only.
+- Q13 a story keeps its id while it shares headlines with the previous tick's story (id from its earliest headline); re-explained only when it gains 3+ new outlets or its card is over 12 h old.
+- Q14 one AI call per briefing run writes the story cards, "The big picture" (3 lines), movers' reasons and the "what to watch" line, replacing today's briefing call (no extra requests per slot); stories with a fresh cached card are left out. On a fallback to Groq (~8k tokens/minute) the lowest-ranked stories are left out whole (e.g. 7, 5, 3), never single headlines inside a story; left-out stories keep their previous card or wait for the next run.
+- Q15 concept cards: a second small call right after, same tick; max 10 new a day app-wide; cached for good.
+- Q16 ranking: outlet count + today's move of a market it mentions (our data), top 10 to the model for an importance score. **Owner: keep 2 interesting stories (Q16b A): 5 important + 2 interesting = 7 per shared section per run** (replaces decision 7's 6).
+- Q17 add 2-3 free science/culture RSS feeds per section, each checked from the cloud first.
+- Q18 big story: a new story reaching 4+ outlets within 30 min with no card gets one at the next 15-min headline tick, max 6 extra calls per section per day.
+- Q19 past-event library: a research draft of ~50 entries (date, what happened, measured move + source link, what's different) is being written now; the owner reviews it before any card can cite it.
+
+**Handoff (Nov 20)**
+- Goal: v19 overhaul, news first, on `v19-overhaul`.
+- Decisions: this section (fix plan, Q1-Q11 design, Q12-Q19 stories).
+- Done and merged on the branch: phase A, rows 2, 3, 5 (see Progress). Being built in worktrees (each reviewed with review-code + thermo-nuclear before merge): row 4 quote module (also 6, 7, 15); row 9 holidays 2026-2027 + FOMC 2027; rows 8, 10, 12, 13, 14 + Q11; rows 16-20 security incl. the AI ceiling. Past-event library draft in research.
+- Ruled out: Next 16 this round, Upstash changes before measuring, full-article fetching, past events from model memory, cross-language grouping (Q12), one AI call per story (Q14).
+- Open items: owner reviews the past-event draft; after v19a merges are reviewed, ask the owner before merging v19a to `main`.
+- Next step: merge the four builders' work after review, stress test v19a on real data, ask to merge v19a; then design the story module interfaces (clustering, explainer + library, story job + store) and build v19b (D then E: rows 21-24, story cards, page order, rows 25-30).
+- Skills to load next: how-i-work, how-i-think, codebase-design, review-code, thermo-nuclear-code-quality-review; grilling for any new decision.
+
 **Audit (Nov 19)**: report https://claude.ai/artifact/PHWikthAG3dygy7usaAzEy (private), working notes with file:line in `docs/AUDIT-v19.md`. Baseline: typecheck passes; `selftest` and `vntest` fail on the real clock (test bugs), and `npm test` stops at the first failure so 17 suites don't run; no CI; `npm audit` highs not reachable (postcss build-time, nodemailer in an unused Auth.js provider).
 - Causes of the reported problems: (a) `black-translucent` + `viewport-fit: cover` in `layout.tsx` with no `env(safe-area-inset-top)` on `.topbar` (`globals.css:171-178`); (b) Nasdaq 1-day uses after-hours `lastSalePrice` and an unreliable previous close (`chart.ts:157-158`), the chart header follows the selected range (`LiveChart.tsx:342`), the strip overlay drops `stale` (`strip.ts:36`); (c) the page loads briefings only on mount (`page.tsx:126`), My Interests is never pre-translated (`scheduler.ts:205`).
 
