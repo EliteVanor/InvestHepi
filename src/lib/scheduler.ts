@@ -392,6 +392,13 @@ export interface SlotReport {
   failed?: string[];
 }
 
+/**
+ * What gets reported (503 window, admin's "Late" list): a slot that is late or missed, and one that
+ * finished with an item that failed for good ("partial": a prediction run that failed twice has no
+ * rule-based fallback, so it is a missed run and must not pass silently).
+ */
+const isReportable = (r: SlotReport) => r.state === "late" || r.state === "missed" || r.state === "partial";
+
 function stateOf(o: Occurrence, run: SlotRun | null, now: number): SlotReport {
   const failed = run ? [...Object.entries(run.items), ...Object.entries(run.sets)].filter(([, a]) => a && !a.ok && a.n >= MAX_ATTEMPTS).map(([k]) => k) : [];
   let state: SlotState;
@@ -404,14 +411,14 @@ function stateOf(o: Occurrence, run: SlotRun | null, now: number): SlotReport {
 }
 
 /**
- * Slots that went late within the last hour: a tick answers 503 while this isn't empty, so whatever
+ * Slots that went late (or had an item fail for good) within the last hour: a tick answers 503 while this isn't empty, so whatever
  * poked it (cron-job.org emails on failure, Vercel and GitHub show a failed run) reports it once or
  * twice, not for hours.
  */
 export async function lateNow(now: number): Promise<SlotReport[]> {
   const recent = occurrences(now - 2 * LATE_AFTER_MIN * MIN, now - LATE_AFTER_MIN * MIN).filter((o) => o.start >= TIMETABLE_SINCE);
   const reports = await Promise.all(recent.map(async (o) => stateOf(o, await getJSON<SlotRun>(runKey(o)), now)));
-  return reports.filter((r) => r.state === "late" || r.state === "missed");
+  return reports.filter(isReportable);
 }
 
 /** Everything that was due in the last 24 h, for the admin's Status panel and `/api/status?schedule=1`. */
@@ -424,7 +431,7 @@ export async function scheduleReport(now = Date.now()) {
     /** The hourly grading pass: when it last finished cleanly, and the failure still being retried, if any. */
     grading: { lastOk: graded?.at ?? null, failing: failing ?? null },
     lastAlerts: alerts?.at ?? null,
-    late: slots.filter((s) => s.state === "late" || s.state === "missed").map((s) => s.slot),
+    late: slots.filter(isReportable).map((s) => s.slot),
     slots: slots.reverse(),
   };
 }
