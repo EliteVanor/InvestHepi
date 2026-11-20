@@ -7,6 +7,7 @@ import { z } from "zod";
 import { calendarAsText } from "../calendar";
 import { levelText, macroAsText } from "../market";
 import { MARKET_CITY, lastFinishedSession, localNow, type Phase } from "../markets";
+import { windowChange } from "../quote-view";
 import { symLabel } from "../symbols";
 import { technicalsAsText, type Technicals } from "../technicals";
 import type { CalendarEvent, Interest, NewsItem, Quote } from "../types";
@@ -123,7 +124,7 @@ export function predictionSnapshot(p: Pick<PredictInput, "quotes" | "live" | "op
   return p.quotes
     .map((q) => {
       const h = q.history;
-      const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
+      const wk = windowChange(h, q.price, "5d") ?? NaN;
       const name = symLabel(q.symbol);
       const label = `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}`;
       const live = p.live.get(q.symbol);

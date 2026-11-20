@@ -16,7 +16,7 @@ import { emSession, hasEastmoney } from "./eastmoney";
 import { calendarKey, lastFinishedSession, localNow, prevWeekday, sessionHours, zoneOf } from "./markets";
 import { exchangeTz } from "./symbols";
 import { dayIn } from "./dates";
-import { windowChange } from "./quote-view";
+import { windowBase, windowChange } from "./quote-view";
 
 const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
 
@@ -83,8 +83,12 @@ async function rememberAndFill(uniq: string[], got: Map<string, Quote>, allowSta
   await setJSON(LAST_KEY, kept).catch(() => {});
 }
 
-/** Quotes for many symbols. `allowStale` (default) fills gaps from the last good copy; grading turns it off. */
-export async function getQuotes(symbols: string[], opts: { allowStale?: boolean } = {}): Promise<Quote[]> {
+/**
+ * Quotes for many symbols. `allowStale` (default) fills gaps from the last good copy; grading turns it
+ * off. `remember: false` skips the last-good store entirely (no read, no write): the current-quote
+ * module's hot path (/api/quotes, /api/chart) never touches Redis.
+ */
+export async function getQuotes(symbols: string[], opts: { allowStale?: boolean; remember?: boolean } = {}): Promise<Quote[]> {
   const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))];
   const vn = uniq.filter(isVnSymbol);
   const other = uniq.filter((s) => !isVnSymbol(s));
@@ -120,7 +124,7 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
     const px = await pool(proxied, 3, async (s) => ({ s, q: got.get(PROXIES[s]) ?? (await singleQuote(PROXIES[s])) }));
     for (const { s, q } of px) if (q && !q.stale) got.set(s, { ...q, symbol: s, proxy: PROXIES[s] });
   }
-  await rememberAndFill(uniq, got, opts.allowStale !== false);
+  if (opts.remember !== false) await rememberAndFill(uniq, got, opts.allowStale !== false);
   return uniq.map((s) => got.get(s)).filter((q): q is Quote => q != null);
 }
 
@@ -222,7 +226,7 @@ export function macroAsText(quotes: Quote[], wanted: string[] = []): string {
       // Yields move in basis points, not percent of themselves (5.10% → 5.15% is +5 bp, not "+1.0%").
       if (isPercentQuote(q.symbol)) {
         const bp = (d: number) => (Number.isFinite(d) ? `${d >= 0 ? "+" : ""}${Math.round(d * 100)} bp` : "n/a");
-        const back = h.length > 5 ? h[h.length - 6][1] : NaN;
+        const back = windowBase(h, "5d") ?? NaN;
         return `${promptName(q.symbol)}: ${levelText(q)} (1d ${bp(q.price - q.prevClose)}, 5d ${bp(q.price - back)})`;
       }
       if (!q.proxy) return `${promptName(q.symbol)}: ${levelText(q)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;

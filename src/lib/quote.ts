@@ -41,6 +41,8 @@ interface Reading {
   stale?: boolean;
   currency?: string;
   extended?: { kind: "pre" | "after"; price: number; asOf: number };
+  /** Daily readings only: the closes, [exchange date, close]. */
+  closes?: [string, number][];
 }
 
 const SYMBOL_RE = /^[A-Z0-9.^=\-]{1,12}$/;
@@ -58,6 +60,7 @@ function fromChart(s: string, d: ChartData): Reading {
     symbol: s, price: d.price, prevClose: d.prevClose, asOf: d.asOf, spark: thin(d.bars.map((b) => b.c)), source: d.source,
     session: sessionDate(d.estimatedVia ?? d.shapeVia ?? d.proxy ?? s, d.asOf),
     intraday: d.range === "1d" && d.source !== "vndirect" && !d.stale && !d.dailyOnly,
+    ...(d.range !== "1d" || d.source === "vndirect" || d.dailyOnly ? { closes: d.bars.map((b) => [sessionDate(d.proxy ?? s, b.t), b.c] as [string, number]) } : {}),
     ...(d.proxy ? { proxy: d.proxy } : {}), ...(d.estimatedVia ? { estimatedVia: d.estimatedVia } : {}), ...(d.dailyOnly ? { dailyOnly: true } : {}),
     ...(d.stale ? { stale: true } : {}), ...(d.currency ? { currency: d.currency } : {}), ...(d.extended ? { extended: d.extended } : {}),
   };
@@ -105,7 +108,7 @@ async function read(uniq: string[]): Promise<Map<string, Reading>> {
       const m = await vndirectDaily(missing, 10).catch(() => new Map<string, Bar[]>());
       for (const [s, bars] of m) {
         const last = bars.at(-1)!;
-        put({ symbol: s, price: last.c, prevClose: bars.at(-2)!.c, asOf: last.t, spark: bars.map((b) => b.c), session: sessionDate(s, last.t), intraday: false, source: "vndirect" });
+        put({ symbol: s, price: last.c, prevClose: bars.at(-2)!.c, asOf: last.t, spark: bars.map((b) => b.c), closes: bars.map((b) => [sessionDate(s, b.t), b.c] as [string, number]), session: sessionDate(s, last.t), intraday: false, source: "vndirect" });
       }
     })(),
   ]);
@@ -135,7 +138,8 @@ async function dailyHistory(symbols: string[]): Promise<Map<string, Quote>> {
   };
   const need = [...new Set(symbols)].filter((s) => !fresh(s));
   if (need.length) {
-    const got = new Map((await getQuotes(need, { allowStale: false }).catch(() => [] as Quote[])).map((q) => [q.symbol, q]));
+    // remember: false: no px:last read or write, so /api/quotes and /api/chart never touch Redis.
+    const got = new Map((await getQuotes(need, { allowStale: false, remember: false }).catch(() => [] as Quote[])).map((q) => [q.symbol, q]));
     for (const s of need) history.set(s, { at: now, q: got.get(s) ?? null });
     if (history.size > 600) for (const k of [...history.keys()].slice(0, 150)) history.delete(k);
   }
@@ -148,6 +152,28 @@ async function dailyHistory(symbols: string[]): Promise<Map<string, Quote>> {
   return out;
 }
 
+/**
+ * Regular-session closes taken from Nasdaq's 1-day series once a session ended, per series symbol:
+ * Nasdaq's daily row for the same evening can carry the 20:00 after-hours print (SPY, Nov 19 2026),
+ * so this close wins over that row for the price and for the next session's previous close.
+ */
+const regularCloses = new Map<string, Map<string, number>>();
+function noteRegularClose(series: string, session: string, close: number) {
+  const m = regularCloses.get(series) ?? new Map<string, number>();
+  m.set(session, close);
+  if (m.size > 5) m.delete(m.keys().next().value!);
+  regularCloses.set(series, m);
+  if (regularCloses.size > 400) regularCloses.delete(regularCloses.keys().next().value!);
+}
+/** Daily closes with the remembered regular-session closes laid over the daily rows. */
+function withRegularCloses(series: string, closes: [string, number][]): [string, number][] {
+  const m = regularCloses.get(series);
+  if (!m?.size) return closes;
+  const out = new Map(closes);
+  for (const [d, c] of m) if (out.has(d) || d > (closes.at(-1)?.[0] ?? "")) out.set(d, c);
+  return [...out.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+}
+
 /** The symbol whose daily series matches a reading: the ETF for a stand-in, the symbol itself otherwise. */
 const seriesOf = (r: Reading) => r.proxy ?? r.symbol;
 
@@ -156,7 +182,8 @@ const seriesOf = (r: Reading) => r.proxy ?? r.symbol;
 /** Apply the rules to one reading (Q1-Q5). Exported for tests through currentQuotes only. */
 function finish(r: Reading, h: Quote | undefined, now: Date, windows: boolean): CurrentQuote | null {
   let { price, prevClose, session, intraday } = r;
-  const closes = h?.history ?? [];
+  if (r.source === "nasdaq" && r.intraday && r.extended?.kind !== "pre" && sessionState(r.symbol, now, r.proxy) !== "open") noteRegularClose(seriesOf(r), session, price);
+  const closes = withRegularCloses(seriesOf(r), h?.history ?? []);
   if (r.extended?.kind === "pre") {
     // Before the open: the last close is the price, its session's change the day change.
     const last = closes.at(-1);
@@ -184,7 +211,7 @@ function finish(r: Reading, h: Quote | undefined, now: Date, windows: boolean): 
     ...(r.dailyOnly ? { dailyOnly: true } : {}),
     ...(r.currency ?? currencyOf(r.symbol) ? { currency: r.currency ?? currencyOf(r.symbol) } : {}),
     stale: isStale({ symbol: r.symbol, intraday, asOf: r.asOf, session, via: r.proxy, stale: r.stale }, now),
-    asOf: r.asOf, source: r.source, spark: r.spark,
+    asOf: r.asOf, source: r.source, spark: r.spark, ...(r.closes ? { closes: r.closes } : {}),
   };
   if (r.extended) q.extended = { kind: r.extended.kind, price: r.extended.price, changePct: pct(r.extended.price, price), asOf: r.extended.asOf };
   if (windows) {
@@ -227,8 +254,9 @@ export async function chartWithQuote(symbol: string, range: ChartRange): Promise
   return { ...chart, ...day, quote, rangeChangePct };
 }
 
-/** Tests only. */
-export function clearQuoteCaches() {
+/** Tests only. `keepCloses` keeps the remembered regular-session closes (a restart of the readings only). */
+export function clearQuoteCaches(keepCloses = false) {
   readings.clear();
   history.clear();
+  if (!keepCloses) regularCloses.clear();
 }

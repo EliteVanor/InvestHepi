@@ -11,7 +11,7 @@ import { SAME_HOURS_ETF, estimateFromEtf, hasWorldDaily, worldDaily } from "./wo
 import { yahooCooling, yahooJson } from "./yahoo";
 import { dayIn } from "./dates";
 import { emSession, hasEastmoney } from "./eastmoney";
-import { SESSIONS as EXCHANGE_HOURS, localNow } from "./markets";
+import { SESSIONS as EXCHANGE_HOURS, closeMinsOn, localNow } from "./markets";
 
 const NY_TZ = "America/New_York";
 
@@ -171,7 +171,9 @@ export function parseNasdaqIntraday(d: unknown, symbol: string): ChartData {
   const ny = (b: Bar) => localNow(b.t * 1000, NY_TZ);
   const lastDay = ny(all.at(-1)!).date;
   const day = all.filter((b) => ny(b).date === lastDay);
-  const { open, close } = EXCHANGE_HOURS[NY_TZ];
+  // The day's own close (13:00 on an early-close day like Nov 27): prints after it are extended hours.
+  const { open } = EXCHANGE_HOURS[NY_TZ];
+  const close = closeMinsOn(NY_TZ, lastDay);
   const regular = day.filter((b) => ny(b).mins >= open && ny(b).mins <= close);
   const after = day.filter((b) => ny(b).mins > close);
   const pre = day.filter((b) => ny(b).mins < open);

@@ -7,7 +7,7 @@
  * closes come from the exchange calendars (holidays.ts via markets.ts isTradingDay / closeMinsOn).
  */
 import { SESSIONS, calendarKey, closeMinsOn, isTradingDay, lastFinishedSession, localNow, zonedToUtc } from "./markets";
-import { exchangeTz } from "./symbols";
+import { exchangeTz, priceDigits } from "./symbols";
 import type { Quote } from "./types";
 
 /** What the price is: a real level, a tracking ETF's price (never shown as a level), or a real level estimated from a same-hours ETF. */
@@ -51,13 +51,23 @@ export interface CurrentQuote {
   source: string;
   /** The session's intraday path (baseline prevClose) when `intraday`, else recent daily closes. */
   spark: number[];
+  /** A daily (non-intraday) reading's closes, [exchange date, close], oldest first. */
+  closes?: [string, number][];
   /** 5-session and one-month changes, when asked for (same series as `price`; null when unknown). */
   changes?: Record<QuoteWindow, number | null>;
 }
 
 const NY = "America/New_York";
-/** Lunch break on Hanoi's exchanges, minutes after midnight. */
-const VN_BREAK = { from: 690, to: 780 };
+/**
+ * Lunch breaks, minutes after local midnight: the one place they live. The v18 timetable puts the
+ * Tokyo (11:45) and Hong Kong (12:15) mid-day prediction runs inside them on purpose.
+ */
+export const SESSION_BREAKS: Record<string, { from: number; to: number }> = {
+  "Asia/Tokyo": { from: 690, to: 750 }, // 11:30-12:30
+  "Asia/Hong_Kong": { from: 720, to: 780 }, // 12:00-13:00
+  "Asia/Shanghai": { from: 690, to: 780 }, // 11:30-13:00
+  "Asia/Ho_Chi_Minh": { from: 690, to: 780 }, // 11:30-13:00
+};
 const STALE_MS = 15 * 60_000;
 
 /** The exchange clock a quote runs on: an ETF stand-in trades in New York. */
@@ -78,7 +88,8 @@ export function sessionState(symbol: string, now: Date | number, via?: string): 
   const s = SESSIONS[tz] ?? SESSIONS[NY];
   if (mins < s.open) return "pre";
   if (mins >= closeMinsOn(tz, date)) return "after";
-  if (tz === "Asia/Ho_Chi_Minh" && mins >= VN_BREAK.from && mins < VN_BREAK.to) return "break";
+  const br = SESSION_BREAKS[tz];
+  if (br && mins >= br.from && mins < br.to) return "break";
   return "open";
 }
 
@@ -103,15 +114,19 @@ export function liveHours(symbol: string, now: Date | number): boolean {
 
 /**
  * Stale (Q4): a live price with no update for 15 minutes while its session is open (counted from the
- * open, so the first minutes aren't stale), or a daily close older than the latest finished session.
- * A source's own stale flag (last good copy) always wins.
+ * open, or from the restart after a lunch break, so the first minutes aren't stale), or a daily close
+ * older than the latest finished session. During a lunch break the morning's last print is live (it is
+ * the mid-day base). A source's own stale flag (last good copy) always wins.
  */
 export function isStale(q: Pick<CurrentQuote, "symbol" | "intraday" | "asOf" | "session" | "via"> & { stale?: boolean }, now: Date | number): boolean {
   if (q.stale) return true;
   const t = typeof now === "number" ? now : now.getTime();
   if (q.intraday && (isNear24h(q.symbol) ? liveHours(q.symbol, t) : sessionState(q.symbol, t, q.via) === "open")) {
     const tz = quoteTz(q.symbol, q.via);
-    const open = isNear24h(q.symbol) ? 0 : zonedToUtc(localNow(t, tz).date, (SESSIONS[tz] ?? SESSIONS[NY]).open, tz).getTime();
+    const { date, mins } = localNow(t, tz);
+    const br = SESSION_BREAKS[tz];
+    const restart = br && mins >= br.to ? br.to : (SESSIONS[tz] ?? SESSIONS[NY]).open;
+    const open = isNear24h(q.symbol) ? 0 : zonedToUtc(date, restart, tz).getTime();
     return t - Math.max(q.asOf * 1000, open) > STALE_MS;
   }
   if (isNear24h(q.symbol) && q.intraday) return false;
@@ -135,17 +150,19 @@ export function monthBefore(date: string): string {
  * the history doesn't reach back far enough.
  */
 export function windowChange(history: [string, number][], price: number, window: QuoteWindow, session?: string): number | null {
+  const base = windowBase(history, window, session);
+  return base && Number.isFinite(price) ? ((price - base) / base) * 100 : null;
+}
+
+/** The base close of a window (see windowChange), e.g. for a yield's change in basis points. */
+export function windowBase(history: [string, number][], window: QuoteWindow, session?: string): number | null {
   const today = session ?? history.at(-1)?.[0];
-  if (!today || !Number.isFinite(price)) return null;
+  if (!today) return null;
   const before = history.filter(([d, c]) => d < today && Number.isFinite(c) && c > 0);
-  let base: number | undefined;
-  if (window === "5d") base = before.length >= 5 ? before[before.length - 5][1] : undefined;
-  else {
-    const target = monthBefore(today);
-    if (!before.length || before[0][0] > target) return null;
-    base = before.filter(([d]) => d <= target).at(-1)?.[1];
-  }
-  return base ? ((price - base) / base) * 100 : null;
+  if (window === "5d") return before.length >= 5 ? before[before.length - 5][1] : null;
+  const target = monthBefore(today);
+  if (!before.length || before[0][0] > target) return null;
+  return before.filter(([d]) => d <= target).at(-1)?.[1] ?? null;
 }
 
 /**
@@ -177,7 +194,7 @@ export function overlayQuote(q: Quote, l: CurrentQuote | undefined): Quote {
 export function quoteFromCurrent(l: CurrentQuote): Quote {
   return {
     symbol: l.symbol, price: l.price, prevClose: l.prevClose, changePct: l.changePct, source: l.source as Quote["source"],
-    history: l.intraday ? [] : l.spark.map((c, i) => [String(i), c] as [string, number]),
+    history: l.intraday ? [] : l.closes ?? [],
     spark: l.intraday ? l.spark : undefined,
     ...basisFlags(l),
   };
@@ -185,6 +202,33 @@ export function quoteFromCurrent(l: CurrentQuote): Quote {
 
 /** A price may be shown as a level unless it is an ETF stand-in's (Q5: then only its % with "via <ETF>"). */
 export const showsLevel = (q: { proxy?: string; basis?: QuoteBasis }) => !q.proxy && q.basis !== "proxy";
+
+type Levelled = { symbol: string; price: number; proxy?: string; estimatedVia?: string; basis?: QuoteBasis; via?: string };
+/**
+ * How a price is written on every screen (strip, watchlist, search, chart header, alert emails): the
+ * level, "≈level" for an estimate, or "via <ETF>" for a stand-in, never the ETF's price as the level.
+ */
+export function levelLabel(q: Levelled, opts: { fmt?: (n: number, digits?: number) => string; via?: (etf: string) => string } = {}): string {
+  const proxy = q.proxy ?? (q.basis === "proxy" ? q.via : undefined);
+  if (proxy) return (opts.via ?? ((e) => `via ${e}`))(proxy);
+  const est = q.estimatedVia ?? (q.basis === "estimate" ? q.via : undefined);
+  const fmt = opts.fmt ?? ((n: number, d?: number) => n.toFixed(d ?? 2));
+  return `${est ? "≈" : ""}${fmt(q.price, priceDigits(q.symbol, q.price))}`;
+}
+
+/**
+ * The chart header's quote: the current quote when the reply has one, otherwise the same fields read
+ * from the series itself (one path for both).
+ */
+export function headerQuote(d: { symbol: string; price: number; prevClose: number; changePct: number; asOf: number; stale?: boolean; proxy?: string; estimatedVia?: string; dailyOnly?: boolean; range: string; quote?: CurrentQuote | null }): Pick<CurrentQuote, "symbol" | "price" | "prevClose" | "changePct" | "asOf" | "stale" | "basis" | "via" | "dailyOnly" | "intraday" | "extended"> & { session?: string } {
+  if (d.quote) return d.quote;
+  const via = d.proxy ?? d.estimatedVia;
+  return {
+    symbol: d.symbol, price: d.price, prevClose: d.prevClose, changePct: d.changePct, asOf: d.asOf, stale: !!d.stale,
+    basis: d.proxy ? "proxy" : d.estimatedVia ? "estimate" : "level", ...(via ? { via } : {}),
+    dailyOnly: d.dailyOnly, intraday: d.range === "1d" && !d.dailyOnly,
+  };
+}
 
 /** A mover's day change: the current quote's when there is one, else the briefing's. */
 export const moverChange = (m: { ticker: string; changePct: number }, quotes: { symbol: string; changePct: number }[]) =>

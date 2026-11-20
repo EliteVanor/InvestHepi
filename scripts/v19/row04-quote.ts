@@ -137,6 +137,43 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(Math.abs(p.extended!.changePct - 3) < 1e-9);
   assert.equal(p.stale, false, "Friday's close is the latest finished session");
 
+  // The evening row (= the 20:00 after-hours print) never becomes the close: not the price that
+  // evening, and not the next morning's price or previous close.
+  reset();
+  nas.days = [[usDate("2026-11-20"), 102], ...weekdays("2026-11-19", 30, 98)];
+  nas.chart = [{ x: ny("2026-11-20", 9, 30), y: "99.00" }, { x: ny("2026-11-20", 15, 59), y: "100.00" }, { x: ny("2026-11-20", 19, 59), y: "102.00" }];
+  assert.equal((await Q.currentQuotes(["AAPL"]))[0].price, 100, "Friday evening: the 15:59 bar");
+  C.clearPriceCaches();
+  Q.clearQuoteCaches(true);
+  nas.chart = [{ x: ny("2026-11-23", 4, 0), y: "101.00" }, { x: ny("2026-11-23", 7, 59), y: "103.00" }];
+  const [mon] = await Q.currentQuotes(["AAPL"], { now: new Date("2026-11-23T13:00:00Z"), windows: true });
+  assert.deepEqual([mon.price, mon.prevClose, mon.session], [100, 98, "2026-11-20"], "Monday pre-market: Friday's regular close, not the evening row (102)");
+  pinClock("2026-11-23T15:00:00Z"); // Monday 10:00 New York, in session
+  C.clearPriceCaches();
+  Q.clearQuoteCaches(true);
+  nas.chart = [{ x: ny("2026-11-23", 9, 30), y: "101.00" }, { x: ny("2026-11-23", 9, 59), y: "101.50" }];
+  assert.equal((await Q.currentQuotes(["AAPL"]))[0].prevClose, 100, "Monday's previous close is Friday's regular close");
+
+  /* ---------------- Nov 27: early close at 13:00 New York; later prints are after hours */
+  pinClock("2026-11-27T18:30:00Z"); // 13:30 New York
+  reset();
+  nas.days = weekdays("2026-11-25", 30, 98);
+  nas.chart = [{ x: ny("2026-11-27", 9, 30), y: "99.00" }, { x: ny("2026-11-27", 13, 0), y: "100.00" }, { x: ny("2026-11-27", 13, 29), y: "100.80" }];
+  const [nov27] = await Q.currentQuotes(["AAPL"]);
+  assert.deepEqual([nov27.price, nov27.state, nov27.extended?.kind, nov27.extended?.price], [100, "after", "after", 100.8], "13:29 print is after hours on an early-close day");
+
+  /* ---------------- the hot path never touches the store (no px:last read or write) */
+  await assert.rejects(fs.access(`${process.env.STORE_DIR || "/tmp/invest-helper"}/px_last.json`), "currentQuotes and /api/chart wrote no px:last");
+
+  /* ---------------- lunch breaks: the morning's last print is live, staleness counts from the restart */
+  const brk = (symbol: string, asOf: string, now: string) => V.isStale({ symbol, intraday: true, session: now.slice(0, 10), asOf: Date.parse(asOf) / 1000 }, Date.parse(now));
+  assert.equal(V.sessionState("^N225", Date.parse("2026-11-20T03:10:00Z")), "break", "Tokyo 12:10: lunch break");
+  assert.equal(brk("^N225", "2026-11-20T02:30:00Z", "2026-11-20T03:10:00Z"), false, "Nikkei at 12:10 JST, last print 11:30: not stale");
+  assert.equal(brk("^HSI", "2026-11-20T04:00:00Z", "2026-11-20T04:40:00Z"), false, "Hang Seng at 12:40 HKT, last print 12:00: not stale");
+  assert.equal(brk("FPT.VN", "2026-11-20T04:30:00Z", "2026-11-20T06:05:00Z"), false, "Hanoi 13:05, last print 11:30: not stale (counted from 13:00)");
+  assert.equal(brk("FPT.VN", "2026-11-20T04:30:00Z", "2026-11-20T06:20:00Z"), true, "Hanoi 13:20 with nothing since 11:30: stale");
+  assert.equal(V.sessionState("000001.SS", Date.parse("2026-11-20T04:00:00Z")), "break", "Shanghai 12:00: lunch break");
+
   /* ---------------- stale rule (pure) */
   const base = { symbol: "AAPL", intraday: true, session: "2026-11-20", asOf: Date.parse("2026-11-20T17:44:00Z") / 1000 };
   assert.equal(V.isStale(base, Date.parse("2026-11-20T18:00:00Z")), true, "live, 16 min old in session: stale");
