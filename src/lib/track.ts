@@ -96,8 +96,8 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
 const gradeTz = (ticker: string, proxy?: string) => calendarKey(ticker, proxy);
 
 /** When a pending call can be graded: its graded session's close plus settling, in UTC. */
-export function gradesAfter(c: Pick<Call, "date" | "ticker" | "id"> & { endDate?: string }): string {
-  const tz = gradeTz(c.ticker);
+export function gradesAfter(c: Pick<Call, "date" | "ticker" | "id" | "proxy"> & { endDate?: string }): string {
+  const tz = gradeTz(c.ticker, c.proxy);
   return new Date(closeUtc(gradeDateOf(c), tz).getTime() + SETTLE_MINS * 60_000).toISOString();
 }
 
@@ -127,7 +127,7 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     fixed++;
   }
   // Due: ungraded calls whose graded session has closed, and provisional grades waiting for the official close.
-  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker), now)));
+  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker, c.proxy), now)));
   if (!pending.length) {
     if (fixed) await setJSON(key, calls);
     return 0;
@@ -141,9 +141,17 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
   const officialBy = new Map(official.map((q) => [q.symbol, q]));
   const quotes = new Map((await freshenQuotes(official, now)).map((q) => [q.symbol, q]));
   let graded = 0;
+  let learned = false;
   for (const c of pending) {
     const q = quotes.get(c.ticker);
     if (!q) continue;
+    // Remember which ticker is priced by an ETF stand-in (it grades on New York's clock), so the shown
+    // grade time and the due check use the same clock as the grading below.
+    if (c.proxy !== q.proxy) {
+      if (q.proxy) c.proxy = q.proxy;
+      else delete c.proxy;
+      learned = true;
+    }
     const tz = gradeTz(c.ticker, q.proxy);
     const end = gradeDateOf(c);
     const officialDates = new Set(officialBy.get(c.ticker)?.history.map(([d]) => d) ?? []);
@@ -194,7 +202,7 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     c.gradedAt = now.toISOString();
     graded++;
   }
-  if (graded || fixed) await setJSON(key, calls);
+  if (graded || fixed || learned) await setJSON(key, calls);
   return graded;
 }
 
@@ -339,7 +347,7 @@ export function computeStats(calls: Call[]): TrackStats {
   const actions = [...new Set(graded.map((c) => String(c.action).toUpperCase()))];
   const pending = calls
     .filter((c) => c.correct === undefined && !c.gradedAt)
-    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: horizonOf(c), phase: phaseOf(c), madeAt: c.madeAt, direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c), gradeDate: gradeDateOf(c), closesAt: closeUtc(gradeDateOf(c), gradeTz(c.ticker)).toISOString() }))
+    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: horizonOf(c), phase: phaseOf(c), madeAt: c.madeAt, direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c), gradeDate: gradeDateOf(c), closesAt: closeUtc(gradeDateOf(c), gradeTz(c.ticker, c.proxy)).toISOString() }))
     .sort((a, b) => a.gradesAfter.localeCompare(b.gradesAfter));
   const daily = graded.filter((c) => horizonOf(c) === "d");
   const of = (cs: Call[]) => rate(cs.length, hits(cs));

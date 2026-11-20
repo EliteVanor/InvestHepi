@@ -216,6 +216,12 @@ export interface Call {
   noLiveBase?: boolean;
   /** No session on the graded day (a holiday): not graded. */
   closed?: boolean;
+  /** No price data for the graded session after 10 days (a source outage, or older than the history reaches): given up, not graded. */
+  expired?: boolean;
+  /** Last time a call overdue by 48 h+ looked for its bar (ISO): retried every 6 h, not every hour. */
+  checkedAt?: string;
+  /** The ETF that stands in for this ticker's prices (grading follows New York hours); learned when its quotes are fetched. */
+  proxy?: string;
   /** Weekly calls whose 5th day was a holiday: the session actually used. */
   gradedOn?: string;
   /** Graded from an intraday close (this source) before the official one was posted; re-graded when it is. */
