@@ -110,6 +110,34 @@ const PAIRS: [string, string, "stock_prices" | "commodities", string, number, nu
   assert.deepEqual(L.parseShaped('{"candles":"yes"}', {}, L.isBooleanFlags()), {}, "chart options with a non-boolean");
   assert.equal(L.parseShaped('{"at":"x"}', null, L.isVisitSnapshot), null, "an incomplete catch-up snapshot");
   assert.equal(L.parseShaped("null", null, L.isVisitSnapshot), null);
+  /* ---------------- review fixes: gap guard, 1d only, pre-market */
+  {
+    const [sym, etf, table, code, o18, o19, ePrev] = PAIRS[0];
+    const off: [string, number][] = [["2026-11-17", o18 + 1], ["2026-11-18", o18], ["2026-11-19", o19]];
+    // Friday official close, ETF two sessions newer (Monday posted, Tuesday intraday): no estimate.
+    fx = { off: [["2026-11-12", o18], ["2026-11-13", o19]], code, table, etfDays: [["2026-11-13", ePrev + 1], ["2026-11-12", ePrev + 2]], intra: { date: "2026-11-17", prev: ePrev, path: [ePrev, ePrev * 0.98] } };
+    reset();
+    let [q] = await Q.currentQuotes([sym]);
+    assert.notEqual(q.basis, "estimate", "two sessions newer: no estimate");
+    assert.equal(q.session, "2026-11-13", "dated by the official close");
+    // Futures traded a NYSE holiday (official Thu Nov 26); the ETF's previous session is Wed Nov 25.
+    fx = { off: [["2026-11-25", o18], ["2026-11-26", o19]], code, table, etfDays: [["2026-11-25", ePrev], ["2026-11-24", ePrev + 1]], intra: { date: "2026-11-27", prev: ePrev, path: [ePrev, ePrev * 0.98] } };
+    reset();
+    [q] = await Q.currentQuotes([sym]);
+    assert.notEqual(q.basis, "estimate", "official date inside the ETF's gap: no estimate");
+    // 5d range: the new branch does not apply (daily closes, dated).
+    fx = { off, code, table, etfDays: days("2026-11-19", ePrev), intra: { date: "2026-11-20", prev: ePrev, path: [ePrev, ePrev * 0.98, ePrev * 0.9647] } };
+    reset();
+    const ch5 = await C.getChart(sym, "5d");
+    assert.ok(!ch5.estimatedVia && ch5.price === o19, "5d: the new estimate branch does not apply, the official close stays");
+    // Pre-market of the new session: the official close keeps its own date.
+    fx = { off, code, table, etfDays: days("2026-11-19", ePrev), intra: { date: "2026-11-20", prev: ePrev, path: [ePrev * 0.99] } };
+    reset();
+    pinClock("2026-11-20T12:00:00Z"); // 07:00 New York
+    const ch = await C.getChart(sym, "1d");
+    assert.ok(!ch.estimatedVia, `pre-market: no estimate (${etf})`);
+    pinClock("2026-11-20T21:30:00Z");
+  }
   console.log("STRESS19A OK");
 })().catch((e) => {
   console.error(e);

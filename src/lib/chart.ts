@@ -11,7 +11,7 @@ import { SAME_HOURS_ETF, estimateFromEtf, hasWorldDaily, worldDaily } from "./wo
 import { yahooCooling, yahooJson } from "./yahoo";
 import { dayIn } from "./dates";
 import { emSession, hasEastmoney } from "./eastmoney";
-import { SESSIONS as EXCHANGE_HOURS, closeMinsOn, localNow } from "./markets";
+import { SESSIONS as EXCHANGE_HOURS, addDays, calendarKey, closeMinsOn, isTradingDay, localNow } from "./markets";
 
 const NY_TZ = "America/New_York";
 
@@ -327,9 +327,14 @@ async function worldChart(symbol: string, range: ChartRange): Promise<ChartData>
       // quote is an estimate for THAT session (official close x the ETF's move since its own previous
       // close), even if the ETF's daily history hasn't posted the session yet. Never the old close
       // relabelled as today.
-      if (range === "1d" || range === "5d") {
+      if (range === "1d") {
         const intra = await getChart(etf, range);
-        if (!intra.stale && etfDate(etf, intra.asOf) > offDate && intra.prevClose > 0) {
+        const session = etfDate(etf, intra.asOf);
+        // The ETF's previous session must be exactly the official close's date (no gap to guess across,
+        // e.g. futures trading a day the ETF's exchange was shut), and its regular session must have begun.
+        let prevSession = addDays(session, -1);
+        while (!isTradingDay(prevSession, calendarKey(etf))) prevSession = addDays(prevSession, -1);
+        if (!intra.stale && session > offDate && prevSession === offDate && intra.extended?.kind !== "pre" && intra.prevClose > 0) {
           const k = offLast.c / intra.prevClose;
           const bars = intra.bars.map((b) => ({ ...b, o: b.o * k, h: b.h * k, l: b.l * k, c: b.c * k, v: 0 }));
           return { symbol, range, bars, price: intra.price * k, prevClose: offLast.c, changePct: pct(intra.price, intra.prevClose), asOf: intra.asOf, source: "vndirect-world", estimatedVia: etf, name };
