@@ -1,5 +1,5 @@
 /** Per-day counters in the store. Not atomic, which is fine for a single-user app. */
-import { ukey } from "./context";
+import { currentUid, OWNER, ukey } from "./context";
 import { getJSON, incrWindow, setJSON } from "./store";
 import { dayIn, NY } from "./dates";
 import { userAiBusy } from "./llm/models";
@@ -43,7 +43,7 @@ export const limits = {
 
 /** Counts one background briefing against the caller's daily cap; false when the cap is reached. */
 /** Also false while visitor-triggered AI work is paused for the day (every model in the chain past the ceiling): nothing is counted then. */
-export const autogenAllowed = async () => !(await userAiBusy("userAuto")) && (await hit("autogen", limits.autogen())).ok;
+export const autogenAllowed = async () => (currentUid() === OWNER || !(await userAiBusy("userAuto"))) && (await hit("autogen", limits.autogen())).ok;
 
 /** A user's refresh-button state: presses left today and when the next one is allowed. */
 export async function userRefreshQuota(now = new Date()): Promise<{ left: number; limit: number; nextAt: string | null }> {
@@ -66,19 +66,42 @@ export function clientIp(req: Request): string {
   return ip.trim().slice(0, 64).replace(/[^0-9a-fA-F:.]/g, "") || "unknown";
 }
 
-/**
- * Per-address counter in a fixed window (the window number is part of the key, which expires on its own).
- * Costs ONE Redis command per call (INCR), plus one EXPIRE on the first call of a window: an
- * `ipHit` for a price request is 1 command, 2 once per minute per address.
- */
+/** The key a caller is limited by: an IPv4 address, or an IPv6 address's /64 (one household gets billions of addresses). */
+export function ipKey(req: Request): string {
+  const ip = clientIp(req);
+  if (!ip.includes(":")) return ip;
+  const mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
+  if (mapped) return mapped[1];
+  const [h, t] = ip.split("::");
+  const head = h ? h.split(":") : [];
+  const tail = t ? t.split(":") : [];
+  const fill = ip.includes("::") ? Array(Math.max(0, 8 - head.length - tail.length)).fill("0") : [];
+  const groups = [...head, ...fill, ...tail].map((x) => x.toLowerCase().replace(/^0+(?=.)/, ""));
+  return `${groups.slice(0, 4).join(":")}::/64`;
+}
+
+/** Per-address daily/other counter in the store: one pipeline (INCR + EXPIRE, one request) per call. For rare paid actions. */
 export async function ipHit(name: string, req: Request, limit: number, windowSec: number, now = new Date()): Promise<{ ok: boolean; used: number; retryAfterSec: number }> {
   const win = Math.floor(now.getTime() / (windowSec * 1000));
-  const used = await incrWindow(`rl:ip:${name}:${clientIp(req)}:${win}`, windowSec + 5).catch(() => 0); // a store hiccup lets the request through
+  const used = await incrWindow(`rl:ip:${name}:${ipKey(req)}:${win}`, windowSec + 5).catch(() => 0); // a store hiccup lets the request through
   return { ok: used <= limit, used, retryAfterSec: Math.max(1, Math.ceil(((win + 1) * windowSec * 1000 - now.getTime()) / 1000)) };
 }
 
-/** Price routes (/api/quotes, /api/chart): requests per address per minute. */
-export async function priceLimited(req: Request): Promise<Response | null> {
-  const r = await ipHit("px", req, limits.pricePerMin(), 60);
+/** In-memory counters, per server instance: no store commands. Good enough to stop hammering of the price routes. */
+const mem = new Map<string, { win: number; n: number }>();
+export function memHit(name: string, req: Request, limit: number, windowSec: number, now = new Date()): { ok: boolean; retryAfterSec: number } {
+  const win = Math.floor(now.getTime() / (windowSec * 1000));
+  const key = `${name}:${ipKey(req)}`;
+  const cur = mem.get(key);
+  const e = cur && cur.win === win ? cur : { win, n: 0 };
+  e.n++;
+  mem.set(key, e);
+  if (mem.size > 5000) for (const [k, v] of mem) if (v.win !== win) mem.delete(k);
+  return { ok: e.n <= limit, retryAfterSec: Math.max(1, Math.ceil(((win + 1) * windowSec * 1000 - now.getTime()) / 1000)) };
+}
+
+/** Price routes (/api/quotes, /api/chart): requests per address per minute, counted in memory (no Redis commands). */
+export function priceLimited(req: Request): Response | null {
+  const r = memHit("px", req, limits.pricePerMin(), 60);
   return r.ok ? null : Response.json({ error: "slow down" }, { status: 429, headers: { "Retry-After": String(r.retryAfterSec) } });
 }

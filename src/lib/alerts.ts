@@ -13,7 +13,7 @@ import { getLiveQuotes, type LiveQuote } from "./chart";
 import { appUrl, emailProvider, sendEmail } from "./email";
 import { makeT, type MsgKey, type T } from "./i18n";
 import { isLang, langInfo, type LangCode } from "./languages";
-import { currentUid, OWNER, ukey } from "./context";
+import { currentUid, hasUser, OWNER, ukey } from "./context";
 import { multiUser } from "./mode";
 import { listUsers } from "./users";
 import { getJSON, setJSON } from "./store";
@@ -101,6 +101,7 @@ export async function loadAlertSettings(): Promise<AlertSettings> {
  */
 export async function emailBlocked(email: string): Promise<boolean> {
   if (!email || !multiUser()) return false;
+  if (!hasUser()) return true; // never fall back to the owner's rights without an account in context
   const uid = currentUid();
   if (uid === OWNER) return false;
   const rec = (await listUsers()).find((u) => u.uid === uid);
@@ -311,7 +312,6 @@ function nextWeekday(iso: string): string {
 export async function predictionAlerts(next: Outlook[], prev: Outlook[], interests: Interest[], now = new Date()) {
   const settings = await loadAlertSettings();
   if (!settings.enabled) return { skipped: "alerts disabled" };
-  if (await emailBlocked(settings.email)) return { skipped: "address is not the account's" };
   const lang = await mailLang();
   const t = makeT(lang);
   const date = dayIn(NY, now);

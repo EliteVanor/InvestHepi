@@ -1,6 +1,7 @@
 import { isLang } from "@/lib/languages";
 import { translateLatest } from "@/lib/briefings";
 import { translatePredictions } from "@/lib/predictions";
+import { withCeiling } from "@/lib/context";
 import { userAiBusy } from "@/lib/llm/models";
 import { hit, ipHit, limits } from "@/lib/ratelimit";
 import { SECTION_IDS, type SectionId } from "@/lib/types";
@@ -31,14 +32,16 @@ export async function POST(req: Request) {
       if (!(await ipHit("translate", req, limits.translateIp(), 86400)).ok) return false;
       return (await hit("translate", cap)).ok;
     };
+    // A signed-out visitor's translation also skips any model past the ceiling (available() in models.ts).
+    const run = <T,>(fn: () => Promise<T>) => (user ? fn() : withCeiling(fn));
     try {
       // ?kind=predictions → the section's prediction notes (all its markets in one go).
       if (p.get("kind") === "predictions") {
-        const sets = await translatePredictions(section, lang, mayTranslate);
+        const sets = await run(() => translatePredictions(section, lang, mayTranslate));
         return Response.json({ sets, translated: sets.every((s) => s.language === lang) });
       }
       const variant = p.get("variant") === "rules" ? "rules" : undefined;
-      const digest = await translateLatest(section, lang, mayTranslate, variant);
+      const digest = await run(() => translateLatest(section, lang, mayTranslate, variant));
       return Response.json({ digest, translated: digest?.language === lang });
     } catch (e) {
       console.error("translate failed:", e);

@@ -51,7 +51,8 @@ export async function POST(req: Request) {
       if (d.language !== lang) await translateLatest(section, lang).catch(() => null);
       return Response.json({ results: [{ section, ok: true, provider: d.provider, keptAi: !!d.keptAi }], quota: { left: rl.limit - rl.used, limit: rl.limit, nextAt: null } });
     } catch (e) {
-      return Response.json({ results: [{ section, ok: false, error: (e as Error).message }] });
+      console.error("refresh (admin) failed:", e);
+      return Response.json({ results: [{ section, ok: false, error: "Refresh failed" }] });
     }
   });
 }

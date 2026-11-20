@@ -34,8 +34,8 @@ async function catchUp(user: User | null): Promise<string | undefined> {
   if (!user || user.admin || !multiUser()) return undefined;
   const stale = await interestBriefingStale((await currentInterestSet()).hash, CATCH_UP_AFTER_MS).catch(() => null);
   if (!stale?.at) return undefined; // fresh, or no briefing yet (saving interests makes the first one)
-  if ((await peek("autogen", limits.autogen())).left < 1) return undefined;
-  if (await userAiBusy("userAuto")) return undefined; // AI is past its daily ceiling for visitors: show the old briefing, do not make the page wait // capped today: don't make the page wait
+  if ((await peek("autogen", limits.autogen())).left < 1) return undefined; // capped today: don't make the page wait
+  if (await userAiBusy("userAuto")) return undefined; // AI is past its daily ceiling for visitors: show the old briefing, don't make the page wait
   void background(() => withUser(user.uid, () => ensureInterestBriefing(user.uid, autogenAllowed, CATCH_UP_AFTER_MS)));
   return stale.at;
 }

@@ -47,6 +47,6 @@ export async function PUT(req: Request) {
       return Response.json({ error: "email" }, { status: 400 });
     }
     await saveAlertSettings(parsed.data);
-    return Response.json({ settings: parsed.data, emailBlocked: false });
+    return Response.json({ settings: parsed.data, emailBlocked: await emailBlocked(parsed.data.email) });
   });
 }

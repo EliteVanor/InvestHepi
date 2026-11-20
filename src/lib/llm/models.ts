@@ -26,6 +26,7 @@ import { getJSON, setJSON } from "../store";
 import { plannedPerDay } from "../timetable";
 import { geminiProvider, groqProvider, type CompatProvider } from "./openai-compat";
 import { dayIn } from "../dates";
+import { ceilingMarked, currentUid, OWNER } from "../context";
 
 export type ModelKey = "groq120" | "groq20" | "qwen" | "gem35" | "gem31";
 export type Route = "predShared" | "predAdmin" | "predUser" | "shared" | "adminAuto" | "adminManual" | "userAuto" | "userManual" | "translate" | "ask";
@@ -152,12 +153,19 @@ export function reserveFor120(u: ModelUsage, now = new Date()): number {
   return left * avg;
 }
 
+/** Routes that visitors' own actions use; the admin (owner) is exempt, and guests' translation is marked with withCeiling(). */
+const VISITOR_ROUTES: ReadonlySet<Route> = new Set(["userAuto", "userManual", "ask", "predUser"]);
+function ceilingApplies(route: Route): boolean {
+  return ceilingMarked() || (VISITOR_ROUTES.has(route) && currentUid() !== OWNER);
+}
+
 /** Whether `route` may call this model now: not cooling down, and under 97% of the daily allowance. */
 export async function available(def: ModelDef, route: Route, now = new Date()): Promise<{ ok: boolean; why?: string }> {
   const u = await loadUsage(def, now);
   if (u.cooldownUntil && u.cooldownUntil > now.getTime()) return { ok: false, why: `cooling down until ${new Date(u.cooldownUntil).toISOString().slice(11, 16)} UTC` };
   if (def.tokensPerDay && u.tokens >= def.tokensPerDay * 0.97) return { ok: false, why: "daily tokens used up" };
   if (def.requestsPerDay && u.requests >= def.requestsPerDay * 0.97) return { ok: false, why: "daily requests used up" };
+  if (ceilingApplies(route) && overUserCeiling(def, u)) return { ok: false, why: "kept for shared and admin runs (past the visitor ceiling)" };
   if (def.key === "groq120" && (route === "userAuto" || route === "predUser") && def.tokensPerDay) {
     const room = def.tokensPerDay * 0.97 - u.tokens - reserveFor120(u, now);
     if (room < AVG_RUN_TOKENS) return { ok: false, why: "kept for shared and admin predictions" };
@@ -179,8 +187,8 @@ export function overUserCeiling(def: ModelDef, u: ModelUsage): boolean {
 }
 
 /**
- * True when visitor-triggered AI work on this route should wait for tomorrow: every model in its chain
- * is past the ceiling (with no key configured nothing is "busy": the rule-based copy needs no model).
+ * Only decides the "busy" reply: true when every model in the route's chain is past the ceiling (the
+ * ceiling itself is enforced per model in available()). With no key configured nothing is "busy": the rule-based copy needs no model.
  */
 export async function userAiBusy(route: Route, now = new Date()): Promise<boolean> {
   const chain = chainFor(route);

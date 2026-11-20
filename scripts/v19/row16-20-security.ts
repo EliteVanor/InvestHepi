@@ -70,7 +70,7 @@ const B = "bob@example.com";
 const OWNER = "owner@example.com";
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const rlCmds = () => cmds.filter((c) => String(c[1]).startsWith("rl:ip:")).length;
   const U = await import("../../src/lib/users");
   U.setSessionResolver(async (req) => {
@@ -112,7 +112,13 @@ const OWNER = "owner@example.com";
   const { checkPriceAlerts, predictionAlerts } = await import("../../src/lib/alerts");
   const skipped = await withUser(U.uidFor(B), () => checkPriceAlerts([{ name: "x", tickers: ["SPY"] } as never]));
   assert.ok("skipped" in skipped, "scheduled price alerts skip a mismatched address");
-  assert.ok("skipped" in (await withUser(U.uidFor(B), () => predictionAlerts([], [], []))));
+  await withUser(U.uidFor(B), () => predictionAlerts([{ interest: "x", ticker: "SPY", direction: "up", confidence: 90, action: "Buy" } as never], [], [{ name: "x", tickers: ["SPY"] } as never]));
+  // no account in context (multi-user): nothing is sent, the owner default is not assumed
+  const { emailBlocked } = await import("../../src/lib/alerts");
+  assert.equal(await emailBlocked("anyone@example.com"), true, "no user context: refused");
+  assert.equal(await withUser("owner", () => emailBlocked("anyone@example.com")), false, "the owner inside withUser may use any address");
+  assert.equal((await (await alerts.PUT(put(B, { ...mine, email: "" }))).json()).emailBlocked, false);
+  assert.equal(await withUser(U.uidFor(B), () => emailBlocked("victim@example.com")), true);
   assert.equal(emailsTo.length, before);
   assert.equal((await alerts.GET(req("/api/alerts", A))).status, 200);
   assert.equal((await (await alerts.GET(req("/api/alerts", A))).json()).emailBlocked, false);
@@ -164,7 +170,26 @@ const OWNER = "owner@example.com";
   assert.equal((await tr.POST(trReq("de", "2.2.2.2"))).status, 502, "another address still has its own allowance");
   assert.equal((await tr.POST(trReq("ja", "1.1.1.1", A))).status, 502, "a signed-in reader is not held to the visitor limit");
 
-  // The ceiling: one model over 70% is not enough, the whole chain must be
+  // The ceiling is per model: a visitor's route skips a model past 70%, shared runs keep using it
+  const uB = U.uidFor(B);
+  await setUse("gem35", 0.95);
+  await setUse("groq20", 0.1);
+  const g35m = M.modelDef("gem35")!;
+  const g20m = M.modelDef("groq20")!;
+  assert.equal((await withUser(uB, () => M.available(g35m, "userAuto"))).ok, false, "userAuto skips Flash-Lite 3.5 at 95%");
+  assert.equal((await withUser(uB, () => M.available(g35m, "userManual"))).ok, false);
+  assert.equal((await withUser(uB, () => M.available(g20m, "userAuto"))).ok, true, "and uses 20b at 10%");
+  assert.equal((await M.available(g35m, "shared")).ok, true, "shared still uses 3.5 (up to 97%)");
+  assert.equal((await withUser(U.uidFor(OWNER), () => M.available(g35m, "userAuto"))).ok, true, "the admin is exempt");
+  assert.equal((await withUser("owner", () => M.available(g35m, "ask"))).ok, true);
+  const C = await import("../../src/lib/context");
+  assert.equal((await withUser(uB, () => C.withCeiling(() => M.available(g35m, "translate")))).ok, false, "guest translation (withCeiling) skips it too");
+  assert.equal((await withUser(uB, () => M.available(g35m, "translate"))).ok, true, "scheduled/other translation does not");
+  assert.equal(await withUser("owner", () => RL.autogenAllowed()), true, "the admin's first briefing is not paused");
+  await setUse("gem35", 0);
+  await setUse("groq20", 0);
+
+  // The busy reply: the whole chain must be past it
   assert.equal(await M.userAiBusy("userAuto"), false);
   const g35 = await setUse("gem35", 0.75);
   assert.equal(await M.userAiBusy("userAuto"), false, "others in the chain still have room");
@@ -199,6 +224,7 @@ const OWNER = "owner@example.com";
   const akOwner = await ask.POST(req("/api/ask", OWNER, { method: "POST", body: JSON.stringify({ question: "what moved?" }) }));
   assert.notEqual(akOwner.status, 503, "the admin is not paused");
   assert.equal(await withUser(U.uidFor(B), () => RL.autogenAllowed()), false, "first briefings and catch-ups are paused");
+  assert.equal(await withUser("owner", () => RL.autogenAllowed()), true, "but not the admin's");
   assert.equal(await withUser(U.uidFor(B), async () => (await RL.peek("autogen", RL.limits.autogen())).used), 0, "and not counted");
   void me;
   // a visitor's translation: past the ceiling nothing is paid, and the per-address counter isn't touched
@@ -217,17 +243,26 @@ const OWNER = "owner@example.com";
   const c0 = cmds.length;
   const first = await quotes.GET(px("/api/quotes?symbols=SPY", "4.4.4.4"));
   assert.notEqual(first.status, 429);
-  const ours = cmds.slice(c0).filter((c) => String(c[1]).startsWith("rl:ip:px"));
-  assert.deepEqual(ours.map((c) => c[0].toLowerCase()), ["incr", "expire"], "first request of a window: INCR + EXPIRE");
-  const c1 = cmds.length;
-  await quotes.GET(px("/api/quotes?symbols=SPY", "4.4.4.4"));
-  const second = cmds.slice(c1).filter((c) => String(c[1]).startsWith("rl:ip:px"));
-  assert.deepEqual(second.map((c) => c[0].toLowerCase()), ["incr"], "later requests: one command");
-  for (let i = 0; i < 3; i++) await chart.GET(px("/api/chart?symbol=SPY&range=1d", "4.4.4.4"));
+  assert.equal(cmds.slice(c0).filter((c) => String(c[1]).includes("rl:ip:px") || String(c[1]).startsWith("px:")).length, 0, "price limit uses no Redis commands (counted in memory)");
+  for (let i = 0; i < 4; i++) await chart.GET(px("/api/chart?symbol=SPY&range=1d", "4.4.4.4"));
   const over = await quotes.GET(px("/api/quotes?symbols=SPY", "4.4.4.4"));
   assert.equal(over.status, 429, "6th request in the minute (quotes and chart share the counter)");
   assert.ok(Number(over.headers.get("retry-after")) >= 1);
   assert.notEqual((await quotes.GET(px("/api/quotes?symbols=SPY", "5.5.5.5"))).status, 429, "another address is unaffected");
+  // IPv6: one /64 is one caller, however the address is written
+  const v6 = (ip: string) => new Request("http://x", { headers: { "x-real-ip": ip } });
+  assert.equal(RL.ipKey(v6("2001:db8:1:2:aaaa:bbbb:cccc:dddd")), RL.ipKey(v6("2001:0DB8:0001:0002::1")), "same /64, same key");
+  assert.notEqual(RL.ipKey(v6("2001:db8:1:3::1")), RL.ipKey(v6("2001:db8:1:2::1")), "another /64, another key");
+  assert.equal(RL.ipKey(v6("::ffff:1.2.3.4")), "1.2.3.4");
+  assert.equal(RL.ipKey(v6("1.2.3.4")), "1.2.3.4");
+  assert.equal(RL.ipKey(v6("2001:db8::")), "2001:db8:0:0::/64");
+  const v6px = (n: number) => req("/api/quotes?symbols=SPY", undefined, { headers: { "x-real-ip": `2001:db8:9:9:${n}::${n}` } });
+  for (let i = 1; i <= 5; i++) await quotes.GET(v6px(i));
+  assert.equal((await quotes.GET(v6px(6))).status, 429, "rotating addresses inside a /64 doesn't help");
+  // translate per-IP counter is one pipeline (INCR + EXPIRE in a single request)
+  const before2 = cmds.length;
+  await RL.ipHit("t", v6("8.8.8.8"), 5, 60);
+  assert.deepEqual(cmds.slice(before2).map((c) => c[0].toLowerCase()), ["incr", "expire"]);
   assert.equal(RL.clientIp(new Request("http://x", { headers: { "x-forwarded-for": "9.9.9.9, 10.0.0.1" } })), "9.9.9.9");
 
   /* ===== Row 19: no GET refresh, security headers ===== */
