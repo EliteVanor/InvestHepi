@@ -124,7 +124,7 @@ async function main() {
   assert.ok(!cal.events.some((e) => e.ticker === "ZZZZ"), "other companies' earnings filtered out");
   assert.equal(parseBlsIcs(BLS_ICS, day(0), day(21)).length, 2);
   assert.equal(fomcEvents("2026-12-01", "2026-12-31").events[0].date, "2026-12-09", "FOMC Dec 2026");
-  assert.equal(fomcEvents("2026-12-20", "2027-01-10").covered, false, "flags missing next-year FOMC dates");
+  assert.equal(fomcEvents("2027-12-20", "2028-01-10").covered, false, "flags missing next-year FOMC dates (2028 is not in the app yet)");
 
   // History is capped.
   const { refreshSection } = await import("../src/lib/pipeline");

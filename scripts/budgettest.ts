@@ -111,7 +111,8 @@ const reset = () => {
   assert.equal(M.reserveFor120(fresh, weekday), (16 + 4) * 6000, "nothing done yet: 16 shared + 4 admin at 6K");
   assert.equal(M.reserveFor120({ ...fresh, tokens: 60000, requests: 10, byRoute: { predShared: 8, predAdmin: 2 } }, weekday), (8 + 2) * 6000, "uses the measured average");
   assert.deepEqual(M.scheduledPerDay(new Date("2026-11-21T09:00:00Z")), { shared: 0, admin: 0 }, "Saturday: no predictions");
-  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-22T09:00:00Z")), { shared: 1, admin: 0 }, "Sunday UTC: only Japan's Monday before-market run (08:30 Tokyo = 23:30 UTC)");
+  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-22T09:00:00Z")), { shared: 0, admin: 0 }, "Sunday UTC: Japan is closed Monday Nov 23 (Labor Thanksgiving Day, holidays.ts), so no run at all");
+  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-29T09:00:00Z")), { shared: 1, admin: 0 }, "Sunday UTC: only Japan's Monday before-market run (07:30 Tokyo = 22:30 UTC)");
   const { setJSON } = await import("../src/lib/store");
   await setJSON("llm:usage:groq120", { day: dayIn("UTC"), tokens: 120_000, requests: 17, byRoute: { predShared: 2 } });
   assert.equal((await M.available(g120, "userAuto")).ok, false, "users' sets move off 120b once only the reserve is left");

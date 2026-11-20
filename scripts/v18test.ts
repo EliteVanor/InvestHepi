@@ -126,17 +126,17 @@ const T = (iso: string) => Date.parse(iso);
   calls = (await getJSON<Call[]>("calls:t"))!;
   const w = byId("2026-11-18:AAA:w");
   assert.deepEqual([w.gradedOn, w.outcomeClose, w.correct], ["2026-11-23", 104, true], "5th day was a holiday: graded on Monday's close");
-
+  // Daily on a closure the holiday table does not know (Seoul has no table; v19 row09 covers listed holidays): market closed, not graded; a late-posted bar is waited for.
   // Daily on a holiday: market closed, not graded; a late-posted bar is waited for.
-  await TR.recordCalls([o("CCC", "today")], [{ id: "c", name: "C", query: "", tickers: ["CCC"] }], "groq", at("2026-11-26T12:30:00Z"), "calls:h", { phase: "pre" });
-  closes.CCC = [["2026-11-24", 10], ["2026-11-25", 10.1]];
+  await TR.recordCalls([o("CCC.KS", "today")], [{ id: "c", name: "C", query: "", tickers: ["CCC.KS"] }], "groq", at("2026-11-26T00:30:00Z"), "calls:h", { phase: "pre" });
+  closes["CCC.KS"] = [["2026-11-24", 10], ["2026-11-25", 10.1]];
   assert.equal(await TR.gradeCalls(at("2026-11-26T22:00:00Z"), "calls:h"), 0, "no bar yet, could still be posted: wait");
-  closes.CCC.push(["2026-11-27", 10.3]);
+  closes["CCC.KS"].push(["2026-11-27", 10.3]);
   assert.equal(await TR.gradeCalls(at("2026-11-27T22:00:00Z"), "calls:h"), 1);
   const hol = (await getJSON<Call[]>("calls:h"))![0];
-  assert.deepEqual([hol.closed, hol.correct, hol.returnPct], [true, undefined, undefined], "Thanksgiving: market closed, not graded");
-  await TR.recordCalls([o("DDD", "today")], [{ id: "d", name: "D", query: "", tickers: ["DDD"] }], "groq", at("2026-11-26T12:30:00Z"), "calls:h2", { phase: "pre" });
-  closes.DDD = [["2026-11-24", 10], ["2026-11-25", 10.1]];
+  assert.deepEqual([hol.closed, hol.correct, hol.returnPct], [true, undefined, undefined], "unlisted closure: market closed, not graded");
+  await TR.recordCalls([o("DDD.KS", "today")], [{ id: "d", name: "D", query: "", tickers: ["DDD.KS"] }], "groq", at("2026-11-26T00:30:00Z"), "calls:h2", { phase: "pre" });
+  closes["DDD.KS"] = [["2026-11-24", 10], ["2026-11-25", 10.1]];
   assert.equal(await TR.gradeCalls(at("2026-11-28T23:00:00Z"), "calls:h2"), 1, "no later bar, but two days passed: closed");
   assert.equal((await getJSON<Call[]>("calls:h2"))![0].closed, true);
 
