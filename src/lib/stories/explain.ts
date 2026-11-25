@@ -22,6 +22,8 @@ export interface ExplainInput {
   stories: Story[];
   /** Titles of this run's stories whose cards are still fresh: not explained again, but the big picture may name them. */
   covered: string[];
+  /** Candidates mode (owner Q16): the model writes cards only for this many of each kind, the most important. Unset: every story. */
+  want?: { important: number; interesting: number };
   market: { quotes: Quote[]; macro?: Quote[]; sectors?: Quote[] };
   calendar: CalendarEvent[];
   lang: "en" | "vi";
@@ -59,6 +61,7 @@ export const ExplainSchema = z.object({
       watch: z.string().optional(),
       concepts: z.array(z.string()),
       source_ids: z.array(z.string()),
+      importance: z.number(),
     }),
   ),
   movers: z.array(z.object({ ticker: z.string(), why: z.string(), source_ids: z.array(z.string()) })),
@@ -98,6 +101,7 @@ export function normalizeExplain(input: unknown): unknown {
         ...(s.watch != null && str(s.watch).trim() ? { watch: str(s.watch) } : {}),
         concepts: strs(s.concepts),
         source_ids: strs(s.source_ids),
+        importance: s.importance == null || s.importance === "" || !Number.isFinite(Number(s.importance)) ? 3 : Math.min(5, Math.max(1, Math.round(Number(s.importance)))),
       };
     }),
     movers: arr(o.movers).map((x) => {
@@ -235,6 +239,7 @@ export async function explainStories(input: ExplainInput, route: Route): Promise
       past: past ? { id: past, different: clean(c.different) } : null,
       ...(watch ? { watch } : {}),
       concepts: c.concepts.map((t) => t.trim()).filter(Boolean).slice(0, 3),
+      importance: c.importance,
       memberIds: s.members.map((m) => m.id),
     });
   }

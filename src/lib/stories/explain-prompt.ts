@@ -28,7 +28,7 @@ How to write:
 
 export const EXPLAIN_HINT = `Return ONLY a JSON object with exactly this shape:
 { "big_picture": [string, string, string],
-  "stories": [{ "story": "S1", "title": string, "what": string, "why": string, "markets": [{ "ticker": string, "direction": "up"|"down"|"flat", "text": string }], "world": string, "past_id": string|null, "different": string, "watch": string (optional), "concepts": [string], "source_ids": [string] }],
+  "stories": [{ "story": "S1", "title": string, "what": string, "why": string, "markets": [{ "ticker": string, "direction": "up"|"down"|"flat", "text": string }], "world": string, "past_id": string|null, "different": string, "watch": string (optional), "concepts": [string], "source_ids": [string], "importance": 1-5 }],
   "movers": [{ "ticker": string, "why": string, "source_ids": [string] }],
   "watch": [string] }`;
 
@@ -39,6 +39,7 @@ export interface PromptParts {
   market: { quotes: Quote[]; macro?: Quote[]; sectors?: Quote[] };
   calendar: CalendarEvent[];
   covered: string[];
+  want?: { important: number; interesting: number };
 }
 
 export function buildExplainSystem(p: Pick<PromptParts, "section" | "lang">): string {
@@ -82,5 +83,9 @@ export function buildExplainUser(p: PromptParts, stories: Story[], cands: PastEv
 STORIES (most important first; cite headline ids in source_ids):
 ${stories.map((s, i) => storyBlock(s, i, cands[i] ?? [])).join("\n\n")}
 
-Explain each story as one entry in "stories", using its S number.`;
+${
+    p.want
+      ? `These are CANDIDATES. Write entries only for the ${p.want.important} most important "important" stories${p.want.interesting ? ` and the ${p.want.interesting} most interesting "interesting" stories` : ""}, by what matters to most readers today (markets, prices, policy, many people's lives); skip local or minor items (weather chatter, small crimes, celebrity news) even when they are recent. Fewer entries are better than filler. Give each entry "importance" 1-5 (5 = matters to most readers today, 1 = minor). big_picture is about the stories you chose and the covered ones.`
+      : `Explain each story as one entry in "stories", using its S number. Give each entry "importance" 1-5 (5 = matters to most readers today, 1 = minor).`
+  }`;
 }

@@ -43,7 +43,11 @@ export function cardFresh(card: StoryCard | undefined, s: Story, now: Date): car
   return age >= 0 && age < CARD_FRESH_MS && s.outlets.length - card.outletsAtExplain < NEW_OUTLETS_REEXPLAIN;
 }
 
-/** The stories to show this run, best first (also used to order the run's cards). */
+/**
+ * The run's candidates, best first: the top `toModel` important stories and up to twice the interesting quota
+ * (My Interests: the top `toModel` tagged ones). The model scores and picks among them (owner Q16); `selectCards`
+ * then keeps the quota.
+ */
 export function shownStories(stories: Story[], quotes: Quote[], opts: PickOpts): Story[] {
   const pool = opts.interests ? stories.filter((s) => s.members.some((m) => m.tags?.length)) : stories;
   const ranked = pool
@@ -53,14 +57,28 @@ export function shownStories(stories: Story[], quotes: Quote[], opts: PickOpts):
     // One card per subject: a story related to a better-ranked one (same event in another cluster, or another
     // event of the same subject) gives its slot to the next subject.
     .reduce<Story[]>((kept, s) => (kept.some((k) => relatedStories(k, s)) ? kept : [...kept, s]), []);
-  if (opts.interests) return ranked.slice(0, Math.min(opts.important, opts.toModel));
-  const top = ranked.slice(0, opts.toModel);
-  const interesting = ranked.filter((s) => s.kind === "interesting").slice(0, opts.interesting);
-  const important = top.filter((s) => s.kind === "important");
-  const total = opts.important + opts.interesting;
-  const chosen = new Set([...important.slice(0, opts.important), ...interesting]);
-  for (const s of important) if (chosen.size < total) chosen.add(s); // too few interesting: important fill in
+  if (opts.interests) return ranked.slice(0, opts.toModel);
+  const important = ranked.filter((s) => s.kind === "important").slice(0, opts.toModel);
+  const interesting = ranked.filter((s) => s.kind === "interesting").slice(0, opts.interesting * 2);
+  const chosen = new Set([...important, ...interesting]);
   return ranked.filter((s) => chosen.has(s));
+}
+
+/**
+ * The cards to show, from the candidates' cards (in candidate order): the `important` quota of important cards
+ * and the `interesting` quota of interesting ones, each by the model's importance (cards without one count 3),
+ * ties by candidate rank; too few interesting cards: important ones fill in. `pinned` (a big story) always shows.
+ * My Interests: `important` cards whatever their kind. Shown most important first.
+ */
+export function selectCards(cards: StoryCard[], opts: PickOpts, pinned: Set<string> = new Set()): StoryCard[] {
+  const rank = new Map(cards.map((c, i) => [c.id, i]));
+  const best = (xs: StoryCard[]) =>
+    [...xs].sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)) || (b.importance ?? 3) - (a.importance ?? 3) || rank.get(a.id)! - rank.get(b.id)!);
+  if (opts.interests) return best(cards).slice(0, opts.important);
+  const important = best(cards.filter((c) => c.kind !== "interesting"));
+  const interesting = best(cards.filter((c) => c.kind === "interesting")).slice(0, opts.interesting);
+  const fill = opts.important + opts.interesting - interesting.length;
+  return [...important.slice(0, Math.max(opts.important, fill)), ...interesting];
 }
 
 export function pickForRun(stories: Story[], cards: Record<string, StoryCard>, quotes: Quote[], now: Date, opts: PickOpts = SHARED_PICK): { explain: Story[]; keep: StoryCard[] } {

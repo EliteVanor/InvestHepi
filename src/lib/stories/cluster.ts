@@ -128,12 +128,20 @@ const sigOf = (item: NewsItem): Sig => {
  * no opposite moves, no different dates. Used by the picker to avoid two cards on one subject; clustering itself
  * never merges on it (word counts can't tell "same event" from "same topic", so cards and sources stay exact).
  */
+/** All-caps 3-4 letter words that name a company or index (PNJ, FPT, NVDA), not common acronyms. */
+const NOT_CODES = new Set("USD VND EUR GDP CPI CEO CFO IPO ETF FED ECB BOJ IMF WTO OPEC NATO AI UK US EU USA UAE BBC CNN AP HNX HOSE UBCK NHNN SBV FDI MSCI FTSE TP HCM".split(" "));
+const codesOf = (title: string) => new Set((title.match(/\b[A-Z]{3,4}\b/g) ?? []).filter((w) => !NOT_CODES.has(w)));
+
 export function relatedStories(a: Story, b: Story): boolean {
   const x = sigOf(a.members[0]), y = sigOf(b.members[0]);
   if (x.lang !== y.lang || x.dir * y.dir < 0) return false;
   if (x.dates.size && y.dates.size && ![...y.dates].some((d) => x.dates.has(d))) return false;
   const cx = core(x), cy = core(y);
   const shared = overlap(cx, cy);
+  // Two stories naming the same company code and one more distinctive word are one subject (two PNJ gold-ring
+  // stories on Nov 25 shared only "PNJ" and "vàng nhẫn").
+  const codes = codesOf(a.members[0].title);
+  if (shared >= 1 && [...codesOf(b.members[0].title)].some((c) => codes.has(c))) return true;
   return shared >= RELATED_SHARED && shared / Math.max(1, Math.min(cx.size, cy.size)) >= RELATED_OVERLAP;
 }
 
