@@ -130,8 +130,11 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   translatorCalls = 0;
   const [a, b] = await Promise.all([HL.translateHeadlines(mk(), "vi"), HL.translateHeadlines(mk(), "vi")]);
   assert.equal(translatorCalls, 1, "one translator call for two concurrent batches");
-  assert.ok(a.every((n) => n.title.startsWith("vi:")), "winner translated");
-  assert.ok(b.every((n) => !n.title.startsWith("vi:")), "loser returns at once, untranslated (no polling)");
+  // Either request can win the lock (whichever store write lands first): exactly one comes back translated,
+  // the loser at once and untranslated (no polling).
+  const done = (xs: typeof a) => xs.every((n) => n.title.startsWith("vi:"));
+  const none = (xs: typeof a) => xs.every((n) => !n.title.startsWith("vi:"));
+  assert.ok((done(a) && none(b)) || (done(b) && none(a)), "one winner translated, the loser returned untranslated");
   const again = await HL.translateHeadlines(mk(), "vi");
   assert.ok(again.every((n) => n.title.startsWith("vi:")), "the next poll gets the winner's cached translations");
   assert.equal(translatorCalls, 1, "...without a second translator call");
