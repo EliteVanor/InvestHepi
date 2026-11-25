@@ -1,3 +1,5 @@
+> Historical: this plan was carried out in an earlier round and is kept for the record. The current state is in `CLAUDE.md` and `docs/HANDOFF.md`.
+
 # Plan v18: predictions apart from briefings, timezone setting, weekend briefings, 15-min headlines
 
 Decided by the owner on Nov 16-17 2026. Don't re-ask these; ask only what's still open.

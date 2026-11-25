@@ -173,8 +173,11 @@ npm install
 cp .env.example .env.local   # at least one AI key
 npm run dev                  # http://localhost:3000, data in .data/ as JSON
 npm run refresh -- world     # run the pipeline once from the terminal
-npm test                     # 16 offline suites (no network)
+npm test                     # all 20 offline suites (no network), a summary at the end
+npx tsx scripts/run-tests.ts v18test selftest   # only some suites (names from scripts/run-tests.ts)
+npx tsx scripts/vntest.ts    # one suite on its own
 npm run typecheck
+npm run build                # must pass with and without the AUTH_* variables
 ```
 
 [`CLAUDE.md`](CLAUDE.md) has the code map, the architecture and what each test suite covers; [`docs/HANDOFF.md`](docs/HANDOFF.md) has the product decisions and the history of each round.

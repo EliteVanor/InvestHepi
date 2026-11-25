@@ -4,13 +4,13 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { relTime } from "@/lib/i18n";
 import { langInfo } from "@/lib/languages";
 import { fmtDuration, marketClock, vnMarketClock } from "@/lib/marketTime";
-import type { CalendarEvent, Digest, Interest, KeyEvent, NewsItem, Outlook, Quote } from "@/lib/types";
+import type { CalendarEvent, Digest, Interest, KeyEvent, NewsItem, Quote } from "@/lib/types";
 import type { MsgKey } from "@/lib/i18n";
 import {
-  IconAlert, IconArrow, IconBookmark, IconCalendar, IconCopy, IconEye, IconHistory, IconSearch, IconShare, IconSparkles, IconSpeaker, IconStop, IconTarget,
+  IconAlert, IconArrow, IconBookmark, IconCalendar, IconCopy, IconEye, IconHistory, IconSearch, IconShare, IconSparkles, IconSpeaker, IconStop,
 } from "./Icons";
 import { usePrefs } from "./prefs";
-import { Ring, Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
+import { Sparkline, arrow, fmtPct, fmtPrice } from "./primitives";
 import { isPercentQuote } from "@/lib/symbols";
 import { levelLabel, moverChange, staleDayTag } from "@/lib/quote-view";
 import { calNotes, calTitle, calWhen, groupName, symName } from "./labels";

@@ -1,3 +1,5 @@
+> Historical: this plan was carried out in an earlier round and is kept for the record. The current state is in `CLAUDE.md` and `docs/HANDOFF.md`.
+
 # Invest Helper v4 plan
 
 **Goal (unchanged):** catch up on news about my stocks fast, and act on an AI read of the daily trend.

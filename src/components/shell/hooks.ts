@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { Account } from "@/components/account";
 import type { T } from "@/lib/i18n";
-import { SECTION_IDS, type Digest, type NewsItem, type SectionId } from "@/lib/types";
+import { SECTION_IDS, type NewsItem, type SectionId } from "@/lib/types";
 
 export type Api = <R = unknown>(url: string, init?: RequestInit) => Promise<R>;
 

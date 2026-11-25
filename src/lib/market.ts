@@ -14,8 +14,6 @@ import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
 import { emSession, hasEastmoney } from "./eastmoney";
 import { calendarKey, lastFinishedSession, localNow, prevWeekday, sessionHours, zoneOf } from "./markets";
-import { exchangeTz } from "./symbols";
-import { dayIn } from "./dates";
 import { windowBase, windowChange } from "./quote-view";
 
 const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
