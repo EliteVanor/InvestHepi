@@ -27,7 +27,7 @@ import { UpNext, WatchNext } from "@/components/sections/upnext";
 import { PredictionsCard, type StoryLinks } from "@/components/predictions";
 import { StoryList, focusStory } from "@/components/stories";
 import { callsOf } from "@/lib/predictions-view";
-import { layoutOf, relatedStories } from "@/lib/stories/view";
+import { layoutOf, relatedStories, providerNoteFor } from "@/lib/stories/view";
 import { SetupChecklist } from "@/components/setup";
 import type { Tab as SettingsTab } from "@/components/sheets/settings";
 import { Ambient, Footer, Sidebar, Skeleton, TabBar, TopBar, sectionName, type FrameActions } from "@/components/shell/chrome";
@@ -389,10 +389,10 @@ function App() {
               <button onClick={() => setError("")}>✕</button>
             </div>
           )}
-          {shown?.providerNote && !oldDigest && (
+          {providerNoteFor(shown, account.admin) && !oldDigest && (
             <div className="banner">
               <IconAlert />
-              <span style={{ wordBreak: "break-word" }}>{shown.providerNote}</span>
+              <span style={{ wordBreak: "break-word" }}>{providerNoteFor(shown, account.admin)}</span>
             </div>
           )}
 

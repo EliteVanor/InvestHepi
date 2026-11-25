@@ -90,3 +90,12 @@ export function marketChange(m: { changePct?: number }, quote?: { changePct?: nu
   const live = quote?.changePct;
   return typeof live === "number" && Number.isFinite(live) ? live : m.changePct;
 }
+
+/**
+ * The briefing's provider note ("Fell back after ...", or why the AI failed) is for the admin only: it names
+ * models and can carry an error message, and visitors see only generic errors (v19 rows 16-20). Visitors get
+ * the separate "AI failed" banner with the rule-based switch.
+ */
+export function providerNoteFor(d: { providerNote?: string } | null | undefined, admin: boolean): string | null {
+  return admin && d?.providerNote ? d.providerNote : null;
+}

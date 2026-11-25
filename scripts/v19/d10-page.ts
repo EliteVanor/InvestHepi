@@ -145,6 +145,14 @@ const call = (ticker: string, interest: string): Outlook => ({ interest, ticker,
   assert.equal(marketChange({ changePct: 0.19 }, undefined), 0.19, "snapshot without a quote");
   assert.equal(marketChange({ changePct: 0.19 }, { changePct: NaN }), 0.19, "a broken quote falls back");
 }
+// The provider note (model names, maybe an error message) is admin-only.
+{
+  const { providerNoteFor } = await import("../../src/lib/stories/view");
+  const d = { providerNote: "All AI providers failed: gemini: HTTP 500 internal detail" };
+  assert.equal(providerNoteFor(d, false), null, "visitors never see it");
+  assert.equal(providerNoteFor(d, true), d.providerNote, "the admin does");
+  assert.equal(providerNoteFor({}, true), null);
+}
 console.log("D10 PAGE OK");
 })().catch((e) => {
   console.error(e);
