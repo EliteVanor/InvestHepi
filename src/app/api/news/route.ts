@@ -1,4 +1,9 @@
 import { background } from "@/lib/background";
+import { withCeiling } from "@/lib/context";
+import { translateHeadlines } from "@/lib/headline-translate";
+import { isLang } from "@/lib/languages";
+import { userAiBusy } from "@/lib/llm/models";
+import { ipHit, limits } from "@/lib/ratelimit";
 import { loadHeadlines, noteReading, refreshSetIfStale, setStale } from "@/lib/headlines";
 import { currentInterestSet } from "@/lib/interests";
 import { multiUser } from "@/lib/mode";
@@ -13,6 +18,7 @@ export const maxDuration = 60;
  * For My Interests, asking marks the reader's set as being read (the tick keeps it fresh every 30 min
  * while it is), and a list that's gone stale (a user signing in or coming back) is refreshed in the
  * background right away; `refreshing: true` tells the page to ask again shortly.
+ * `&lang=xx` returns titles translated into that language (`titleOrig` = as published).
  */
 export async function GET(req: Request) {
   return gate(req, {}, async (user) => {
@@ -34,6 +40,14 @@ export async function GET(req: Request) {
       }
     }
     const n = await loadHeadlines(section, hash);
-    return Response.json({ at: n?.at ?? null, items: n?.items ?? [], ...(refreshing ? { refreshing } : {}) });
+    let items = n?.items ?? [];
+    // ?lang=xx → titles in that language (cached per headline; a failure leaves them as published).
+    const lang = new URL(req.url).searchParams.get("lang");
+    if (lang && isLang(lang) && items.length) {
+      // A signed-out visitor starts a batch only per address (daily) and while the AI is under its visitor ceiling.
+      const mayStart = async () => (user ? true : !(await userAiBusy("translate")) && (await ipHit("headlines", req, limits.headlineIp(), 86400)).ok);
+      items = await (user ? translateHeadlines(items, lang, mayStart) : withCeiling(() => translateHeadlines(items, lang, mayStart)));
+    }
+    return Response.json({ at: n?.at ?? null, items, ...(refreshing ? { refreshing } : {}) });
   });
 }

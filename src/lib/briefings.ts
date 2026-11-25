@@ -13,7 +13,7 @@ import { OWNER, currentUid } from "./context";
 import { isLang } from "./languages";
 import { dayIn } from "./dates";
 import { chainFor, loadUsage } from "./llm/models";
-import { TRANSLATE_ROUTE_BUDGET_MS, TranslateError, chunkSlots, headlineSlots, textSlots, translateClock, translateDigest, translateWorstCaseMs } from "./translate";
+import { TRANSLATE_ROUTE_BUDGET_MS, TranslateError, chunkSlots, digestSlots, translateClock, translateDigest, translateWorstCaseMs } from "./translate";
 import { delJSON, getJSON, releaseLock, setJSON, takeLock } from "./store";
 import type { Digest, DigestMeta, SectionId } from "./types";
 import { currentInterestSet, followerLanguages } from "./interests";
@@ -61,7 +61,8 @@ export async function loadDigest(section: SectionId, at?: string, langOverride?:
   // Shared sections are written once in English and translated; a native copy (older runs, or a
   // language someone generated directly) wins only if it's at least as new.
   const [native, en] = await Promise.all([getJSON<Digest>(`digest:${section}:${lang}`), lang !== "en" ? getJSON<Digest>(`digest:${section}:en`) : null]);
-  if (native && (!en || native.generatedAt >= en.generatedAt)) return native;
+  // The Vietnam section is written in Vietnamese but stored at the base key (digest:vn:en): an English reader gets its translation.
+  if (native && (!en || native.generatedAt >= en.generatedAt)) return lang === "en" ? translated(`digest:${section}:en`, native, lang) : native;
   if (en) return translated(`digest:${section}:en`, en, lang);
   return getJSON<Digest>(`digest:${section}`);
 }
@@ -76,7 +77,8 @@ const translating = new Map<string, Promise<Digest>>();
 export async function translateLatest(section: SectionId, lang: string, onSpend?: () => Promise<boolean>, variant?: "rules"): Promise<Digest | null> {
   const d = variant === "rules" ? await loadRules(section, lang) : await loadDigest(section, undefined, lang);
   if (!d || !isLang(lang) || d.language === lang || d.translatedFrom) return d;
-  const base = section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:${d.language ?? "en"}`;
+  // The stored original lives at the base key whatever its language (Vietnam's is written in Vietnamese).
+  const base = section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:en`;
   return translateStored(variant === "rules" ? `${base}:rules` : base, d, lang, { onSpend });
 }
 
@@ -117,7 +119,7 @@ async function translateOnce(key: string, d: Digest, lang: string, opts: Transla
   const failed = await getJSON<{ at: number; v: string; backoff?: number }>(failKey).catch(() => null);
   if (failed && failed.v === d.generatedAt && Date.now() - failed.at < (failed.backoff ?? FAIL_BACKOFF_MS)) throw new Error("translation unavailable, retrying later");
   const budgetMs = opts.budgetMs ?? TRANSLATE_ROUTE_BUDGET_MS;
-  const chunks = chunkSlots([...textSlots(d.analysis), ...headlineSlots(d.news ?? [], d.analysis, lang)]).length;
+  const chunks = chunkSlots(digestSlots(d, lang)).length;
   const lockKey = `${key}:lock`;
   const token = await takeLock(lockKey, Math.ceil(translateWorstCaseMs(chunks, budgetMs) / 1000) + 10);
   if (!token) {

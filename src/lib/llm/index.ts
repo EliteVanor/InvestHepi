@@ -5,6 +5,7 @@
  * show it or keep the last AI briefing).
  * LLM_PROVIDER=claude|groq|gemini|rules forces one provider family to the front.
  */
+import { MAX_ITEMS_TO_LLM, MAX_ITEMS_TO_LLM_COMPACT } from "../config";
 import type { Analysis } from "../types";
 import { CLAUDE_MODEL, analyzeWithClaude, completeWithClaude } from "./claude";
 import { analyzeWithCompat, completeWithCompat, estimateTokens, jsonWithCompat, outputTokens, tokenBudget, ProviderError, type CompatProvider } from "./openai-compat";
@@ -105,7 +106,7 @@ export async function analyze(input: PromptInput, route: Route = "shared"): Prom
   for (const step of providerChain(route)) {
     try {
       const { system, user, maxHeadlines } = fitPrompt(input, step);
-      const shown = Math.min(input.news.length, maxHeadlines ?? (step.compact ? 30 : 45));
+      const shown = Math.min(input.news.length, maxHeadlines ?? (step.compact ? MAX_ITEMS_TO_LLM_COMPACT : MAX_ITEMS_TO_LLM));
       const analysis = await guarded(step.def, route, async () => {
         const r = await step.run(system, user, shown);
         return { value: r.analysis, tokens: r.tokens };
@@ -130,6 +131,11 @@ export interface JsonJob<T> {
   hint: string;
   parse: (raw: unknown) => T;
   maxTokens: number;
+  /**
+   * Optional: build a prompt whose input (system + hint + user) fits `limit` tokens, for providers with a
+   * request-size limit, instead of shrinking `maxHeadlines` step by step (stories drop whole items).
+   */
+  fit?: (limit: number) => { system: string; user: string };
 }
 
 /**
@@ -158,7 +164,8 @@ export async function generateJSON<T>(route: Route, job: JsonJob<T>): Promise<{ 
     try {
       const budget = step.provider ? tokenBudget(step.provider) : undefined;
       let prompt = job.build();
-      if (budget) {
+      if (budget && job.fit) prompt = job.fit(budget * 0.94 - job.maxTokens);
+      else if (budget) {
         const limit = budget * 0.94 - job.maxTokens;
         for (const n of [20, 14, 10, 6, 3]) {
           prompt = job.build(n);

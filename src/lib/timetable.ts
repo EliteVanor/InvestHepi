@@ -180,6 +180,18 @@ export function briefingsPerDay(now: Date): Record<string, number> {
 }
 
 /**
+ * Briefing units the timetable still starts on this UTC day (slots at or after `now`): the shared
+ * sections and the admin's interest set ("interests:all" and "interests:admin" are one unit for the
+ * admin; other people's sets run on userAuto and are not counted). Sets the Flash-Lite reserve.
+ */
+export function briefingUnitsLeft(now: Date): number {
+  const t = now.getTime();
+  let n = 0;
+  for (const o of utcDay(now)) if (o.start >= t) n += o.slot.items.filter((i) => !isPred(i)).length;
+  return n;
+}
+
+/**
  * The next prediction runs for a market after `now` (for "next predictions at ..." on the page).
  * Pure, so the browser uses it too.
  */

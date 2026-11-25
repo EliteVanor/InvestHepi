@@ -110,10 +110,19 @@ const gnewsSearchVi = (q: string) =>
   `https://news.google.com/rss/search?q=${encodeURIComponent(q + " when:1d")}&hl=vi&gl=VN&ceid=VN:vi`;
 const gnewsTopic = (topic: string) =>
   `https://news.google.com/rss/headlines/section/topic/${topic}?hl=en-US&gl=US&ceid=US:en`;
+const gnewsTopicVi = (topic: string) => `https://news.google.com/rss/headlines/section/topic/${topic}?hl=vi&gl=VN&ceid=VN:vi`;
+/** Interesting-news feeds (owner Q17): checked from the cloud on Nov 25 2026; BBC, Guardian, NPR, NASA, ScienceDaily,
+ * Smithsonian, Tuoi Tre and Thanh Nien science/culture feeds were unreachable from the build sandbox, so not added. */
+const INTERESTING_MAX = 8;
+const interesting = (name: string, url: string): Feed => ({ name, url, kind: "interesting", max: INTERESTING_MAX });
 
 export interface Feed {
   name: string;
   url: string;
+  /** "interesting" for science and culture feeds; unset means important news. */
+  kind?: "interesting";
+  /** Most items taken from this feed per fetch (science and culture feeds would otherwise crowd out market news). */
+  max?: number;
 }
 
 /** Static feeds per section. Interest-specific feeds are generated from the interest list. */
@@ -131,6 +140,8 @@ export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
       name: "Global macro",
       url: gnewsSearch('"central bank" OR "oil prices" OR "global economy" OR tariffs OR China economy OR Taiwan'),
     },
+    interesting("Google News Science", gnewsTopic("SCIENCE")),
+    interesting("Google News Health", gnewsTopic("HEALTH")),
   ],
   us: [
     { name: "Google News US", url: gnewsTopic("NATION") },
@@ -140,6 +151,8 @@ export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
       name: "US policy",
       url: gnewsSearch('"Federal Reserve" OR inflation OR "jobs report" OR Congress OR "White House" economy OR Treasury yields'),
     },
+    interesting("Google News Science", gnewsTopic("SCIENCE")),
+    interesting("Google News Health", gnewsTopic("HEALTH")),
   ],
   vn: [
     { name: "VnExpress Kinh doanh", url: "https://vnexpress.net/rss/kinh-doanh.rss" },
@@ -148,8 +161,13 @@ export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
     { name: "Tuổi Trẻ Kinh doanh", url: "https://tuoitre.vn/rss/kinh-doanh.rss" },
     { name: "Google News VN", url: gnewsSearchVi('"VN-Index" OR "chứng khoán" OR "Ngân hàng Nhà nước" OR "tỷ giá" OR "FDI"') },
     { name: "Vietnam markets (EN)", url: gnewsSearch('"Vietnam stock" OR "VN-Index" OR "Vietnam economy" OR "State Bank of Vietnam"') },
+    interesting("VnExpress Khoa học công nghệ", "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"),
+    interesting("VnExpress Giải trí", "https://vnexpress.net/rss/giai-tri.rss"),
+    interesting("Google News Khoa học", gnewsTopicVi("SCIENCE")),
   ],
 };
 
 export const MAX_ITEMS_PER_SECTION = 60;
+/** Headlines shown to a model: the full prompt, and the compact one free providers get (their per-minute token limits). */
 export const MAX_ITEMS_TO_LLM = 45;
+export const MAX_ITEMS_TO_LLM_COMPACT = 30;

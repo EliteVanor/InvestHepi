@@ -20,12 +20,16 @@ export interface NewsItem {
   source: string;
   publishedAt: string; // ISO
   summary?: string;
+  /** The feed gave no date, so publishedAt is when we first saw it (kept across fetches by saveHeadlines). */
+  undated?: boolean;
   /** Interest ids this item matched (only for the interests section). */
   tags?: string[];
   /** Other outlets that ran the same story (merged by dedupe). */
   alsoIn?: string[];
   /** The headline as published, when `title` holds a translation. */
   titleOrig?: string;
+  /** Set from the feed (`Feed.kind`): science and culture feeds mark their items "interesting". */
+  feedKind?: "interesting";
 }
 
 export interface Quote {
@@ -163,6 +167,9 @@ export interface Digest {
   feedErrors: string[];
   /** Language the AI prose was written in. */
   language?: string;
+  /** v19b: the explained story cards, best first, and "The big picture" (3 lines). Missing on older digests and rule-based ones. */
+  stories?: import("./stories/types").StoryCard[];
+  bigPicture?: string[];
 }
 
 export interface DigestMeta {

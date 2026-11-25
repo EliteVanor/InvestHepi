@@ -6,24 +6,30 @@
  * tab bar) in components/shell/chrome.tsx; this file loads data, wires actions, and lays out the
  * section's content.
  */
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccountCtx, InterestsGate, SignInCard, SignInSheet, type Account } from "@/components/account";
-import { AskPanel, AskSheet } from "@/components/ask";
 import { ChartCard, MoodGaugeCard, ScenariosCard, SectorHeatmap } from "@/components/cards";
 import { CatchUp, SinceLastVisit } from "@/components/catchup";
 import { IconAlert, IconPanelRight, IconSearch, IconSparkles } from "@/components/Icons";
 import { useLiveQuotes, withLive } from "@/components/live";
-import { CommandPalette, type PaletteActions } from "@/components/palette";
+import type { PaletteActions } from "@/components/palette";
 import { PortfolioCard, Watchlist } from "@/components/portfolio";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { isStringOrNull } from "@/lib/ls-shape";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
-import { Briefing, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
-import { PredictionsCard } from "@/components/predictions";
+import { Briefing } from "@/components/sections/briefing";
+import { Events } from "@/components/sections/events";
+import { Headlines } from "@/components/sections/headlines";
+import { Movers } from "@/components/sections/movers";
+import { MarketStrip, StatusPill } from "@/components/sections/strip";
+import { UpNext, WatchNext } from "@/components/sections/upnext";
+import { PredictionsCard, type StoryLinks } from "@/components/predictions";
+import { StoryList, focusStory } from "@/components/stories";
 import { callsOf } from "@/lib/predictions-view";
+import { layoutOf, relatedStories, providerNoteFor } from "@/lib/stories/view";
 import { SetupChecklist } from "@/components/setup";
-import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, type Tab as SettingsTab } from "@/components/sheets";
-import { TrackSheet } from "@/components/track";
+import type { Tab as SettingsTab } from "@/components/sheets/settings";
 import { Ambient, Footer, Sidebar, Skeleton, TabBar, TopBar, sectionName, type FrameActions } from "@/components/shell/chrome";
 import { refreshState, savedTab, useNewHeadlines, useSavedTab, useShortcuts, useTitleHidden, useViewport, useWideLayout, type RefreshUi } from "@/components/shell/hooks";
 import { newsFor, useSectionData } from "@/components/shell/section-data";
@@ -32,6 +38,17 @@ import { ToastProvider, useToast } from "@/components/toast";
 import { isLang, langInfo } from "@/lib/languages";
 import { symLabel } from "@/lib/symbols";
 import { SECTION_IDS, type CalendarEvent, type Digest, type Holding, type Interest, type SectionId } from "@/lib/types";
+
+/* Everything that opens on demand (sheets, the command palette, Ask AI) loads when first needed, not with the
+   first screen. Nothing renders until its code arrives (browser-only, so no server render). */
+const SettingsSheet = dynamic(() => import("@/components/sheets/settings").then((m) => m.SettingsSheet), { ssr: false });
+const TickerSheet = dynamic(() => import("@/components/sheets/ticker").then((m) => m.TickerSheet), { ssr: false });
+const HistorySheet = dynamic(() => import("@/components/sheets/history").then((m) => m.HistorySheet), { ssr: false });
+const PasswordSheet = dynamic(() => import("@/components/sheets/password").then((m) => m.PasswordSheet), { ssr: false });
+const TrackSheet = dynamic(() => import("@/components/track").then((m) => m.TrackSheet), { ssr: false });
+const CommandPalette = dynamic(() => import("@/components/palette").then((m) => m.CommandPalette), { ssr: false });
+const AskPanel = dynamic(() => import("@/components/ask").then((m) => m.AskPanel), { ssr: false });
+const AskSheet = dynamic(() => import("@/components/ask").then((m) => m.AskSheet), { ssr: false });
 
 export default function Page() {
   return (
@@ -155,6 +172,9 @@ function App() {
   // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
   const isHome = tab === "interests";
+  // v19 digests (story cards) read news first: big picture, stories, markets, predictions. Older ones keep the v18 layout.
+  const v19 = layoutOf(shown) === "stories";
+  const storyLinks = useMemo<StoryLinks | undefined>(() => (v19 && shown ? { related: (tk) => relatedStories(tk, shown.stories, shown.news), open: focusStory } : undefined), [v19, shown]);
   // Multi-user mode: My Interests is personal, so signed-out visitors get a sign-in invitation there.
   const gated = isHome && account.mode === "multi" && !account.user && accountKnown;
 
@@ -164,6 +184,8 @@ function App() {
   const live = useLiveQuotes(stripSyms);
   const strip = useMemo(() => buildStripRows(shown, plan, live), [shown, plan, live]);
   const liveQuotes = useMemo(() => (shown ? withLive(shown.quotes, live) : []), [shown, live]);
+  // Story market lines may name a macro symbol (VIX, oil, the dollar): the same overlay as the strip.
+  const storyQuotes = useMemo(() => (shown ? [...liveQuotes, ...withLive(shown.macro ?? [], live)] : []), [shown, liveQuotes, live]);
   const interestsDigest = digests.interests;
   const interestsLive = useMemo(() => (interestsDigest ? withLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
   const chartSymbols = useMemo(() => chartSymbolsFor(interests), [interests]);
@@ -352,7 +374,7 @@ function App() {
             {tab !== "world" && <StatusPill market={tab === "vn" ? "vn" : "us"} />}
           </div>
 
-          {shown && !gated && <MarketStrip groups={strip.groups} macro={strip.macro} onOpen={openTicker} />}
+          {shown && !gated && !v19 && <MarketStrip groups={strip.groups} macro={strip.macro} onOpen={openTicker} />}
           {isHome && !gated && !readOnly && (
             <button className="ss-bar" onClick={frame.search}>
               <IconSearch />
@@ -367,10 +389,10 @@ function App() {
               <button onClick={() => setError("")}>✕</button>
             </div>
           )}
-          {shown?.providerNote && !oldDigest && (
+          {providerNoteFor(shown, account.admin) && !oldDigest && (
             <div className="banner">
               <IconAlert />
-              <span style={{ wordBreak: "break-word" }}>{shown.providerNote}</span>
+              <span style={{ wordBreak: "break-word" }}>{providerNoteFor(shown, account.admin)}</span>
             </div>
           )}
 
@@ -416,14 +438,26 @@ function App() {
                 onHistory={() => setSheet({ kind: "history" })}
                 onCatchUp={() => setSheet({ kind: "catchup" })}
               />
-              {!oldDigest && <PredictionsCard sets={preds[tab]} section={tab} onTicker={openTicker} onTrack={frame.track} translating={translatingPreds === tab} />}
+              {v19 && (
+                <>
+                  <StoryList digest={shown} quotes={storyQuotes} onTicker={openTicker} />
+                  <section className="markets" aria-labelledby="markets-h">
+                    <h2 className="section-label" id="markets-h">
+                      {t("story.marketsTitle")}
+                    </h2>
+                    <MarketStrip groups={strip.groups} macro={strip.macro} onOpen={openTicker} />
+                    <div className="market-cards">{marketCards}</div>
+                  </section>
+                </>
+              )}
+              {!oldDigest && <PredictionsCard sets={preds[tab]} section={tab} onTicker={openTicker} onTrack={frame.track} translating={translatingPreds === tab} foldable={v19 && isMobile} stories={storyLinks} />}
               <ScenariosCard scenarios={shown.analysis.scenarios} />
               {isHome && <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />}
               {isHome && <Watchlist symbols={watchSymbols} quotes={liveQuotes} technicals={shown.technicals} outlook={callsOf(preds.interests ?? [])} onOpen={openTicker} />}
               <div className="grid">
                 <div>
-                  {isMobile && marketCards}
-                  <Events events={shown.analysis.events} news={shown.news} />
+                  {isMobile && !v19 && marketCards}
+                  {!v19 && <Events events={shown.analysis.events} news={shown.news} />}
                   {isMobile && aheadCards}
                   <Headlines
                     digest={shown}
@@ -437,7 +471,7 @@ function App() {
                 </div>
                 {!isMobile && (
                   <aside className="rail">
-                    {marketCards}
+                    {!v19 && marketCards}
                     {aheadCards}
                   </aside>
                 )}

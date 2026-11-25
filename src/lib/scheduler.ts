@@ -27,6 +27,8 @@ import { interestGroups, loadInterests, withHoldings } from "./interests";
 import { interestPart, type Phase, type SlotMarket } from "./markets";
 import { refreshInterestSet, refreshShared, SHARED_CALLS } from "./pipeline";
 import { runPrediction, translatePredictions } from "./predictions";
+import { bigCount, bigLimit, bumpBigCount, clearBigMarker, pendingBig, saveBigMarker } from "./stories/big";
+import { loadCards } from "./stories/store";
 import { gradeCalls } from "./track";
 import { loadHoldings } from "./portfolio";
 import { delJSON, getJSON, releaseLock, setJSON, takeLock } from "./store";
@@ -209,10 +211,11 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
         : await refreshShared(u.item as SectionId, "en", now, "shared");
       ok = !d.keptAi && d.provider !== "rules";
       note = d.provider;
-      // Shared sections are pre-translated into Vietnamese only; other languages on first read.
+      // World and US are pre-translated into Vietnamese only (Vietnam is written in Vietnamese); other languages on first read.
       // An interest set is pre-translated into the languages of its followers seen in the last day.
-      if (!u.set) await translateLatest(u.item as SectionId, "vi").catch(() => null);
-      else if (ok) await pretranslateSet(u.set.hash, u.set.uids).catch(() => []);
+      if (!u.set) {
+        if (u.item !== "vn") await translateLatest(u.item as SectionId, "vi").catch(() => null);
+      } else if (ok) await pretranslateSet(u.set.hash, u.set.uids).catch(() => []);
     }
   } catch (e) {
     note = (e as Error).message.slice(0, 200);
@@ -220,6 +223,57 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
   const a: Attempt = { at: now.toISOString(), n, ok, note };
   await record(u, a);
   return a;
+}
+
+/* ---------------------------------------------------------- big stories */
+
+const BIG_SCOPES = ["world", "us", "vn"] as const;
+type BigScope = (typeof BIG_SCOPES)[number];
+const BIG_RETRY_MIN = 20;
+
+/**
+ * A pending big-story marker (stories:big:<scope>, written by the headline tick) that is due to run: not
+ * given up, under today's cap, and not tried within the last 20 min. Stale markers (2 h) are dropped by
+ * `pendingBig`. Shared sections only; My Interests never gets one.
+ */
+export async function nextBigStory(now: number): Promise<{ scope: BigScope; id: string; tries: number } | null> {
+  const d = new Date(now);
+  for (const scope of BIG_SCOPES) {
+    const m = await pendingBig(scope, d);
+    if (!m || m.gaveUp) continue;
+    if (m.lastTry && now < new Date(m.lastTry).getTime() + BIG_RETRY_MIN * MIN) continue;
+    if ((await bigCount(scope, d)) >= bigLimit()) continue;
+    return { scope, id: m.id, tries: m.tries ?? 0 };
+  }
+  return null;
+}
+
+/** Explain one big story: the attempt is recorded first (tries, lastTry), so the chain ends; one retry after 20 min. */
+async function runBigStory(b: { scope: BigScope; id: string; tries: number }, now: Date): Promise<Attempt> {
+  const n = b.tries + 1;
+  const mark = { id: b.id, at: (await pendingBig(b.scope, now))?.at ?? now.toISOString(), tries: n, lastTry: now.toISOString() };
+  await saveBigMarker(b.scope, mark);
+  let ok = false;
+  let note: string | undefined;
+  try {
+    // A slot may have explained it meanwhile: nothing to do.
+    if ((await loadCards(b.scope, [b.id], now))[b.id]) {
+      await clearBigMarker(b.scope);
+      return { at: now.toISOString(), n, ok: true, note: "already has a card" };
+    }
+    const d = await refreshShared(b.scope, "en", now, "shared", [b.id]);
+    ok = !d.keptAi && d.provider !== "rules";
+    note = d.provider;
+    if (ok) {
+      await bumpBigCount(b.scope, now);
+      await clearBigMarker(b.scope);
+      if (b.scope !== "vn") await translateLatest(b.scope, "vi").catch(() => null);
+    }
+  } catch (e) {
+    note = (e as Error).message.slice(0, 200);
+  }
+  if (!ok && n >= MAX_ATTEMPTS) await saveBigMarker(b.scope, { ...mark, gaveUp: true });
+  return { at: now.toISOString(), n, ok, note };
 }
 
 /* ------------------------------------------------------------- grading */
@@ -352,36 +406,47 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
       const v = (await getJSON<number | LastUnit>(`sched:lastUnit:${lane}`)) ?? (await getJSON<number>("sched:lastUnit")) ?? 0;
       return typeof v === "number" ? { at: v, used120: true } : v; // an old-format mark: assume the worst
     };
-    const waitOf = async (lane: Lane) => (units[lane] ? Math.max(0, (await lastOf(lane)).at + GAP_MS - t0) : Infinity);
+    // A big story (4+ outlets in 30 min, no card) takes the briefing lane only when no scheduled briefing is due.
+    const big = units.brief ? null : await nextBigStory(t0);
+    const waitOf = async (lane: Lane) => (units[lane] || (lane === "brief" && big) ? Math.max(0, (await lastOf(lane)).at + GAP_MS - t0) : Infinity);
     const [wp, wb] = await Promise.all([waitOf("pred"), waitOf("brief")]);
     if (wp === Infinity && wb === Infinity) return out;
     const lane: Lane = wp <= wb ? "pred" : "brief";
-    const u = units[lane]!;
-    const end = itemEnd(u.occ, u.item);
-    let wait = Math.min(wp, wb);
-    // The lane's gap would end after this item's deadline (a before-market run waiting past the open):
-    // a try now beats a certain miss. The gap protects Groq's tokens-per-minute on gpt-oss-120b, so when
-    // the previous unit on this lane used it, 120b sits out the rest of the gap and the run starts on
-    // the route's next model instead of risking a 429 (and a longer 120b cooldown).
-    if (wait > 0 && t0 + wait >= end) {
-      if ((await lastOf(lane)).used120) await holdOff("groq120", t0 + wait);
-      wait = 0;
-    }
-    if (wait > 0) await sleep(wait);
-    const unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8) };
-    if (clock().getTime() >= end) {
-      // The wait itself ran past the deadline: don't start a run that can no longer count; record it so the chain ends.
-      const prev = u.set ? u.run.sets[setKey(u.item, u.set.hash)] : u.run.items[u.item];
-      const note = prev ? `gave up: ${prev.note ?? "failed"}` : "missed: too late";
-      await record(u, { at: iso(clock().getTime()), n: MAX_ATTEMPTS, ok: false, note });
-      out.unit = { ...unit, ok: false, note };
-    } else {
+    if (lane === "brief" && big) {
+      // Big-story unit: same 65 s gap; its own deadline is the marker's 2 h.
+      if (wb > 0) await sleep(wb);
       const startedAt = clock().getTime();
-      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: true } satisfies LastUnit); // until we know (a cut-off run counts as 120b)
-      const before = await requests120();
-      const a = await runUnit(u, clock());
-      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: (await requests120()) > before } satisfies LastUnit);
-      out.unit = { ...unit, ok: a.ok, note: a.note };
+      await setJSON("sched:lastUnit:brief", { at: startedAt, used120: false } satisfies LastUnit);
+      const a = await runBigStory(big, clock());
+      out.unit = { slot: `big:${big.scope}`, item: big.scope, ok: a.ok, note: a.note };
+    } else {
+      const u = units[lane]!;
+      const end = itemEnd(u.occ, u.item);
+      let wait = Math.min(wp, wb);
+      // The lane's gap would end after this item's deadline (a before-market run waiting past the open):
+      // a try now beats a certain miss. The gap protects Groq's tokens-per-minute on gpt-oss-120b, so when
+      // the previous unit on this lane used it, 120b sits out the rest of the gap and the run starts on
+      // the route's next model instead of risking a 429 (and a longer 120b cooldown).
+      if (wait > 0 && t0 + wait >= end) {
+        if ((await lastOf(lane)).used120) await holdOff("groq120", t0 + wait);
+        wait = 0;
+      }
+      if (wait > 0) await sleep(wait);
+      const unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8) };
+      if (clock().getTime() >= end) {
+        // The wait itself ran past the deadline: don't start a run that can no longer count; record it so the chain ends.
+        const prev = u.set ? u.run.sets[setKey(u.item, u.set.hash)] : u.run.items[u.item];
+        const note = prev ? `gave up: ${prev.note ?? "failed"}` : "missed: too late";
+        await record(u, { at: iso(clock().getTime()), n: MAX_ATTEMPTS, ok: false, note });
+        out.unit = { ...unit, ok: false, note };
+      } else {
+        const startedAt = clock().getTime();
+        await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: true } satisfies LastUnit); // until we know (a cut-off run counts as 120b)
+        const before = await requests120();
+        const a = await runUnit(u, clock());
+        await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: (await requests120()) > before } satisfies LastUnit);
+        out.unit = { ...unit, ok: a.ok, note: a.note };
+      }
     }
   } finally {
     await releaseLock(LOCK, token);

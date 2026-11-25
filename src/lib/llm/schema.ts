@@ -87,11 +87,14 @@ export function hasUsableContent(r: RawAnalysis): boolean {
   return hasText(r.headline) || (r.summary ?? []).some(hasText) || (r.events ?? []).some((e) => hasText(e.title) || hasText(e.what_happened));
 }
 
+/** One cited id as a number (a blank string is not 0); NaN when it isn't one. */
+const idNumber = (x: unknown): number => (typeof x === "string" && x.trim() === "" ? NaN : Number(x));
+
 /** Valid, de-duplicated headline indexes: integers in [0, count), at most `max`. */
 export function clampSourceIds(ids: unknown, count: number, max = 8): number[] {
   const out: number[] = [];
   for (const x of Array.isArray(ids) ? ids : []) {
-    const n = typeof x === "string" && x.trim() === "" ? NaN : Number(x);
+    const n = idNumber(x);
     if (Number.isInteger(n) && n >= 0 && n < count && !out.includes(n)) out.push(n);
     if (out.length >= max) break;
   }
@@ -182,7 +185,7 @@ export function normalizeRaw(input: unknown): unknown {
       what_happened: str(e?.what_happened),
       why_it_matters: str(e?.why_it_matters),
       importance: num(e?.importance, 3),
-      source_ids: arr(e?.source_ids).map((x) => (typeof x === "string" && x.trim() === "" ? NaN : Number(x))).filter((x) => Number.isInteger(x)),
+      source_ids: arr(e?.source_ids).map(idNumber).filter((x) => Number.isInteger(x)),
       impacts: arr(e?.impacts).map((i: any) => ({
         interest: str(i?.interest),
         direction: dir(i?.direction),
@@ -196,7 +199,7 @@ export function normalizeRaw(input: unknown): unknown {
       what_could_go_wrong: str(e?.what_could_go_wrong),
     })),
     watch_next: arr(o.watch_next).map(str),
-    movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why), source_ids: arr(m?.source_ids).map((x: unknown) => (typeof x === "string" && x.trim() === "" ? NaN : Number(x))).filter((x: number) => Number.isInteger(x) && x >= 0) })),
+    movers: arr(o.movers).map((m: any) => ({ ticker: str(m?.ticker), change_pct: num(m?.change_pct, 0), why: str(m?.why), source_ids: arr(m?.source_ids).map(idNumber).filter((x: number) => Number.isInteger(x) && x >= 0) })),
     scenarios: arr(o.scenarios).map((s: any) => ({
       catalyst: str(s?.catalyst),
       when: str(s?.when),

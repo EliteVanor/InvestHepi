@@ -17,6 +17,7 @@ import { isLang, langInfo, type LangCode } from "./languages";
 import { currentUid, hasUser, OWNER, ukey } from "./context";
 import { multiUser } from "./mode";
 import { listUsers } from "./users";
+import { newsItemsOf } from "./stories/view";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Digest, Interest, Outlook } from "./types";
 import { dayIn, NY } from "./dates";
@@ -512,7 +513,7 @@ export function renderMorning(ctx: RefreshContext, t: T, lang: LangCode, now: Da
       .join(""),
   );
   const movers = a.movers?.length ? section(t("movers.title"), table(a.movers.map((m) => row(`<b style="font-weight:600">${esc(m.ticker)}</b> <span class="mu" style="color:#6e6e73;font-size:14px">${esc(m.why)}</span>`, fmtPct(m.changePct), m.changePct >= 0 ? "up" : "down")).join(""))) : "";
-  const events = section(t("events.title"), table(a.events.slice(0, 3).map((e) => row(`<b style="font-weight:600">${esc(e.title)}</b><br><span class="mu" style="color:#6e6e73;font-size:14px">${esc(e.whyItMatters)}</span>`)).join("")));
+  const events = section(t(d.stories?.length ? "story.heading" : "events.title"), table(newsItemsOf(d).slice(0, 3).map((e) => row(`<b style="font-weight:600">${esc(e.title)}</b><br><span class="mu" style="color:#6e6e73;font-size:14px">${esc(e.why)}</span>`)).join("")));
   const others = (["world", "us"] as const)
     .map((s) => ctx.digests[s])
     .filter((x): x is Digest => !!x)

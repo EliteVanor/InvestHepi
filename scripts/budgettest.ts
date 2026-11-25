@@ -5,6 +5,7 @@
  * `npx tsx scripts/budgettest.ts`
  */
 import assert from "node:assert/strict";
+import { isStoryCall, storyReply } from "./story-reply";
 import { promises as fs } from "fs";
 import { pinClock } from "./clock";
 
@@ -43,13 +44,15 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (m === "429min") return new Response("Rate limit reached on tokens per minute", { status: 429, headers: { "retry-after": "7" } });
     if (m === "noReasoning" && "reasoning_effort" in body) return new Response('{"error":"reasoning_effort is not supported"}', { status: 400 });
     let content = analysisJson;
-    if (system.startsWith("You translate")) content = JSON.stringify((JSON.parse(body.messages[1].content) as string[]).map((s) => `vi:${s}`));
+    if (isStoryCall(system)) content = storyReply(body.messages[1].content); // v19b: the briefing is the story call
+    else if (system.startsWith("You translate")) content = JSON.stringify((JSON.parse(body.messages[1].content) as string[]).map((s) => `vi:${s}`));
     else if (!body.response_format) content = "plain answer";
     return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 6000 } }), { status: 200 });
   }
   if (/rss|news\.google|feeds|\.xml/.test(url)) {
     feeds++;
-    const items = Array.from({ length: 25 }, (_, i) => `<item><title>${i === 3 ? "Chứng khoán tăng điểm" : `Stocks rise on day ${i}`}</title><link>https://n/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("");
+    // Plus one headline new on every fetch, so each run has a story without a card (v19b: fresh cards are kept, not re-sent).
+    const items = Array.from({ length: 25 }, (_, i) => `<item><title>${i === 3 ? "Chứng khoán tăng điểm" : `Stocks rise on day ${i}`}</title><link>https://n/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("") + `<item><title>Wire update ${feeds}</title><link>https://n/w${feeds}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`;
     return new Response(`<?xml version="1.0"?><rss><channel>${items}</channel></rss>`, { status: 200 });
   }
   return new Response("", { status: 404 });

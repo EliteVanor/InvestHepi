@@ -11,8 +11,12 @@
  *   news:active        interest sets someone is reading: { <hash>: { at, interests } }
  */
 import { MAX_ITEMS_PER_SECTION, SECTION_FEEDS, type SharedSection } from "./config";
-import { dedupe, fetchFeeds, fetchInterestNews } from "./news";
+import { fetchFeeds, fetchInterestNews } from "./news";
 import { getJSON, releaseLock, setJSON, takeLock } from "./store";
+import { markBigStory } from "./stories/big";
+import { toHeadlines, type Story } from "./stories/cluster";
+import { indexStories } from "./stories/store";
+import type { StoryScope } from "./stories/types";
 import type { Interest, NewsItem, SectionId } from "./types";
 
 export interface LiveNews {
@@ -33,19 +37,36 @@ type Active = Record<string, { at: string; interests: Interest[] }>;
 
 export const newsKey = (section: SectionId, hash?: string) => (section === "interests" ? `news:ib:${hash}` : `news:${section}`);
 
-/** Fetch a section's (or an interest set's) headlines: deduped, newest first, capped. */
-export async function fetchSectionNews(section: SectionId, interests: Interest[] = []): Promise<{ items: NewsItem[]; errors: string[] }> {
-  const r =
-    section === "interests"
-      ? await fetchInterestNews(interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY)
-      : await fetchFeeds(SECTION_FEEDS[section]).then((x) => ({ items: dedupe(x.items), errors: x.errors }));
-  return { items: r.items.slice(0, MAX_ITEMS_PER_SECTION), errors: r.errors };
+/** Every outlet's copy of a section's (or an interest set's) headlines, before clustering into stories. */
+export async function fetchSectionItems(section: SectionId, interests: Interest[] = []): Promise<{ items: NewsItem[]; errors: string[] }> {
+  return section === "interests" ? fetchInterestNews(interests, SECTION_FEEDS.interests, process.env.FINNHUB_API_KEY, { raw: true }) : fetchFeeds(SECTION_FEEDS[section]);
+}
+
+export const storyScope = (section: SectionId, hash?: string): StoryScope => (section === "interests" ? `ib:${hash}` : section);
+
+/**
+ * Fetch a section's (or an interest set's) headlines, cluster them into stories (ids carried over in the
+ * scope's story index, which this saves) and return one headline per story, newest first, capped, plus
+ * every outlet's copy (`raw`) for a story run.
+ */
+export async function fetchSectionNews(section: SectionId, interests: Interest[] = [], hash?: string, now = new Date()): Promise<{ items: NewsItem[]; errors: string[]; raw: NewsItem[]; stories: Story[] }> {
+  const r = await fetchSectionItems(section, interests);
+  const stories = await indexStories(storyScope(section, hash), r.items, now);
+  return { items: toHeadlines(stories).slice(0, MAX_ITEMS_PER_SECTION), errors: r.errors, raw: r.items, stories };
+}
+
+/** An undated item (the feed gave no date) keeps the time it was first seen, so it ages instead of looking new on every fetch. */
+export function keepFirstSeenTimes(items: NewsItem[], previous: NewsItem[] | undefined): NewsItem[] {
+  if (!previous?.length || !items.some((i) => i.undated)) return items;
+  const before = new Map(previous.map((i) => [i.id, i.publishedAt]));
+  return items.map((i) => (i.undated && before.has(i.id) ? { ...i, publishedAt: before.get(i.id)! } : i));
 }
 
 export async function saveHeadlines(key: string, r: { items: NewsItem[]; errors: string[] }, now = new Date()): Promise<void> {
   // A feed outage shouldn't wipe the list: keep the previous items if nothing came back.
-  if (!r.items.length && (await getJSON<LiveNews>(key))?.items.length) return;
-  await setJSON(key, { at: now.toISOString(), items: r.items, errors: r.errors.slice(0, 10) } satisfies LiveNews);
+  const prev = await getJSON<LiveNews>(key);
+  if (!r.items.length && prev?.items.length) return;
+  await setJSON(key, { at: now.toISOString(), items: keepFirstSeenTimes(r.items, prev?.items), errors: r.errors.slice(0, 10) } satisfies LiveNews);
 }
 
 export const loadHeadlines = (section: SectionId, hash?: string) => getJSON<LiveNews>(newsKey(section, hash));
@@ -80,7 +101,7 @@ export async function refreshSetIfStale(hash: string, interests: Interest[], now
   const token = await takeLock(`${key}:busy`, 60);
   if (!token) return false;
   try {
-    await saveHeadlines(key, await fetchSectionNews("interests", interests), now);
+    await saveHeadlines(key, await fetchSectionNews("interests", interests, hash, now), now);
     return true;
   } finally {
     await releaseLock(`${key}:busy`, token).catch(() => {});
@@ -97,7 +118,13 @@ export async function refreshHeadlines(now = new Date()): Promise<number> {
   const jobs: Promise<unknown>[] = [];
   for (const s of SHARED) {
     const key = newsKey(s);
-    if (due(await getJSON<LiveNews>(key), SHARED_EVERY_MIN, now)) jobs.push(fetchSectionNews(s).then((r) => saveHeadlines(key, r, now)));
+    if (due(await getJSON<LiveNews>(key), SHARED_EVERY_MIN, now)) jobs.push(
+        fetchSectionNews(s, [], undefined, now).then(async (r) => {
+          await saveHeadlines(key, r, now);
+          // A new story that 4+ outlets ran within 30 min and has no card: mark it for the scheduler (no AI here).
+          await markBigStory(s, r.stories, now).catch(() => false);
+        }),
+      );
   }
   for (const [hash, interests] of await readingNow(now)) jobs.push(refreshSetIfStale(hash, interests, now).then((ran) => (ran ? undefined : Promise.reject(new Error("not due")))));
   const done = await Promise.allSettled(jobs);

@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
 import { pinClock } from "./clock";
+import { isStoryCall, storyReply } from "./story-reply";
 
 // Fixtures and code under test share one clock, so the result never depends on when this runs.
 pinClock("2026-11-17T12:00:00Z");
@@ -49,7 +50,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return new Response(JSON.stringify(yearChart(sym === "NVDA" ? 200 : 100)), { status: 200 });
   }
   if (url.includes("api.groq.com")) {
-    groqBody = JSON.parse(String(init?.body));
+    const body = JSON.parse(String(init?.body));
+    // v19b: the pipeline's briefing is the story call; the v18 briefing call (analyze) is driven directly below.
+    if (isStoryCall(body.messages[0].content)) return new Response(JSON.stringify({ choices: [{ message: { content: storyReply(body.messages[1].content) } }] }), { status: 200 });
+    groqBody = body;
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(modelReply) } }] }), { status: 200 });
   }
   return new Response("<rss><channel></channel></rss>", { status: 200 });
@@ -150,6 +154,13 @@ async function main() {
   // ---- end to end: technicals, mood, positions and scenarios through the pipeline
   const { refreshSection } = await import("../src/lib/pipeline");
   const d = await refreshSection("interests");
+  assert.ok(d.provider.startsWith("groq:") && Array.isArray(d.stories), "the pipeline's briefing is a story run (v19b)");
+  // The briefing prompt (analyze) with this digest's data: technicals, mood, position weights and scenarios.
+  const { analyze } = await import("../src/lib/llm");
+  const { DEFAULT_INTERESTS } = await import("../src/lib/config");
+  const P2 = await import("../src/lib/portfolio");
+  const positions = P2.positionsAsText(await P2.loadHoldings(), d.quotes);
+  const an = await analyze({ section: "interests", interests: DEFAULT_INTERESTS, news: d.news, quotes: d.quotes, macro: d.macro ?? [], sectors: d.sectors ?? [], technicals: d.technicals ?? {}, gauge: d.gauge, positions, calendar: [], language: "en", now: new Date() }, "adminAuto");
   const sys: string = groqBody.messages[0].content;
   const user: string = groqBody.messages[1].content;
   assert.ok(user.includes("TECHNICALS:") && user.includes("SOXX: trend up"), "technicals in prompt");
@@ -160,7 +171,7 @@ async function main() {
   assert.ok(sys.includes("SCENARIOS:") && sys.includes('"scenarios"'), "scenario rule and schema in system prompt");
   assert.ok(d.technicals?.NVDA && d.technicals.SPY, "technicals stored on digest (holdings ticker included)");
   assert.ok(d.quotes.some((x) => x.symbol === "NVDA"));
-  const sc = d.analysis.scenarios!;
+  const sc = an.analysis.scenarios!;
   assert.equal(sc.length, 1, "only one scenario set kept; malformed ones dropped");
   assert.deepEqual(sc[0].cases.map((c) => c.probability), [20, 60, 20], "probabilities rescaled to sum to 100 ('30%' string handled)");
 

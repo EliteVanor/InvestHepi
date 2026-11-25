@@ -37,6 +37,8 @@ export const limits = {
   pricePerMin: () => Number(process.env.PRICE_IP_PER_MIN) || 90,
   /** Translations a signed-out visitor can start per address per day (the shared TRANSLATE_DAILY_LIMIT stays as the outer cap). */
   translateIp: () => Number(process.env.TRANSLATE_IP_DAILY_LIMIT) || 10,
+  /** Headline translation batches a signed-out visitor can start per address per day. */
+  headlineIp: () => Number(process.env.HEADLINE_TRANSLATE_IP_DAILY_LIMIT) || 30,
   /** "Send test email" presses per person per day. */
   alertTest: () => Number(process.env.ALERT_TEST_DAILY_LIMIT) || 3,
 };

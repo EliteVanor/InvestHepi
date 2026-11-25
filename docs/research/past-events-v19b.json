@@ -1,0 +1,1663 @@
+{
+ "entries": [
+  {
+   "id": "cpi-hot-2022-09-13",
+   "type": "inflation_hot",
+   "date": "2022-09-13",
+   "region": "us",
+   "event": "August 2022 US CPI came in hotter than expected",
+   "move": "S&P 500 -4.3%, Nasdaq Composite -5.2% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2022-09-12,4083.67,4110.41,4119.28,4083.67,2124956800 ; 2022-09-13,4037.12,3932.69,4037.12,3921.28,2612182416 || [100.NDX] 2022-09-12,12174.94,12266.41,12270.19,12169.28,3686333232 ; 2022-09-13,11908.81,11633.57,11957.97,11604.43,4470151424",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20220902&end=20220915",
+   "lesson": "When markets are positioned for cooling inflation, a hot print hits long-duration tech hardest.",
+   "keywords": [
+    "CPI hotter than expected",
+    "inflation rises",
+    "Fed rate hike bets",
+    "stocks tumble"
+   ],
+   "status": "verified",
+   "note": "Also cafef.vn/lam-phat-my-bat-ngo-tang-bat-chap-gia-xang-giam-chung-khoan-bi-ban-thao-dow-jones-mat-hon-800-diem-2022091322382199.chn was opened: \"S&P 500 cũng giảm 4,3% và Nasdaq giảm 5,2%.\" Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "cpi-cool-2022-11-10",
+   "type": "inflation_cool",
+   "date": "2022-11-10",
+   "region": "us",
+   "event": "October 2022 US CPI came in cooler than expected",
+   "move": "S&P 500 +5.5%, Nasdaq Composite +7.4% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2022-11-09,3810.94,3748.57,3818.20,3744.22,2521189072 ; 2022-11-10,3859.89,3956.37,3958.33,3859.89,3337164432 || [100.NDX] 2022-11-09,10528.45,10353.18,10564.97,10344.01,4289022352 ; 2022-11-10,10869.17,11114.15,11119.12,10779.95,5420790528",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20221102&end=20221114",
+   "lesson": "A cool print when sentiment is very bearish produces violent short-covering rallies.",
+   "keywords": [
+    "CPI cooler than expected",
+    "inflation eases",
+    "stocks surge",
+    "rate hike bets cut"
+   ],
+   "status": "verified",
+   "note": "Closing moves match analogs.ts (+5.5% / +7.4%). The cafef page only gives opening-session figures (S&P +4.21%, Nasdaq +5.69%), so the close figures are from daily closes. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "fed-jackson-hole-2022-08-26",
+   "type": "fed_hawkish",
+   "date": "2022-08-26",
+   "region": "us",
+   "event": "Powell's hawkish Jackson Hole speech on fighting inflation",
+   "move": "S&P 500 -3.4%, Nasdaq Composite -3.9% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2022-08-25,4153.26,4199.12,4200.54,4147.59,1837779472 ; 2022-08-26,4198.74,4057.66,4203.04,4057.66,2102846944 || [100.NDX] 2022-08-25,12506.37,12639.27,12641.26,12471.98,3813993104 ; 2022-08-26,12630.58,12141.71,12655.84,12141.52,3876660800",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20220818&end=20220830",
+   "lesson": "Fed tone alone, with no rate change, can move indexes 3%+ when it resets rate expectations.",
+   "keywords": [
+    "Powell Jackson Hole",
+    "Fed hawkish",
+    "pain for households",
+    "stocks slide"
+   ],
+   "status": "verified",
+   "note": "Matches analogs.ts (-3.4% / -3.9%). cafef page opened says only \"chỉ số S&P 500 giảm hơn 3% trong ngày hôm đó\". Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "fed-hawkish-cut-2024-12-18",
+   "type": "fed_hawkish",
+   "date": "2024-12-18",
+   "region": "us",
+   "event": "Fed cut 25bp but projected fewer 2025 cuts (hawkish cut)",
+   "move": "S&P 500 -2.95%, Nasdaq Composite -3.6%, Dow -2.58% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2024-12-17,6052.55,6050.61,6057.68,6035.19,2980657664 ; 2024-12-18,6047.65,5872.16,6070.67,5867.79,3283591856 || [100.NDX] 2024-12-17,20095.62,20109.06,20148.83,20004.73,9069384704 ; 2024-12-18,20114.98,19392.69,20179.77,19336.59,9230987264 || [100.DJIA] 2024-12-17,43656.47,43449.90,43656.47,43336.22,593673072 ; 2024-12-18,43459.72,42326.87,43688.97,42300.04,627573104",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20241210&end=20241220",
+   "lesson": "The dot plot and guidance matter more than the cut itself.",
+   "keywords": [
+    "Fed cuts rates",
+    "fewer rate cuts 2025",
+    "dot plot",
+    "Dow plunges"
+   ],
+   "status": "verified",
+   "note": "cafef page opened: \"Chỉ số S&P 500 giảm 2,95% xuống 5.872,16 điểm và Nasdaq Composite giảm 3,56% xuống 19.392,69 điểm.\" and Dow \"giảm 1.123,03 điểm, tương đương 2,58%\". Matches data. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "fed-50bp-cut-2024-09-18",
+   "type": "fed_dovish",
+   "date": "2024-09-18",
+   "region": "us",
+   "event": "Fed opened its easing cycle with a 50bp cut",
+   "move": "S&P 500 -0.29%, Nasdaq Composite -0.31% on Sep 18; S&P 500 +1.70%, Nasdaq Composite +2.51% on Sep 19 (daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2024-09-17,5655.51,5634.58,5670.81,5614.05,2326959024 ; 2024-09-18,5641.68,5618.26,5689.75,5615.08,2434122448 || [100.NDX] 2024-09-17,17707.02,17628.06,17781.74,17544.64,4452703744 ; 2024-09-18,17663.38,17573.30,17832.70,17556.42,4949969920 || next day: [100.SPX] 2024-09-19,5702.63,5713.64,5733.57,5686.42,2750098016 || [100.NDX] 2024-09-19,17980.89,18013.98,18099.93,17909.75,4897490944",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240910&end=20240920",
+   "lesson": "Big cuts can first read as the Fed seeing trouble before markets settle on the positive.",
+   "keywords": [
+    "Fed cuts rates",
+    "half-point cut",
+    "easing cycle",
+    "stocks record high"
+   ],
+   "status": "corrected",
+   "note": "Day move verified (-0.29% / -0.31%); next day S&P +1.70% on Sep 19 to 5713.64, the highest close in Sep 10-19 range checked; the \"record\" claim itself is not stated on any page I opened, so dropped from the sentence. The cafef source in analogs.ts has no index figures. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "jobs-weak-yen-carry-2024-08",
+   "type": "jobs_weak",
+   "date": "2024-08-02 to 2024-08-05",
+   "region": "global",
+   "event": "Weak July US jobs report (unemployment up), then the yen carry-trade unwind hit Japan hardest",
+   "move": "Nikkei 225 -12.4% Aug 5 (+10.2% Aug 6); S&P 500 -1.8% Aug 2 and -3.0% Aug 5; Nasdaq Composite -3.4% Aug 5 (daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.N225] 2024-08-02,37444.17,35909.70,37471.52,35880.15,0 ; 2024-08-05,35249.36,31458.42,35301.18,31156.12,0 || [100.SPX] 2024-08-02,5376.63,5346.56,5383.89,5302.03,3927200272 ; 2024-08-05,5151.14,5186.33,5250.89,5119.26,3969170832 || [100.NDX] 2024-08-02,16780.45,16776.16,16920.63,16582.79,5315692032 ; 2024-08-05,15712.53,16200.08,16453.46,15708.54,5470293760 || [100.N225] 2024-08-06,32077.33,34675.46,34911.80,32077.33,0 || [100.SPX] 2024-08-01,5537.84,5446.68,5566.16,5410.42,3367764544 ; 2024-08-02,5376.63,5346.56,5383.89,5302.03,3927200272 ; 2024-08-05,5151.14,5186.33,5250.89,5119.26,3969170832",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.N225&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240802&end=20240805",
+   "lesson": "Growth scares plus crowded positioning cause sharp, often short-lived flushes; Nikkei rebounded +10.2% the next day.",
+   "keywords": [
+    "Nikkei worst day since 1987",
+    "yen carry trade unwind",
+    "weak jobs report",
+    "global selloff"
+   ],
+   "status": "verified",
+   "note": "Nikkei -12.40% on Aug 5 and +10.23% on Aug 6 (rows: 2024-08-06 in same dataset). S&P 500 -1.84% Aug 2 and -3.00% Aug 5; Nasdaq Composite -3.43% Aug 5 (computed). cafef page opened: \"Nikkei 225 chốt phiên giảm 12,4% xuống còn 31.458,42 điểm vào ngày đầu tuần, đánh dấu mức giảm sâu nhất từ trước đến nay.\""
+  },
+  {
+   "id": "liberation-day-tariffs-2025-04",
+   "type": "tariffs_escalation",
+   "date": "2025-04-02 to 2025-04-04",
+   "region": "us",
+   "event": "'Liberation Day' reciprocal tariffs announced",
+   "move": "S&P 500 -4.84% Apr 3 and -5.97% Apr 4 (-10.5% in two days); Nasdaq Composite -5.97% Apr 3 and -5.82% Apr 4 (daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2025-04-02,5580.76,5670.97,5695.31,5571.48,2709626448 ; 2025-04-04,5292.14,5074.08,5292.14,5069.90,6045349888 || [100.NDX] 2025-04-02,17207.01,17601.05,17716.52,17181.27,8384507136 ; 2025-04-04,16045.60,15587.79,16128.16,15575.68,9139058944 || [100.SPX] 2025-04-03,5492.74,5396.52,5499.53,5390.83,4980916480",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250402&end=20250404",
+   "lesson": "Tariff shocks bigger than expected hit globally exposed tech and chips hardest.",
+   "keywords": [
+    "reciprocal tariffs",
+    "Liberation Day",
+    "stocks plunge",
+    "worst day since 2020"
+   ],
+   "status": "verified",
+   "note": "Day moves: S&P -4.84% Apr 3, -5.97% Apr 4; Nasdaq Composite -5.97% Apr 3 and -5.82% Apr 4. cafef page opened: \"Chỉ số S&P 500 giảm 4,84%, chốt phiên ở mức 5.396,52 điểm, phiên giao dịch tệ nhất kể từ tháng 6/2020.\" and \"Nasdaq Composite lao dốc 5,97%\". The cafef page has no Apr 4 figures; those are from daily closes. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "tariff-pause-2025-04-09",
+   "type": "tariffs_relief",
+   "date": "2025-04-09",
+   "region": "us",
+   "event": "90-day pause on most reciprocal tariffs",
+   "move": "S&P 500 +9.5%, Nasdaq Composite +12.2%, Dow +7.9% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2025-04-08,5193.57,4982.77,5267.47,4910.42,5067305984 ; 2025-04-09,4965.28,5456.90,5481.34,4948.43,6652962816 || [100.NDX] 2025-04-08,16181.04,15267.91,16316.51,15053.39,8906449920 ; 2025-04-09,15295.44,17124.97,17202.94,15270.28,11543756032 || [100.DJIA] 2025-04-08,38827.10,37645.59,39426.60,37103.86,1051227008 ; 2025-04-09,37387.91,40608.45,40778.70,37275.69,1412967504",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250401&end=20250411",
+   "lesson": "Policy-driven selloffs can reverse violently on one headline. Selling after a policy panic carries that risk.",
+   "keywords": [
+    "tariff pause",
+    "90-day pause",
+    "stocks soar",
+    "biggest rally"
+   ],
+   "status": "corrected",
+   "note": "analogs.ts source (vnexpress) gives no percentages (it only says indexes rose strongly); figures re-sourced from daily closes: S&P +9.52%, Nasdaq +12.16% (matches analogs.ts). Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "deepseek-2025-01-27",
+   "type": "ai_disruption_scare",
+   "date": "2025-01-27",
+   "region": "us",
+   "event": "DeepSeek R1 sparked fears that AI needs far fewer chips",
+   "move": "Nvidia -17.0%, Nasdaq Composite -3.1%, S&P 500 -1.46% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [105.NVDA] 2025-01-24,148.370,142.620,148.970,141.880,234657635 ; 2025-01-27,124.800,118.420,128.400,116.700,818830896 || [100.NDX] 2025-01-24,20087.11,19954.30,20118.61,19897.13,7333924096 ; 2025-01-27,19234.04,19341.83,19514.35,19204.95,8026800128 || [100.SPX] 2025-01-24,6121.43,6101.24,6128.18,6088.74,2477605648 ; 2025-01-27,5969.04,6012.28,6017.17,5962.92,4062347408",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.NVDA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250116&end=20250129",
+   "lesson": "Threats to the AI capex story hit chips hardest. The index-level damage was much smaller.",
+   "keywords": [
+    "DeepSeek",
+    "Nvidia plunges",
+    "AI chip stocks",
+    "Nasdaq falls"
+   ],
+   "status": "verified",
+   "note": "Nvidia -16.97% (analogs.ts ~17%), Nasdaq Composite -3.07% (analogs.ts ~3.1%). Source URL is Nvidia kline; Nasdaq via secid 100.NDX. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "nvidia-guidance-2023-05-25",
+   "type": "ai_demand_strong",
+   "date": "2023-05-25",
+   "region": "us",
+   "event": "Nvidia raised its Q2 FY24 revenue guidance far above expectations (announced after the close on May 24)",
+   "move": "Nvidia +24.4%, Nasdaq Composite +1.71%, S&P 500 +0.88% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [105.NVDA] 2023-05-24,302.100,305.380,306.070,298.060,72141851 ; 2023-05-25,385.230,379.800,394.800,366.350,154391067 || [100.NDX] 2023-05-24,12481.89,12484.16,12529.63,12415.85,3665516720 ; 2023-05-25,12706.44,12698.09,12736.92,12604.89,4116685504 || [100.SPX] 2023-05-24,4132.96,4115.24,4132.96,4103.98,2234891664 ; 2023-05-25,4155.71,4151.28,4165.74,4129.73,2772132352",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.NVDA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20230517&end=20230530",
+   "lesson": "Large guidance beats from AI leaders re-rate the whole chip group.",
+   "keywords": [
+    "Nvidia guidance",
+    "raises forecast",
+    "AI demand",
+    "chip stocks surge"
+   ],
+   "status": "corrected",
+   "note": "Nvidia +24.37% on May 25 (the first session after the May 24 evening report) and +2.54% May 26; Nasdaq Composite +1.71% May 25, +2.19% May 26. analogs.ts said \"~24% the next day\"; the +24% is on the report-reaction day itself and the date is now stated that way. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "nvidia-h20-license-2025-04-16",
+   "type": "chip_export_controls",
+   "date": "2025-04-16",
+   "region": "us",
+   "event": "US required licenses for Nvidia H20 sales to China",
+   "move": "Nvidia -6.9%, S&P 500 -2.24%, Nasdaq Composite -3.1% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [105.NVDA] 2025-04-15,110.970,112.200,113.615,110.500,228966900 ; 2025-04-16,104.550,104.490,106.790,100.450,397016864 || [100.SPX] 2025-04-15,5411.99,5396.63,5450.41,5386.44,2798054960 ; 2025-04-16,5335.75,5275.70,5367.24,5220.79,3317144928 || [100.NDX] 2025-04-15,16842.39,16823.17,16979.96,16753.22,6869385984 ; 2025-04-16,16499.69,16307.16,16600.36,16066.46,7083649792",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.NVDA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250408&end=20250421",
+   "lesson": "Export curbs hit chip names directly. The broad index impact is usually limited.",
+   "keywords": [
+    "export license",
+    "H20 China",
+    "Nvidia falls",
+    "chip curbs"
+   ],
+   "status": "verified",
+   "note": "Nvidia -6.87%, S&P 500 -2.24% (analogs.ts ~6.9% / ~2.2%). Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "chip-curbs-taiwan-2024-07-17",
+   "type": "chip_export_controls",
+   "date": "2024-07-17",
+   "region": "us",
+   "event": "Reports of tighter US chip curbs plus comments questioning Taiwan defense",
+   "move": "Nvidia -6.6%, S&P 500 -1.39%, Nasdaq Composite -2.77% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [105.NVDA] 2024-07-16,128.440,126.360,129.040,124.580,214769515 ; 2024-07-17,121.350,117.990,121.850,116.720,390086192 || [100.SPX] 2024-07-16,5644.09,5667.20,5669.67,5639.02,2488124352 ; 2024-07-17,5610.07,5588.27,5622.49,5584.81,3104654464 || [100.NDX] 2024-07-16,18534.27,18509.34,18576.83,18386.07,5313058560 ; 2024-07-17,18188.19,17996.92,18223.24,17972.87,5353457664",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.NVDA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240709&end=20240719",
+   "lesson": "Geopolitics plus export controls is a fast way to deflate a crowded chip trade.",
+   "keywords": [
+    "chip curbs",
+    "Taiwan defense comments",
+    "Nvidia falls",
+    "chip stocks sell off"
+   ],
+   "status": "verified",
+   "note": "Nvidia -6.62%, S&P 500 -1.39%, Nasdaq Composite -2.77% (matches analogs.ts). The news content itself is from general knowledge. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "ukraine-invasion-2022-02-24",
+   "type": "geopolitical_shock",
+   "date": "2022-02-24",
+   "region": "global",
+   "event": "Russia invaded Ukraine",
+   "move": "Nasdaq Composite +3.3%, S&P 500 +1.50% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.NDX] 2022-02-23,13511.75,13037.49,13533.78,13032.17,4016513328 ; 2022-02-24,12587.88,13473.58,13486.11,12587.88,5198975488 || [100.SPX] 2022-02-23,4324.93,4225.50,4341.51,4221.51,2258563936 ; 2022-02-24,4155.77,4288.70,4294.73,4114.65,3284762944",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20220215&end=20220228",
+   "lesson": "War headlines often see sell the rumor, buy the news: US stocks closed higher the same day after an early plunge.",
+   "keywords": [
+    "Russia invades Ukraine",
+    "war",
+    "oil above $100",
+    "stocks rebound"
+   ],
+   "status": "corrected",
+   "note": "Closes: Nasdaq Composite +3.34%, S&P 500 +1.50% (matches analogs.ts). The analogs.ts source (vnexpress) states no index closes (it says stocks plunged and oil topped $100 a barrel), so the move is re-sourced from daily closes. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "svb-collapse-2023-03",
+   "type": "financial_stress",
+   "date": "2023-03-10 to 2023-03-31",
+   "region": "us",
+   "event": "Silicon Valley Bank collapsed",
+   "move": "Nasdaq Composite +9.7% from Mar 10 close to Mar 31 close (daily closes); SVB Financial shares -60% on Mar 9 (vnexpress)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.NDX] 2023-03-10,11325.36,11138.89,11373.81,11093.86,5131924736 ; 2023-03-31,12031.54,12221.91,12227.93,12030.44,4900025088 || vnexpress: \"Cổ phiếu SVB Financial Group vì thế giảm 60% phiên 9/3 và bị ngừng giao dịch sau đó.\"",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.NDX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20230310&end=20230331",
+   "lesson": "Financial stress can help big tech if it pulls yields down and brings in a policy backstop.",
+   "keywords": [
+    "bank failure",
+    "Silicon Valley Bank",
+    "deposit backstop",
+    "Nasdaq rebounds"
+   ],
+   "status": "verified",
+   "note": "Nasdaq Composite +9.72% from the Mar 10 close to Mar 31 (computed). vnexpress.net/my-xay-ra-vu-sup-do-lon-thu-hai-lich-su-nganh-ngan-hang-4580041.html was opened: \"Cổ phiếu SVB Financial Group vì thế giảm 60% phiên 9/3 và bị ngừng giao dịch sau đó.\" Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "yields-5pct-2023-07-to-10",
+   "type": "yields_spike",
+   "date": "2023-07-19 to 2023-10-27",
+   "region": "us",
+   "event": "10-year Treasury yield reached ~5% (4.98% on Oct 19 2023)",
+   "move": "10-year Treasury yield 3.75% (Jul 19) to 4.98% (Oct 19), 4.84% on Oct 27, 4.44% Nov 17; Nasdaq Composite -11.9% Jul 19 to Oct 27 (daily closes)",
+   "moveQuote": "Treasury page (WebFetch, daily par yield curve): \"The 10-year yield was 4.98% on Oct 19, 2023, and 4.84% on Oct 27, 2023.\" || Eastmoney kline: [100.NDX] 2023-07-19,14398.53,14358.02,14446.55,14317.09,4624549632 ; 2023-10-27,12718.69,12643.01,12772.43,12600.57,3592843856",
+   "source": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView?type=daily_treasury_yield_curve&field_tdr_date_value_month=202310",
+   "lesson": "Rising long yields compress tech valuations. The turn in yields marked the bottom.",
+   "keywords": [
+    "10-year yield 5%",
+    "Treasury yields surge",
+    "bond selloff",
+    "Nasdaq correction"
+   ],
+   "status": "corrected",
+   "note": "Nasdaq Composite -11.94% from Jul 19 to Oct 27. Treasury CSV (par yield curve, 10 Yr): 3.75% Jul 19, 4.98% Oct 19 (peak of the period), 4.84% Oct 27, 4.44% Nov 17. analogs.ts said the yield reached 4.98% by Oct 27; the 4.98% peak was Oct 19 and Oct 27 was 4.84%. Treasury source: https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2023/all?type=daily_treasury_yield_curve&field_tdr_date_value=2023&page&_format=csv . Treasury page was opened with WebFetch for Oct 19 (4.98%) and Oct 27 (4.84%)."
+  },
+  {
+   "id": "shutdown-2018-12-to-2019-01",
+   "type": "shutdown_politics",
+   "date": "2018-12-22 to 2019-01-25",
+   "region": "us",
+   "event": "Partial US government shutdown (Dec 22 2018 to Jan 25 2019, 35 days)",
+   "move": "S&P 500 +10.3% from 2018-12-21 close to 2019-01-25 close",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2018-12-21,2475.91,2416.62,2504.41,2408.55,4901378048 ; 2019-01-25,2661.92,2664.76,2672.38,2642.33,2490337024",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20181221&end=20190125",
+   "lesson": "Shutdowns historically have small market impact. Fed and earnings dominate.",
+   "keywords": [
+    "government shutdown",
+    "partial shutdown",
+    "border wall",
+    "stocks rally"
+   ],
+   "status": "verified",
+   "note": "S&P 500 +10.27% from the Dec 21 2018 close (near the Dec 24 low) to Jan 25 2019. Shutdown dates (35 days) are from general knowledge, not the page. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "china-yuan-2015-08",
+   "type": "china_slowdown",
+   "date": "2015-08-11 to 2015-08-24",
+   "region": "global",
+   "event": "China growth scare after the surprise yuan devaluation (Aug 11 2015)",
+   "move": "S&P 500 -10.0% from Aug 10 to Aug 24 close (-3.9% on Aug 24); Shanghai Composite -8.5% on Aug 24 (daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2015-08-10,2080.98,2104.18,2105.35,2080.98,536952768 ; 2015-08-21,2034.08,1970.89,2034.08,1970.89,1064386944 ; 2015-08-24,1965.15,1893.21,1965.15,1867.01,1333354752 || [1.000001] 2015-08-21,3609.96,3507.74,3652.84,3490.54,369920479 ; 2015-08-24,3373.48,3209.91,3388.36,3191.88,334671793",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20150810&end=20150824",
+   "lesson": "China growth scares hit commodities, Asian markets and chipmakers first; the US damage was sharp.",
+   "keywords": [
+    "yuan devaluation",
+    "China slowdown",
+    "Shanghai plunges",
+    "global selloff"
+   ],
+   "status": "verified",
+   "note": "S&P 500 -10.03% Aug 10 to Aug 24 close; Shanghai Composite -8.49% on Aug 24 (3209.91 vs 3507.74 Aug 21); S&P -3.94% on Aug 24. Shanghai rows: see secid 1.000001 same pattern."
+  },
+  {
+   "id": "china-stimulus-2024-09",
+   "type": "china_stimulus",
+   "date": "2024-09-24 to 2024-10-07",
+   "region": "cn",
+   "event": "Beijing's broad stimulus package (rate cuts, bank reserve cut, stock-market support)",
+   "move": "CSI 300 +25.1% Sep 23 to Sep 30 close (+32.5% to Oct 8); Hang Seng +26.6% Sep 23 to Oct 7, then -9.4% on Oct 8 (daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [1.000300] 2024-09-23,3200.87,3212.76,3230.16,3198.02,95344855 ; 2024-09-30,3846.65,4017.85,4038.70,3796.50,510217707 ; 2024-10-08,4450.37,4256.10,4450.37,4094.35,589867894 || [100.HSI] 2024-09-23,18237.41,18247.11,18426.92,18212.58,10940190720 ; 2024-10-07,22948.35,23099.78,23241.74,22719.91,33410426624 ; 2024-10-08,22849.23,20926.79,22902.36,20762.82,55183981824",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=1.000300&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240923&end=20240930",
+   "lesson": "Chinese stimulus rallies are fast and policy-driven; they fade unless follow-through spending arrives.",
+   "keywords": [
+    "China stimulus",
+    "PBOC rate cut",
+    "CSI 300 surges",
+    "Hang Seng rally"
+   ],
+   "status": "verified",
+   "note": "CSI 300 +25.06% Sep 23 to Sep 30 and +32.47% to Oct 8 (4256.10); Hang Seng +26.59% Sep 23 to Oct 7, then -9.41% on Oct 8 (20926.8 vs 23099.8). Matches analogs.ts. Hang Seng rows: secid 100.HSI same pattern. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "lehman-2008-09-15",
+   "type": "financial_stress",
+   "date": "2008-09-15",
+   "region": "us",
+   "event": "Lehman Brothers filed for bankruptcy (Sep 14-15 2008) and Merrill Lynch was sold to Bank of America",
+   "move": "S&P 500 -4.7%, Dow -4.4%, Nasdaq Composite -3.6% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2008-09-12,1249.03,1251.70,1254.98,1233.84,0 ; 2008-09-15,1251.70,1192.70,1251.70,1192.70,0 || [100.DJIA] 2008-09-12,11429.32,11421.99,11459.93,11280.40,238282070 ; 2008-09-15,11416.37,10917.51,11416.45,10917.51,430407536 || [100.NDX] 2008-09-12,2239.25,2261.27,2268.83,2228.00,1973589984 ; 2008-09-15,2202.28,2179.91,2244.88,2179.91,2697820000",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20080905&end=20080917",
+   "lesson": "A systemic funding shock reprices everything at once; the first-day loss was only the start of a month-long slide.",
+   "keywords": [
+    "Lehman Brothers bankruptcy",
+    "bank collapse",
+    "credit crisis",
+    "Dow plunges"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. S&P 500 fell -28.16% from Sep 12 to Oct 10 2008 (1251.70 to 899.22)."
+  },
+  {
+   "id": "tarp-rejected-2008-09-29",
+   "type": "financial_stress",
+   "date": "2008-09-29",
+   "region": "us",
+   "event": "House of Representatives rejected the $700bn TARP bank rescue bill",
+   "move": "S&P 500 -8.8%, Nasdaq Composite -9.1%, Dow -7.0% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2008-09-26,1208.92,1213.01,1215.59,1188.26,0 ; 2008-09-29,1213.23,1106.39,1213.23,1106.39,0 || [100.NDX] 2008-09-26,2144.06,2183.34,2187.53,2136.85,1949200000 ; 2008-09-29,2147.16,1983.73,2152.69,1983.73,2808100000 || [100.DJIA] 2008-09-26,11019.04,11143.13,11168.06,10868.82,222544162 ; 2008-09-29,11139.62,10365.45,11139.94,10365.45,382359872",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20080919&end=20081001",
+   "lesson": "Policy backstop failures can hit harder than the stress itself; markets bounced only when a rescue was credible.",
+   "keywords": [
+    "bailout rejected",
+    "House rejects rescue",
+    "bank rescue bill",
+    "stocks crash"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "flash-crash-2010-05-06",
+   "type": "flash_crash_volatility",
+   "date": "2010-05-06",
+   "region": "us",
+   "event": "US \"flash crash\": stocks plunged within minutes and mostly recovered the same afternoon",
+   "move": "Dow -3.2%, S&P 500 -3.2%, Nasdaq Composite -3.4% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.DJIA] 2010-05-05,10918.40,10868.12,10946.79,10814.84,218829984 ; 2010-05-06,10862.22,10520.32,10879.76,9869.62,459889984 || [100.SPX] 2010-05-05,1169.24,1165.90,1175.95,1158.15,0 ; 2010-05-06,1164.38,1128.15,1167.58,1065.79,0 || [100.NDX] 2010-05-05,2395.21,2402.29,2421.05,2382.07,3041479984 ; 2010-05-06,2391.21,2319.64,2407.79,2185.75,4553600000",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.DJIA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20100428&end=20100510",
+   "lesson": "Intraday air pockets can erase and recover hundreds of index points within minutes; the close understates the swing.",
+   "keywords": [
+    "flash crash",
+    "Dow plunges 1000 points",
+    "trading glitch",
+    "Greek debt fears"
+   ],
+   "status": "new",
+   "note": "New type flash_crash_volatility: sudden liquidity-driven plunges and VIX spikes that are not tied to a single data release. New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Only the close is measured here; the intraday 1,000-point swing is from general knowledge, not the page. [Edited in review: claim not on an opened page removed.]"
+  },
+  {
+   "id": "us-downgrade-2011-08-08",
+   "type": "sovereign_downgrade",
+   "date": "2011-08-08",
+   "region": "us",
+   "event": "S&P cut the US credit rating from AAA to AA+ (Aug 5 2011), first session after on Aug 8",
+   "move": "S&P 500 -6.7%, Nasdaq Composite -6.9%, Dow -5.5% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2011-08-05,1200.28,1199.38,1218.11,1168.08,0 ; 2011-08-08,1186.64,1119.46,1199.38,1119.28,0 || [100.NDX] 2011-08-05,2580.30,2532.41,2592.04,2464.87,3750149984 ; 2011-08-08,2447.30,2357.69,2489.39,2357.69,3987989984 || [100.DJIA] 2011-08-05,11383.98,11444.61,11555.41,11139.00,406309984 ; 2011-08-08,11433.93,10809.85,11434.09,10809.85,479980000",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20110729&end=20110810",
+   "lesson": "A downgrade of the safest issuer hit stocks hard while Treasuries rallied, so safe-haven demand outweighed the credit signal.",
+   "keywords": [
+    "US credit rating downgrade",
+    "S&P cuts US rating",
+    "debt ceiling deal",
+    "stocks tumble"
+   ],
+   "status": "new",
+   "note": "New type sovereign_downgrade: rating cuts on a government. New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. S&P 500 fell -13.66% from Jul 29 to Aug 8 2011."
+  },
+  {
+   "id": "brexit-2016-06-24",
+   "type": "geopolitical_shock",
+   "date": "2016-06-24",
+   "region": "global",
+   "event": "UK voted to leave the EU (Brexit referendum result)",
+   "move": "S&P 500 -3.6%, Nasdaq Composite -4.1%, Dow -3.4% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2016-06-23,2092.80,2113.32,2113.32,2092.80,525251392 ; 2016-06-24,2103.81,2037.30,2103.81,2032.57,1388008960 || [100.NDX] 2016-06-23,4872.19,4910.04,4910.04,4859.40,1738570016 ; 2016-06-24,4715.80,4707.98,4798.22,4698.42,4411040000 || [100.DJIA] 2016-06-23,17844.11,18011.07,18011.07,17844.11,98069984 ; 2016-06-24,17946.63,17399.86,17946.63,17356.34,238999984",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20160616&end=20160628",
+   "lesson": "Surprise political outcomes cause a sharp one-day repricing that tends to be reversed if no financial contagion follows.",
+   "keywords": [
+    "Brexit vote",
+    "UK leaves EU",
+    "pound plunges",
+    "stocks tumble"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "volmageddon-2018-02-05",
+   "type": "flash_crash_volatility",
+   "date": "2018-02-05",
+   "region": "us",
+   "event": "\"Volmageddon\": VIX spiked and short-volatility products collapsed after a hot wage-growth jobs report on Feb 2",
+   "move": "Dow -4.6%, S&P 500 -4.1%, Nasdaq Composite -3.8% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.DJIA] 2018-02-02,26041.70,25520.96,26061.79,25490.66,522877728 ; 2018-02-05,25264.03,24345.75,25520.53,23923.88,714449392 || [100.SPX] 2018-02-02,2804.18,2762.13,2821.98,2759.97,2706977792 ; 2018-02-05,2738.52,2648.94,2763.39,2638.17,3533487104 || [100.NDX] 2018-02-02,7346.62,7240.95,7364.43,7238.18,2131104736 ; 2018-02-05,7164.91,6967.53,7277.36,6967.53,2449064960",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.DJIA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20180126&end=20180207",
+   "lesson": "Crowded short-volatility bets can amplify a rates scare into a sharp one-day drop even when the economy looks fine.",
+   "keywords": [
+    "Volmageddon",
+    "VIX spikes",
+    "Dow plunges",
+    "wage growth rate fears"
+   ],
+   "status": "new",
+   "note": "New type flash_crash_volatility (see 2010 flash crash). New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Dow -4.60% is the largest one-day drop in points at that time (the point record is from general knowledge, not the page). [Edited in review: claim not on an opened page removed.]"
+  },
+  {
+   "id": "tariffs-china-2018-03-22",
+   "type": "tariffs_escalation",
+   "date": "2018-03-22",
+   "region": "us",
+   "event": "Trump announced tariffs on about $50bn of Chinese goods (Section 301)",
+   "move": "Dow -2.93%, S&P 500 -2.52%, Nasdaq Composite -2.43% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.DJIA] 2018-03-21,24726.93,24682.31,24977.65,24655.40,343232240 ; 2018-03-22,24437.35,23957.89,24526.01,23938.74,439276816 || [100.SPX] 2018-03-21,2715.58,2711.93,2739.14,2709.79,2074883968 ; 2018-03-22,2684.45,2643.69,2711.93,2641.59,2492921088 || [100.NDX] 2018-03-21,7347.08,7345.29,7415.66,7325.35,1674131760 ; 2018-03-22,7257.35,7166.68,7303.19,7164.38,1937353056",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.DJIA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20180314&end=20180326",
+   "lesson": "First formal escalation of the 2018-19 trade war: broad indexes fell 2-3% in a day, with tech and exporters worst.",
+   "keywords": [
+    "tariffs on China",
+    "trade war",
+    "Section 301",
+    "Dow falls"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "powell-neutral-yields-2018-10-10",
+   "type": "yields_spike",
+   "date": "2018-10-10",
+   "region": "us",
+   "event": "Stocks slid as the 10-year Treasury yield hit a 7-year high near 3.2% (after Powell said rates were a long way from neutral on Oct 3)",
+   "move": "S&P 500 -3.3%, Nasdaq Composite -4.1%, Dow -3.1% that day (close vs prior close, computed from daily closes); 10-year yield 3.09% Oct 1 to 3.22% Oct 10 (Treasury CSV)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2018-10-09,2879.69,2880.34,2894.83,2874.27,2123907328 ; 2018-10-10,2873.99,2785.68,2880.34,2784.86,2883395584 || [100.NDX] 2018-10-09,7728.51,7738.02,7799.75,7718.95,2042102016 ; 2018-10-10,7695.38,7422.05,7701.20,7420.56,2138582304 || [100.DJIA] 2018-10-09,26459.30,26430.57,26539.94,26324.16,282561088 ; 2018-10-10,26441.12,25598.74,26441.73,25593.65,438198256",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20181002&end=20181012",
+   "lesson": "Fast-rising long yields hit growth stocks hardest even without a policy change.",
+   "keywords": [
+    "Treasury yields surge",
+    "Powell long way from neutral",
+    "tech selloff",
+    "Nasdaq falls"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Treasury CSV 10 Yr: 3.09% Oct 1, 3.23% Oct 5, 3.22% Oct 10 (https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2018/all?type=daily_treasury_yield_curve&field_tdr_date_value=2018&page&_format=csv)."
+  },
+  {
+   "id": "fed-hike-2018-12-19",
+   "type": "fed_hawkish",
+   "date": "2018-12-19",
+   "region": "us",
+   "event": "Fed raised rates a fourth time in 2018 and kept signalling more hikes (Dec 19 2018)",
+   "move": "S&P 500 -1.54%, Nasdaq Composite -2.17%, Dow -1.49% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2018-12-18,2566.62,2546.16,2573.99,2528.71,2741624064 ; 2018-12-19,2546.03,2506.96,2585.29,2488.96,3372442368 || [100.NDX] 2018-12-18,6809.62,6783.91,6847.27,6733.71,2466341040 ; 2018-12-19,6777.52,6636.83,6868.86,6586.50,2791713744 || [100.DJIA] 2018-12-18,23775.28,23675.64,23927.77,23516.02,407708064 ; 2018-12-19,23698.26,23323.66,24057.34,23162.64,501965056",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20181211&end=20181221",
+   "lesson": "Hawkish guidance at a time of fragile sentiment led to the December 2018 low; the Fed reversed course within weeks.",
+   "keywords": [
+    "Fed raises rates",
+    "rate hike",
+    "balance sheet runoff",
+    "stocks slump"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "tariffs-hike-2019-05-13",
+   "type": "tariffs_escalation",
+   "date": "2019-05-13",
+   "region": "us",
+   "event": "US-China trade talks broke down; the US raised tariffs on $200bn of Chinese goods to 25% (May 10) and China announced retaliation (May 13)",
+   "move": "Dow -2.38%, S&P 500 -2.41%, Nasdaq Composite -3.4% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.DJIA] 2019-05-10,25761.33,25942.37,26019.32,25469.86,294080704 ; 2019-05-13,25529.57,25324.99,25568.06,25222.51,361235280 || [100.SPX] 2019-05-10,2862.35,2881.40,2891.31,2825.39,2001051264 ; 2019-05-13,2835.95,2811.87,2881.40,2801.43,2324156672 || [100.NDX] 2019-05-10,7881.31,7916.94,7949.34,7759.34,2086586544 ; 2019-05-13,7720.07,7647.02,7760.83,7627.22,2116421824",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.DJIA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20190503&end=20190515",
+   "lesson": "Trade-talk collapses hit tech and chips hardest; the damage reversed once talks resumed.",
+   "keywords": [
+    "trade talks collapse",
+    "tariff hike",
+    "China retaliation",
+    "trade war"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "yuan-seven-2019-08-05",
+   "type": "tariffs_escalation",
+   "date": "2019-08-05",
+   "region": "global",
+   "event": "China let the yuan weaken past 7 per dollar after Trump announced new tariffs on $300bn of goods (Aug 1)",
+   "move": "S&P 500 -2.98%, Nasdaq Composite -3.5%, Dow -2.90% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2019-08-02,2943.90,2932.05,2953.56,2914.11,2124288832 ; 2019-08-05,2898.07,2844.74,2898.07,2822.12,2559661024 || [100.NDX] 2019-08-02,8056.42,8004.07,8068.80,7953.67,1953747472 ; 2019-08-05,7823.33,7726.04,7836.45,7662.90,2245399456 || [100.DJIA] 2019-08-02,26523.46,26485.01,26570.02,26249.22,335720544 ; 2019-08-05,26187.27,25717.74,26259.23,25523.38,423371152",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20190726&end=20190807",
+   "lesson": "A currency move in a trade war can be read as retaliation and triggers a sharp global selloff.",
+   "keywords": [
+    "yuan weakens past 7",
+    "new tariffs $300 billion",
+    "currency manipulator",
+    "stocks plunge"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "covid-fed-zero-2020-03-16",
+   "type": "financial_stress",
+   "date": "2020-03-16",
+   "region": "global",
+   "event": "Fed cut rates to zero and restarted QE (Sunday Mar 15) but stocks still fell in the Covid panic",
+   "move": "S&P 500 -12.0%, Nasdaq Composite -12.3%, Dow -12.9% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2020-03-13,2569.99,2711.02,2711.33,2492.37,4727230976 ; 2020-03-16,2508.59,2386.13,2562.98,2380.94,4427669760 || [100.NDX] 2020-03-13,7610.39,7874.88,7875.93,7219.09,4037407040 ; 2020-03-16,7392.73,6904.59,7422.20,6882.86,3984634640 || [100.DJIA] 2020-03-13,21973.82,23185.62,23189.76,21285.37,843080960 ; 2020-03-16,20917.53,20188.52,21768.28,20116.46,775906048",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20200306&end=20200318",
+   "lesson": "Emergency policy does not stop a panic on its own; stocks bottomed only on Mar 23, a week later.",
+   "keywords": [
+    "Fed cuts to zero",
+    "coronavirus panic",
+    "emergency rate cut",
+    "circuit breaker"
+   ],
+   "status": "new",
+   "note": "Fits no existing type well; kept as financial_stress (liquidity panic). New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. S&P 500 -9.51% on Mar 12 2020 and +9.38% on Mar 24 2020 (computed from the same data)."
+  },
+  {
+   "id": "covid-stimulus-rally-2020-03-24",
+   "type": "fed_dovish",
+   "date": "2020-03-24",
+   "region": "us",
+   "event": "Stocks rallied as Congress neared a $2tn stimulus deal and the Fed pledged unlimited support",
+   "move": "S&P 500 +9.4%, Nasdaq Composite +8.1%, Dow +11.4% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2020-03-23,2290.71,2237.40,2300.73,2191.86,4376718848 ; 2020-03-24,2344.44,2447.33,2449.71,2344.44,4563576320 || [100.NDX] 2020-03-23,6847.28,6860.67,6984.94,6631.42,3667036640 ; 2020-03-24,7196.15,7417.86,7418.37,7169.86,3843891488 || [100.DJIA] 2020-03-23,19028.36,18591.93,19121.01,18213.65,801235520 ; 2020-03-24,19722.19,20704.91,20737.70,19649.25,808466176",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.DJIA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20200316&end=20200326",
+   "lesson": "Fiscal plus monetary backstops can produce a very large one-day rebound right after a crash.",
+   "keywords": [
+    "stimulus deal",
+    "unlimited QE",
+    "stocks surge",
+    "best day since 1933"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. The Dow +11.37% is its largest one-day gain since 1933 only per general knowledge, not the page. [Edited in review: claim not on an opened page removed.]"
+  },
+  {
+   "id": "fed-first-hike-2022-03-16",
+   "type": "fed_hawkish",
+   "date": "2022-03-16",
+   "region": "us",
+   "event": "Fed raised rates for the first time since 2018 (25bp) and signalled six more 2022 hikes",
+   "move": "S&P 500 +2.24%, Nasdaq Composite +3.8%, Dow +1.55% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2022-03-15,4188.82,4262.45,4271.05,4187.90,2401261200 ; 2022-03-16,4288.14,4357.86,4358.90,4251.99,2684696240 || [100.NDX] 2022-03-15,12685.23,12948.62,12973.88,12616.59,4823198208 ; 2022-03-16,13119.36,13436.55,13440.12,12992.20,5767157760 || [100.DJIA] 2022-03-15,32989.27,33544.34,33620.84,32989.27,394820448 ; 2022-03-16,33653.93,34063.10,34075.94,33391.24,430180032",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20220308&end=20220318",
+   "lesson": "A widely expected hike can lift stocks because uncertainty clears; the later 75bp moves were the shocks.",
+   "keywords": [
+    "Fed raises rates",
+    "first rate hike since 2018",
+    "liftoff",
+    "stocks rally"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "cpi-hot-2022-06-10",
+   "type": "inflation_hot",
+   "date": "2022-06-10",
+   "region": "us",
+   "event": "May 2022 US CPI hit 8.6%, a four-decade high and hotter than expected",
+   "move": "S&P 500 -2.91%, Nasdaq Composite -3.5%, Dow -2.73% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2022-06-09,4101.65,4017.82,4119.10,4017.17,2068773792 ; 2022-06-10,3974.39,3900.86,3974.39,3900.16,2510653264 || [100.NDX] 2022-06-09,12016.47,11754.23,12115.06,11751.98,4864195584 ; 2022-06-10,11543.88,11340.02,11569.15,11328.27,4433748480 || [100.DJIA] 2022-06-09,32828.62,32272.79,32956.73,32267.78,289709824 ; 2022-06-10,32053.52,31392.79,32053.52,31387.84,365000000",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20220602&end=20220614",
+   "lesson": "A hot print when the Fed is already hiking pushes the market to price steeper hikes (75bp followed days later).",
+   "keywords": [
+    "CPI 8.6%",
+    "inflation highest since 1981",
+    "hotter than expected",
+    "Fed 75bp"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "fed-75bp-2022-07-27",
+   "type": "fed_dovish",
+   "date": "2022-07-27",
+   "region": "us",
+   "event": "Fed raised 75bp again but Powell signalled a slower pace ahead (Jul 27 2022)",
+   "move": "S&P 500 +2.62%, Nasdaq Composite +4.1%, Dow +1.37% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2022-07-26,3953.22,3921.05,3953.22,3910.74,2108646720 ; 2022-07-27,3951.43,4023.61,4039.56,3951.43,2435053360 || [100.NDX] 2022-07-26,11701.53,11562.57,11711.31,11533.37,3862958272 ; 2022-07-27,11756.19,12032.42,12081.73,11718.38,3994663984 || [100.DJIA] 2022-07-26,31950.04,31761.54,31950.04,31705.36,324928304 ; 2022-07-27,31865.05,32197.59,32336.23,31799.43,365480624",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20220719&end=20220729",
+   "lesson": "Less hawkish guidance than feared drove a bear-market bounce; it faded a month later at Jackson Hole.",
+   "keywords": [
+    "Fed 75bp hike",
+    "Powell slower pace",
+    "neutral rate",
+    "stocks rally"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "fed-75bp-2022-09-21",
+   "type": "fed_hawkish",
+   "date": "2022-09-21",
+   "region": "us",
+   "event": "Fed raised 75bp for the third time and projected a higher peak rate (Sep 21 2022)",
+   "move": "S&P 500 -1.71%, Nasdaq Composite -1.79%, Dow -1.70% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2022-09-20,3875.23,3855.93,3876.01,3827.54,2324807536 ; 2022-09-21,3871.40,3789.93,3907.07,3789.49,2468712720 || [100.NDX] 2022-09-20,11440.14,11425.05,11520.99,11343.72,3474283888 ; 2022-09-21,11466.21,11220.19,11613.57,11218.99,3729871392 || [100.DJIA] 2022-09-20,30888.53,30706.23,30888.53,30465.91,320689120 ; 2022-09-21,30819.39,30183.78,31020.79,30181.99,354958208",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20220913&end=20220923",
+   "lesson": "Higher-for-longer guidance resets rate expectations; stocks made new lows within days.",
+   "keywords": [
+    "Fed 75bp hike",
+    "higher for longer",
+    "dot plot",
+    "stocks fall"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "fitch-downgrade-2023-08-02",
+   "type": "sovereign_downgrade",
+   "date": "2023-08-02",
+   "region": "us",
+   "event": "Fitch cut the US credit rating from AAA to AA+ (announced Aug 1 2023 after the close)",
+   "move": "S&P 500 -1.38%, Nasdaq Composite -2.17%, Dow -0.98% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2023-08-01,4578.83,4576.73,4584.62,4567.53,2144067328 ; 2023-08-02,4550.93,4513.39,4550.93,4505.75,2446382960 || [100.NDX] 2023-08-01,14274.93,14283.91,14309.21,14215.64,4245271280 ; 2023-08-02,14132.73,13973.45,14133.85,13914.81,4939445504 || [100.DJIA] 2023-08-01,35585.99,35630.68,35679.13,35526.61,260995276 ; 2023-08-02,35551.92,35282.52,35551.92,35226.26,301320192",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20230725&end=20230804",
+   "lesson": "A downgrade headline moved stocks about 1-2% and was soon overshadowed by yields and earnings.",
+   "keywords": [
+    "Fitch downgrades US",
+    "AAA to AA+",
+    "debt rating cut",
+    "stocks fall"
+   ],
+   "status": "new",
+   "note": "New type sovereign_downgrade. New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "fed-pivot-2023-12-13",
+   "type": "fed_dovish",
+   "date": "2023-12-13",
+   "region": "us",
+   "event": "Fed held rates and its dot plot showed three 2024 cuts (Dec 13 2023)",
+   "move": "S&P 500 +1.37%, Nasdaq Composite +1.38%, Dow +1.40% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2023-12-12,4618.30,4643.70,4643.93,4608.09,2334903968 ; 2023-12-13,4646.20,4707.09,4709.69,4643.23,2942457664 || [100.NDX] 2023-12-12,14423.01,14533.40,14533.40,14385.39,4551684352 ; 2023-12-13,14555.68,14733.96,14743.55,14517.52,6187915776 || [100.DJIA] 2023-12-12,36442.10,36577.94,36596.11,36373.22,292770448 ; 2023-12-13,36601.80,37090.24,37094.85,36523.59,359626752",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20231205&end=20231215",
+   "lesson": "Guidance matters more than the decision: a pivot signal extended a year-end rally.",
+   "keywords": [
+    "Fed pivot",
+    "rate cuts 2024",
+    "dot plot",
+    "stocks rally"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "cpi-hot-2024-02-13",
+   "type": "inflation_hot",
+   "date": "2024-02-13",
+   "region": "us",
+   "event": "January 2024 US CPI came in hotter than expected",
+   "move": "S&P 500 -1.37%, Nasdaq Composite -1.80%, Dow -1.35% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2024-02-12,5026.83,5021.84,5048.39,5016.83,2212680736 ; 2024-02-13,4967.94,4953.17,4971.30,4920.31,2554361440 || [100.NDX] 2024-02-12,15980.62,15942.55,16080.07,15917.87,5067933696 ; 2024-02-13,15598.88,15655.60,15770.42,15551.44,5011342080 || [100.DJIA] 2024-02-12,38656.76,38797.38,38927.08,38628.92,276830000 ; 2024-02-13,38699.17,38272.75,38699.17,38039.86,322660000",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240205&end=20240215",
+   "lesson": "In a rally priced for cuts, one hot print can knock 1.5% off the index in a day.",
+   "keywords": [
+    "CPI hotter than expected",
+    "inflation sticky",
+    "rate cut bets",
+    "stocks fall"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "cpi-cool-2024-07-11",
+   "type": "inflation_cool",
+   "date": "2024-07-11",
+   "region": "us",
+   "event": "June 2024 US CPI came in cooler than expected, but investors rotated out of mega-cap tech into small caps",
+   "move": "Nasdaq Composite -1.95%, S&P 500 -0.88%, Dow +0.08% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.NDX] 2024-07-10,18512.09,18647.45,18655.19,18467.58,4798933248 ; 2024-07-11,18659.25,18283.41,18671.07,18238.78,5625986560 || [100.SPX] 2024-07-10,5591.26,5633.91,5635.39,5586.44,2261837568 ; 2024-07-11,5635.21,5584.54,5642.45,5576.53,2846934416 || [100.DJIA] 2024-07-10,39272.45,39721.36,39736.20,39256.72,336924800 ; 2024-07-11,39695.18,39753.75,39875.60,39623.12,363850304",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.NDX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240702&end=20240715",
+   "lesson": "A cooler print does not always lift tech: rotation can send the Nasdaq down while small caps jump.",
+   "keywords": [
+    "CPI cooler than expected",
+    "inflation cools",
+    "small caps surge",
+    "rotation out of tech"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. The rotation explanation (small caps up) is from general knowledge, not the page; the Dow +0.08% and Nasdaq Composite -1.95% closes are verified in the data."
+  },
+  {
+   "id": "nvidia-earnings-2024-05-23",
+   "type": "earnings_beat",
+   "date": "2024-05-23",
+   "region": "us",
+   "event": "Nvidia reported a blowout quarter and announced a 10-for-1 split (May 22 after the close)",
+   "move": "Nvidia +9.3%, Nasdaq Composite -0.39%, S&P 500 -0.74% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [105.NVDA] 2024-05-22,954.590,949.500,960.200,932.490,54864799 ; 2024-05-23,1020.280,1037.990,1063.200,1015.200,83506528 || [100.NDX] 2024-05-22,16839.02,16801.54,16855.27,16712.09,7028972800 ; 2024-05-23,16996.39,16736.03,16996.39,16678.37,7246483968 || [100.SPX] 2024-05-22,5319.28,5307.01,5323.18,5286.01,2051148880 ; 2024-05-23,5340.26,5267.84,5341.88,5256.93,2266945920",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.NVDA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240515&end=20240528",
+   "lesson": "A stock can rise 9% on earnings while the index falls: single-company moves are not index moves.",
+   "keywords": [
+    "Nvidia earnings",
+    "beats estimates",
+    "stock split",
+    "record revenue"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Nvidia closes are pre-split-adjusted in the raw series (1037.99 on May 23); the 9.32% move is unaffected by the split."
+  },
+  {
+   "id": "nvidia-earnings-2024-08-29",
+   "type": "earnings_miss",
+   "date": "2024-08-29",
+   "region": "us",
+   "event": "Nvidia beat estimates on Aug 28 after the close but guidance was judged not enough; shares fell",
+   "move": "Nvidia -6.4%, S&P 500 -0.00%, Nasdaq Composite -0.23% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [105.NVDA] 2024-08-28,128.120,125.610,128.330,122.640,448101120 ; 2024-08-29,121.355,117.590,124.430,116.710,453023312 || [100.SPX] 2024-08-28,5624.51,5592.18,5627.03,5560.95,2102072224 ; 2024-08-29,5607.30,5591.96,5646.95,5583.71,2303972112 || [100.NDX] 2024-08-28,17738.80,17556.03,17759.94,17439.40,4786494464 ; 2024-08-29,17610.57,17516.43,17789.21,17482.60,5134117376",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.NVDA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240821&end=20240903",
+   "lesson": "Even a beat can sell off when the stock is priced for more; the index barely moved.",
+   "keywords": [
+    "Nvidia earnings",
+    "sell the news",
+    "guidance disappoints",
+    "shares fall"
+   ],
+   "status": "new",
+   "note": "Event type is earnings \"beat but shares fell\"; typed earnings_miss to match the market reaction. New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "ai-scare-2024-09-03",
+   "type": "ai_disruption_scare",
+   "date": "2024-09-03",
+   "region": "us",
+   "event": "Nvidia fell nearly 10% in one day on AI-demand doubts and a weak US manufacturing report, dragging the Nasdaq",
+   "move": "Nvidia -9.5%, Nasdaq Composite -3.3%, S&P 500 -2.12% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [105.NVDA] 2024-08-30,119.530,119.370,121.750,117.220,333751584 ; 2024-09-03,116.010,108.000,116.210,107.290,477155104 || [100.NDX] 2024-08-30,17650.49,17713.62,17720.37,17498.79,5047737600 ; 2024-09-03,17585.45,17136.30,17585.45,17057.79,5100306432 || [100.SPX] 2024-08-30,5612.74,5648.40,5651.37,5581.79,2727667728 ; 2024-09-03,5623.89,5528.93,5623.89,5504.33,2835851776",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=105.NVDA&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20240823&end=20240905",
+   "lesson": "AI leaders carry index weight: a 9.5% fall in one stock cut the Nasdaq 3.3%.",
+   "keywords": [
+    "Nvidia falls 9%",
+    "AI bubble fears",
+    "chip stocks tumble",
+    "Nasdaq slides"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. The stated causes are from general knowledge, not the page; the measured drop is verified."
+  },
+  {
+   "id": "jobs-strong-2025-01-10",
+   "type": "jobs_strong",
+   "date": "2025-01-10",
+   "region": "us",
+   "event": "Strong December 2024 US jobs report (about 256,000 jobs) pushed yields up and stocks down",
+   "move": "S&P 500 -1.54%, Nasdaq Composite -1.63%, Dow -1.63% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2025-01-08,5910.66,5918.25,5927.89,5874.78,2495862000 ; 2025-01-10,5890.35,5827.04,5890.35,5807.78,3025964064 || [100.NDX] 2025-01-08,19469.36,19478.88,19544.50,19308.54,8335033600 ; 2025-01-10,19312.26,19161.63,19315.11,19018.75,7951344640 || [100.DJIA] 2025-01-08,42542.10,42635.20,42656.22,42327.79,463433888 ; 2025-01-10,42540.29,41938.45,42540.29,41877.30,543817888",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20241231&end=20250114",
+   "lesson": "Good news was bad news: strong jobs data cut hopes for rate cuts and hit stocks.",
+   "keywords": [
+    "jobs report beats",
+    "payrolls surge",
+    "rate cut hopes fade",
+    "yields jump"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Jan 9 2025 was a market closure (national day of mourning), so the prior close is Jan 8. 10-year yield 4.67% Jan 8 to 4.77% Jan 10 and 4.79% Jan 13 (Treasury CSV)."
+  },
+  {
+   "id": "growth-scare-2025-03-10",
+   "type": "tariffs_escalation",
+   "date": "2025-03-10",
+   "region": "us",
+   "event": "Growth scare as tariff uncertainty hit confidence: Nasdaq entered correction territory",
+   "move": "Nasdaq Composite -4.0%, S&P 500 -2.70%, Dow -2.08% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.NDX] 2025-03-07,18029.85,18196.22,18243.58,17768.59,7283408640 ; 2025-03-10,17840.32,17468.32,17868.07,17291.82,7460441600 || [100.SPX] 2025-03-07,5726.01,5770.20,5783.01,5666.29,3933122448 ; 2025-03-10,5705.37,5614.56,5705.37,5564.02,4318308352 || [100.DJIA] 2025-03-07,42503.07,42801.72,42898.68,42175.62,763000000 ; 2025-03-10,42507.65,41911.71,42541.36,41612.92,840181216",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.NDX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250228&end=20250312",
+   "lesson": "Policy uncertainty can hit stocks without a single tariff headline; the Nasdaq fell 4% in one day.",
+   "keywords": [
+    "tariff uncertainty",
+    "recession fears",
+    "correction territory",
+    "Nasdaq tumbles"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Causes (tariff uncertainty, recession comments) are from general knowledge, not the page."
+  },
+  {
+   "id": "us-china-truce-2025-05-12",
+   "type": "tariffs_relief",
+   "date": "2025-05-12",
+   "region": "us",
+   "event": "US and China agreed in Geneva to cut tariffs sharply for 90 days (announced May 12 2025)",
+   "move": "S&P 500 +3.3%, Nasdaq Composite +4.3%, Dow +2.81% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2025-05-09,5679.65,5659.91,5691.69,5644.15,2423418912 ; 2025-05-12,5807.20,5844.19,5845.37,5786.08,3744018160 || [100.NDX] 2025-05-09,18022.55,17928.92,18068.90,17853.84,8132187904 ; 2025-05-12,18674.55,18708.34,18710.22,18472.71,9805164032 || [100.DJIA] 2025-05-09,41405.48,41249.38,41512.43,41150.73,374000000 ; 2025-05-12,41899.05,42410.10,42418.05,41899.05,653817296",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250502&end=20250514",
+   "lesson": "A de-escalation headline reversed much of the April selloff in one session.",
+   "keywords": [
+    "US China trade truce",
+    "Geneva talks",
+    "tariff cut",
+    "stocks surge"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "jobs-weak-2025-08-01",
+   "type": "jobs_weak",
+   "date": "2025-08-01",
+   "region": "us",
+   "event": "Weak July 2025 US jobs report with big downward revisions, plus new tariff announcements",
+   "move": "S&P 500 -1.60%, Nasdaq Composite -2.24%, Dow -1.23% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2025-07-31,6427.02,6339.39,6427.02,6327.64,4038489952 ; 2025-08-01,6287.28,6238.01,6287.28,6212.69,3596121216 || [100.NDX] 2025-07-31,21457.48,21122.45,21457.48,21078.67,8954450176 ; 2025-08-01,20830.64,20650.13,20865.63,20560.17,8411905280 || [100.DJIA] 2025-07-31,44665.82,44130.98,44665.82,44049.01,689045616 ; 2025-08-01,43781.77,43588.58,43781.77,43340.68,705157536",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250724&end=20250805",
+   "lesson": "Revisions of earlier jobs data can matter more than the headline number.",
+   "keywords": [
+    "jobs report weak",
+    "payroll revisions",
+    "unemployment rises",
+    "stocks fall"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Cause details are from general knowledge, not the page."
+  },
+  {
+   "id": "trump-china-100pct-2025-10-10",
+   "type": "tariffs_escalation",
+   "date": "2025-10-10",
+   "region": "us",
+   "event": "Trump threatened an additional 100% tariff on Chinese goods (Oct 10 2025) in response to rare-earth export controls",
+   "move": "S&P 500 -2.71%, Nasdaq Composite -3.6%, Dow -1.90% that day (close vs prior close, computed from daily closes)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2025-10-09,6760.50,6735.11,6764.58,6716.17,2791410832 ; 2025-10-10,6740.49,6552.51,6762.40,6550.78,3507869456 || [100.NDX] 2025-10-09,23045.33,23024.63,23062.62,22899.16,9713094656 ; 2025-10-10,23043.52,22204.43,23119.91,22193.07,9930387200 || [100.DJIA] 2025-10-09,46622.31,46358.42,46684.41,46271.40,493084304 ; 2025-10-10,46394.88,45479.60,46641.74,45470.72,658107648",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20251002&end=20251014",
+   "lesson": "Tariff threats after a calm period can still cause 2-3% index drops, led by tech and chips.",
+   "keywords": [
+    "100% tariff China",
+    "rare earths",
+    "trade war escalation",
+    "stocks plunge"
+   ],
+   "status": "new",
+   "note": "New entry. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page. Cause details are from general knowledge, not the page."
+  },
+  {
+   "id": "taper-tantrum-2013",
+   "type": "fed_hawkish",
+   "date": "2013-06-19 to 2013-06-20",
+   "region": "us",
+   "event": "Fed chair signalled tapering of asset purchases at the Jun 19 2013 press conference (\"taper tantrum\")",
+   "move": "S&P 500 -2.50% on Jun 20 2013 (daily close); 10-year Treasury yield 1.66% May 2 to 2.98% Sep 5 2013 (Treasury CSV)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2013-06-19,1651.83,1628.93,1652.45,1628.91,0 ; 2013-06-20,1624.62,1588.19,1624.62,1584.32,832453632",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20130619&end=20130620",
+   "lesson": "Hints that easy money will end can lift yields fast and hit bonds and emerging markets harder than US stocks.",
+   "keywords": [
+    "taper tantrum",
+    "Fed tapering",
+    "Treasury yields surge",
+    "Bernanke"
+   ],
+   "status": "new",
+   "note": "Move shown is the Jun 20 close after the Jun 19 FOMC press conference. Treasury CSV 10 Yr: 1.66% on May 2 2013 to 2.98% on Sep 5 2013 (https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2013/all?type=daily_treasury_yield_curve&field_tdr_date_value=2013&page&_format=csv). Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "yields-spike-2025-04",
+   "type": "yields_spike",
+   "date": "2025-04-11",
+   "region": "us",
+   "event": "10-year Treasury yield jumped from 4.01% (Apr 4) to 4.48% (Apr 11 2025) during the tariff turmoil, as Treasuries sold off alongside stocks",
+   "move": "10-year Treasury yield 4.01% (Apr 4) to 4.48% (Apr 11 2025); S&P 500 +1.81% on Apr 11 (daily closes)",
+   "moveQuote": "Treasury daily par yield CSV (10 Yr): 2025-04-04 4.01; 04-07 4.15; 04-08 4.26; 04-09 4.34; 04-10 4.40; 04-11 4.48 || [100.SPX] 2025-04-10,5353.15,5268.05,5353.15,5115.27,4780690176 ; 2025-04-11,5255.56,5363.36,5381.46,5220.77,3726331424",
+   "source": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2025/all?type=daily_treasury_yield_curve&field_tdr_date_value=2025&page&_format=csv",
+   "lesson": "In the April 2025 shock bonds sold off with stocks: the usual safe haven did not hold.",
+   "keywords": [
+    "Treasury selloff",
+    "10-year yield jumps",
+    "bond market turmoil",
+    "tariffs"
+   ],
+   "status": "new",
+   "note": "Yield figures from the Treasury CSV (par yield curve, 10 Yr: 4.01 Apr 4, 4.15 Apr 7, 4.26 Apr 8, 4.34 Apr 9, 4.40 Apr 10, 4.48 Apr 11): https://home.treasury.gov/resource-center/data-chart-center/interest-rates/daily-treasury-rates.csv/2025/all?type=daily_treasury_yield_curve&field_tdr_date_value=2025&page&_format=csv . S&P 500 move shown for Apr 11 only. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "shutdown-2025-10",
+   "type": "shutdown_politics",
+   "date": "2025-10-01 to 2025-11-12",
+   "region": "us",
+   "event": "US federal government shutdown (began Oct 1 2025, ended Nov 12 2025)",
+   "move": "S&P 500 +2.4% from 2025-09-30 close to 2025-11-12 close",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2025-09-30,6656.19,6688.46,6691.25,6641.00,3507009824 ; 2025-11-12,6867.77,6850.92,6869.91,6829.62,2937857840",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20250930&end=20251112",
+   "lesson": "Even a long shutdown left stocks higher over the period; tech earnings and the Fed dominated.",
+   "keywords": [
+    "government shutdown",
+    "longest shutdown",
+    "funding bill",
+    "stocks"
+   ],
+   "status": "new",
+   "note": "Shutdown dates are from general knowledge, not the page. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "shutdown-2013-10",
+   "type": "shutdown_politics",
+   "date": "2013-10-01 to 2013-10-16",
+   "region": "us",
+   "event": "US government shutdown and debt-ceiling standoff (Oct 1-16 2013)",
+   "move": "S&P 500 +2.4% from 2013-09-30 close to 2013-10-16 close",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SPX] 2013-09-30,1687.26,1681.55,1687.26,1674.99,715860352 ; 2013-10-16,1700.49,1721.54,1721.76,1700.49,654347840",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SPX&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20130930&end=20131016",
+   "lesson": "A 16-day shutdown plus a debt-ceiling scare moved stocks only a little: S&P 500 closed higher on the day the deal passed.",
+   "keywords": [
+    "government shutdown",
+    "debt ceiling",
+    "Congress deal",
+    "stocks"
+   ],
+   "status": "new",
+   "note": "Shutdown dates are from general knowledge, not the page. Move computed from raw daily closes (column 3); Nasdaq = secid 100.NDX (Nasdaq Composite), Dow = 100.DJIA, same URL pattern. Event description from general knowledge, not from the page."
+  },
+  {
+   "id": "snb-franc-2015-01-15",
+   "type": "currency_shock",
+   "date": "2015-01-15",
+   "region": "eu",
+   "event": "Swiss National Bank scrapped the 1.20 franc-per-euro cap, sending the franc soaring",
+   "move": "Swiss SMI -8.8% that day (daily close)",
+   "moveQuote": "Eastmoney daily kline rows, format date,open,close,high,low,volume: [100.SSMI] 2015-01-14,9200.88,9193.87,9281.82,9174.80,0 ; 2015-01-15,9259.19,8382.45,9277.24,7932.23,0",
+   "source": "https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=100.SSMI&fields1=f1,f2,f3&fields2=f51,f52,f53,f54,f55,f56&klt=101&fqt=0&beg=20150107&end=20150119",
+   "lesson": "Removing a currency peg triggers an instant repricing: Swiss exporters and stocks fell sharply the same day.",
+   "keywords": [
+    "SNB scraps franc cap",
+    "Swiss franc soars",
+    "currency peg",
+    "Swiss stocks plunge"
+   ],
+   "status": "new",
+   "note": "New type currency_shock: abrupt exchange-rate regime changes. Move computed from daily closes (column 3) of the Swiss SMI (secid 100.SSMI). The franc/peg description is from general knowledge, not the page; the franc move itself was not measured."
+  },
+  {
+   "id": "vn-us-46-percent-tariff-2025-04-03",
+   "type": "tariffs_escalation",
+   "date": "2025-04-03",
+   "region": "vn",
+   "event": "The US announced a 46% reciprocal tariff on Vietnamese goods and VN-Index suffered its biggest daily fall on record.",
+   "move": "VN-Index -6.68% (-88 points) to below 1,230 on Apr 3, 2025",
+   "moveQuote": "VN-Index đóng cửa với mức giảm 88 điểm (-6,68%) qua đó lùi xuống dưới 1.230 điểm. (VN-Index closed down 88 points, -6.68%, falling below 1,230.)",
+   "source": "https://cafef.vn/chung-khoan-viet-nam-giam-manh-nhat-lich-su-thanh-khoan-cao-ky-luc-188250403151726749.chn",
+   "lesson": "Vietnam's export-driven market sells off hard on US trade threats.",
+   "keywords": [
+    "tariff",
+    "reciprocal tariff",
+    "Vietnam",
+    "thuế đối ứng",
+    "VN-Index giảm",
+    "thuế quan Mỹ"
+   ],
+   "status": "corrected",
+   "note": "Figure confirmed (-6.68%, analogs.ts says ~6.7%). Later parts (Apr 9 low, Apr 10 rebound) moved to separate verified entries; the rebound is +6.77% at the close, not ~6.8% from this page."
+  },
+  {
+   "id": "vn-tariff-crash-4-sessions-2025-04",
+   "type": "tariffs_escalation",
+   "date": "2025-04-03 to 2025-04-09",
+   "region": "vn",
+   "event": "After the 46% tariff announcement VN-Index fell four sessions in a row to its lowest since Nov 2023, with margin-call forced selling cited.",
+   "move": "VN-Index -224 points (-17%) over four sessions; Apr 9 close 1,094.3 (-3.4%)",
+   "moveQuote": "VN-Index mất gần 224 điểm (-17%) rơi về mức thấp nhất kể từ tháng 11/2023. (VN-Index lost nearly 224 points, -17%, to its lowest since Nov 2023.) And on Apr 9: Đóng cửa phiên giao dịch, VN-Index giảm 38,49 điểm (3,4%) xuống 1.094,3 điểm.",
+   "source": "https://cafef.vn/chung-khoan-viet-nam-tang-manh-nhat-lich-su-sau-thong-bao-tam-dung-ap-thue-doi-ung-cua-ong-trump-188250410095250381.chn",
+   "lesson": "A trade shock can take a market down about 17% in four sessions, and the move can reverse in a day when policy changes.",
+   "keywords": [
+    "VN-Index",
+    "tariff",
+    "giảm điểm",
+    "thuế đối ứng",
+    "bán giải chấp",
+    "mất điểm"
+   ],
+   "status": "new",
+   "note": "Apr 9 quote from https://cafef.vn/vn-index-van-giam-gan-40-diem-co-phieu-ho-vin-tro-thanh-diem-sang-188250409171903577.chn (that page does not mention margin calls; do not cite margin calls from it)."
+  },
+  {
+   "id": "vn-tariff-pause-rebound-2025-04-10",
+   "type": "tariffs_relief",
+   "date": "2025-04-10",
+   "region": "vn",
+   "event": "The US paused reciprocal tariffs for 90 days and VN-Index posted its biggest one-day gain on record.",
+   "move": "VN-Index +6.77% (+74 points) to 1,168.34 on Apr 10, 2025",
+   "moveQuote": "Chứng khoán đóng cửa ở 1.168,34 điểm. Tính theo điểm số tương đối, VN-Index tích lũy 6,77% (The market closed at 1,168.34; up 6.77% in relative terms.)",
+   "source": "https://vnexpress.net/chung-khoan-hom-nay-10-4-thi-truong-tich-cuc-sau-tin-trump-hoan-thue-4872111-tong-thuat.html",
+   "lesson": "Headline-driven crashes can reverse as fast as they fell, but one rebound day does not erase the damage.",
+   "keywords": [
+    "tariff pause",
+    "90 days",
+    "hoãn thuế",
+    "VN-Index tăng",
+    "thuế đối ứng",
+    "tăng kỷ lục"
+   ],
+   "status": "new",
+   "note": "The 'biggest gain in history' wording is from cafef (+6.62% right after ATO, intraday): https://cafef.vn/chung-khoan-viet-nam-tang-manh-nhat-lich-su-sau-thong-bao-tam-dung-ap-thue-doi-ung-cua-ong-trump-188250410095250381.chn"
+  },
+  {
+   "id": "vn-us-framework-profit-taking-2025-07-03",
+   "type": "tariffs_relief",
+   "date": "2025-07-03",
+   "region": "vn",
+   "event": "President Trump said the US would cut tariffs on Vietnamese goods significantly after a call with Vietnam's leader; the market rose most of the day then closed slightly lower.",
+   "move": "VN-Index -2.63 points to 1,381.96 on Jul 3, 2025 (small fall after an intraday gain)",
+   "moveQuote": "Kết thúc phiên 3/7, VN-Index giảm 2,63 điểm, xuống 1.381,96 điểm. (At the close on Jul 3, VN-Index fell 2.63 points to 1,381.96.) ... áp lực chốt lời xuất hiện vào cuối giờ chiều đã khiến chỉ số quay đầu giảm. (late-afternoon profit-taking pushed the index down.)",
+   "source": "https://cafef.vn/tien-vao-chung-khoan-tang-vot-sau-thoa-thuan-thue-quan-moi-my-viet-188250703175459276.chn",
+   "lesson": "When good trade news is already expected, a deal framework without numbers can fade into profit-taking.",
+   "keywords": [
+    "trade deal",
+    "tariff",
+    "Vietnam US",
+    "thỏa thuận thuế quan",
+    "chốt lời",
+    "VN-Index"
+   ],
+   "status": "new",
+   "note": "Article says the deal was only a framework and gave no specific tariff rates."
+  },
+  {
+   "id": "vn-index-above-1500-2025-07-22",
+   "type": "vn_policy",
+   "date": "2025-07-22",
+   "region": "vn",
+   "event": "VN-Index closed back above 1,500 on record-scale liquidity, its highest in over three years.",
+   "move": "VN-Index +1.65% (+24.49 points) to 1,509.54 on Jul 22, 2025",
+   "moveQuote": "VN-Index tăng 24,49 điểm (1,65%) lên mức 1.509,54 điểm (VN-Index rose 24.49 points, 1.65%, to 1,509.54)",
+   "source": "https://cafef.vn/vn-index-chinh-thuc-vuot-1500-diem-voi-thanh-khoan-ty-usd-nhieu-co-phieu-bluechips-dong-loat-but-pha-188250722160123911.chn",
+   "lesson": "Rallies to old highs usually come with high liquidity and broad blue-chip buying; check both.",
+   "keywords": [
+    "VN-Index",
+    "1,500",
+    "bluechips",
+    "thanh khoản",
+    "vượt 1.500 điểm",
+    "rally"
+   ],
+   "status": "new",
+   "note": "Page says the close was the highest in over three years (since Apr 6, 2022) and does not claim it was the first ever close above 1,500."
+  },
+  {
+   "id": "vn-krx-go-live-2025-05-05",
+   "type": "vn_policy",
+   "date": "2025-05-05",
+   "region": "vn",
+   "event": "The new KRX trading system went live on HoSE after more than 10 years of preparation.",
+   "move": "VN-Index up almost 14 points to about 1,240 on May 5, 2025",
+   "moveQuote": "Điều này thể hiện qua việc chỉ số VN-Index tăng gần 14 điểm so với tham chiếu, đóng cửa tại 1.240 điểm. (VN-Index rose almost 14 points from reference, closing at 1,240.)",
+   "source": "https://vnexpress.net/chung-khoan-tang-manh-trong-ngay-dau-van-hanh-he-thong-krx-4881875.html",
+   "lesson": "Infrastructure upgrades like KRX are slow-burn positives; the day-one move was modest and liquidity stayed low.",
+   "keywords": [
+    "KRX",
+    "trading system",
+    "HoSE",
+    "hệ thống KRX",
+    "go-live",
+    "vận hành"
+   ],
+   "status": "new",
+   "note": "The exact 13.75 points / 1.12% comes from a search result summary of a cafef/tuoitre page and was not independently opened; the opened page says almost 14 points to 1,240. [Edited in review: claim not on an opened page removed.]"
+  },
+  {
+   "id": "vn-covid-crash-2020-03",
+   "type": "pandemic",
+   "date": "2020-03-09 to 2020-03-13",
+   "region": "vn",
+   "event": "Covid-19 and the oil price war hit Vietnam's market, with its largest one-day fall in 19 years on Mar 9.",
+   "move": "VN-Index -6.28% on Mar 9, 2020; -130 points (nearly -15%) in the week to Mar 13, closing at 761",
+   "moveQuote": "VN-Index ngày 9/3 giảm 6,28% ... VN-Index giảm 130 điểm, tương đương gần 15% ... xuống còn 761 điểm (the week's loss, close 761)",
+   "source": "https://vnexpress.net/tuan-dau-thuong-cua-chung-khoan-4069540.html",
+   "lesson": "Pandemic panic hits Vietnam hard and fast, and the first week is not the bottom (low came in late March).",
+   "keywords": [
+    "Covid-19",
+    "pandemic",
+    "VN-Index",
+    "đại dịch",
+    "dịch Covid",
+    "bán tháo"
+   ],
+   "status": "new",
+   "note": "March 2020 full month -24.9% and Q1 -31.06% (close 662.53) verified at https://cafef.vn/chung-khoan-viet-nam-giam-31-trong-quy-1-thiet-lap-hang-loat-ky-luc-buon-cho-nha-dau-tu-20200331165612893.chn : 'Trong tháng 3/2020, chỉ số VN-Index có mức giảm lên tới 24,9%'. The 'biggest in 19 years' wording is from the same vnexpress page."
+  },
+  {
+   "id": "vn-2018-peak-to-year-end",
+   "type": "vn_policy",
+   "date": "2018-04 to 2018-12-28",
+   "region": "vn",
+   "event": "VN-Index set a record above 1,200 in early April 2018, then gave up the gains over the rest of the year.",
+   "move": "VN-Index fell more than 25% from the April peak to 892.54 on Dec 28, 2018",
+   "moveQuote": "Chốt phiên giao dịch cuối cùng của năm 2018, VN-Index giảm 8,27 điểm (tương đương 0,92%) lùi về ngưỡng 892,54 điểm ... Relative to the April peak the article says it fell 'hơn 25%' (more than 25%).",
+   "source": "https://vnexpress.net/vn-index-chot-nam-2018-duoi-moc-900-diem-3861000.html",
+   "lesson": "Record highs after a very strong quarter can be followed by months of decline when global conditions turn.",
+   "keywords": [
+    "VN-Index",
+    "record high",
+    "đỉnh lịch sử",
+    "điều chỉnh",
+    "2018",
+    "giảm mạnh"
+   ],
+   "status": "new",
+   "note": "Peak date: vnexpress says only 'early April'; cafef calls it ~1,200 (about 25% correction). Exact 1,204 and Apr 9 not verified from opened pages."
+  },
+  {
+   "id": "vn-record-1528-to-two-year-low-2022",
+   "type": "vn_property_credit",
+   "date": "2022-01-06 to 2022-11-15",
+   "region": "vn",
+   "event": "VN-Index hit its all-time high on Jan 6, 2022 then fell to a two-year low in mid-November amid bond stress and a wave of margin calls.",
+   "move": "VN-Index from 1,528.57 (Jan 6, 2022) to an intraday low of 874; Nov 15 close 911.9 (-3.1% that day)",
+   "moveQuote": "Thậm chí, chỉ số có thời điểm đã nhúng xuống 874 điểm trước khi hồi phục và giao dịch cân bằng quanh ngưỡng 1.000 điểm. Đà giảm càng trở nên 'khốc liệt' khi làn sóng call margin lan rộng. (The index dipped to 874 before recovering; the fall became fierce as the margin-call wave spread.)",
+   "source": "https://cafef.vn/dau-an-thi-truong-chung-khoan-nam-2022-vn-index-bien-dong-du-doi-khoi-ngoai-tro-lai-mua-rong-ty-do-20221225150012084.chn",
+   "lesson": "Record margin debt (over 200,000 billion VND then) turns a correction into forced selling and repeated limit-down sessions.",
+   "keywords": [
+    "margin call",
+    "bán giải chấp",
+    "giảm sàn",
+    "VN-Index",
+    "trái phiếu",
+    "forced selling"
+   ],
+   "status": "new",
+   "note": "Peak 1,528.57 on Jan 6, 2022 from https://cafef.vn/ngay-nay-2-nam-truoc-vn-index-lap-dinh-lich-su-152857-diem-188240105233819823.chn. Percent fall from peak to 874 (about -43%) is my calculation, not stated by the source."
+  },
+  {
+   "id": "vn-van-thinh-phat-bond-freeze-2022-11-15",
+   "type": "vn_property_credit",
+   "date": "2022-10-08 to 2022-11-15",
+   "region": "vn",
+   "event": "Vietnam corporate bond freeze after Van Thinh Phat chair Truong My Lan was arrested on Oct 8, 2022; VN-Index hit a 25-month closing low on Nov 15.",
+   "move": "VN-Index -3.1% to 911.9 on Nov 15, 2022; -116 points (-11.3%) from the start of November",
+   "moveQuote": "VN-Index đóng cửa giảm 3,1% xuống 911,9 điểm, thấp nhất trong hơn 25 tháng kể từ ngày 5/10/2020. Tính từ đầu tháng 11, VN-Index đã mất thêm 116 điểm, tương ứng mức giảm 11,3%.",
+   "source": "https://cafef.vn/chung-khoan-viet-nam-danh-roi-nua-trieu-ty-von-hoa-tu-dau-thang-11-20221115183140316.chn",
+   "lesson": "Credit and bond stress in Vietnam hits real estate, banks and brokers through margin calls; forced selling tends to overshoot.",
+   "keywords": [
+    "bond",
+    "trái phiếu",
+    "Vạn Thịnh Phát",
+    "real estate",
+    "bất động sản",
+    "bắt giữ",
+    "VN-Index"
+   ],
+   "status": "corrected",
+   "note": "The original vnexpress source only reports the arrest (Oct 8) and no market figure. Replaced with the cafef Nov 15 page. The old claims '~12% from Oct 7' and '-19% from Sep 30' are NOT in either page and should be dropped; use -11.3% since Nov 1 and Nov 15 close 911.9. Arrest source: https://vnexpress.net/chu-tich-tap-doan-van-thinh-phat-truong-my-lan-bi-bat-4520410.html ('Ngày 8/10, bà Lan, 66 tuổi, bị ... khởi tố, bắt tạm giam')."
+  },
+  {
+   "id": "vn-sbv-rate-hike-2022-09-23",
+   "type": "vn_policy",
+   "date": "2022-09-23",
+   "region": "vn",
+   "event": "The State Bank of Vietnam raised policy rates by 1 percentage point, its first hike since May 2011, as the dong came under pressure from the strong dollar.",
+   "move": "Policy rates +1 percentage point; dong lost about 4% against USD in the first nine months of 2022",
+   "moveQuote": "Từ ngày 23/9, NHNN đã tăng các loạt lãi suất điều hành và trần lãi suất tiền gửi dưới 6 tháng thêm 1 điểm %. ... đây là lần đầu tiên cơ quan quản lý tiền tệ nâng lãi suất điều hành kể từ tháng 5/2011. (From Sep 23 SBV raised policy rates and the under-6-month deposit cap by 1 point; first hike since May 2011.)",
+   "source": "https://cafef.vn/lai-suat-dieu-hanh-lan-dau-tang-sau-11-nam-thay-gi-tu-cu-be-lai-lich-su-cua-ngan-hang-nha-nuoc-2022093014491956.chn",
+   "lesson": "When the Fed tightens, Vietnam's central bank defends the dong with rates and dollar sales, which tightens credit for property and brokers.",
+   "keywords": [
+    "SBV",
+    "rate hike",
+    "lãi suất điều hành",
+    "tỷ giá",
+    "USD/VND",
+    "tăng lãi suất"
+   ],
+   "status": "new",
+   "note": "The ~4% VND loss is stated in the same article ('trong 9 tháng đầu năm, VND mất khoảng 4%'); it is a measured YTD move, not a one-day move."
+  },
+  {
+   "id": "vn-sbv-rate-cut-2023-03-15",
+   "type": "vn_policy",
+   "date": "2023-03-15",
+   "region": "vn",
+   "event": "The State Bank of Vietnam cut its operating rates by 1 percentage point, the first cut in about two years.",
+   "move": "Rediscount rate 4.5% to 3.5%; overnight lending rate 7% to 6%; deposit-rate cap unchanged",
+   "moveQuote": "Ngân hàng Nhà nước cuối ngày 14/3 thông báo giảm 1% các loại lãi suất điều hành. Mức lãi suất mới có hiệu lực từ ngày mai (15/3). (SBV announced a 1% cut in operating rates; new rates effective Mar 15.)",
+   "source": "https://vnexpress.net/ngan-hang-nha-nuoc-giam-lai-suat-dieu-hanh-4581322.html",
+   "lesson": "A policy-rate cut signals easier credit, but the refinancing rate (6%) and deposit caps were unchanged, so effects on markets come slowly.",
+   "keywords": [
+    "SBV",
+    "rate cut",
+    "giảm lãi suất",
+    "lãi suất điều hành",
+    "tái chiết khấu",
+    "Ngân hàng Nhà nước"
+   ],
+   "status": "new",
+   "note": "No VN-Index move recorded for this event; entry is a policy-rate change, not a price move. 'First cut in about two years' is from a tuoitre search result, not from the opened page."
+  },
+  {
+   "id": "covid-sp500-worst-day-2020-03-12",
+   "type": "pandemic",
+   "date": "2020-03-12",
+   "region": "us",
+   "event": "Covid-19 panic and a US travel ban from Europe produced the S&P 500's worst day since 1987.",
+   "move": "S&P 500 -9.5% on Mar 12, 2020",
+   "moveQuote": "Cuối phiên, S&P 500 giảm 9,5%, mức giảm tồi tệ nhất kể từ ngày Thứ 2 đen tối năm 1987. (At the close, S&P 500 fell 9.5%, the worst since Black Monday 1987.)",
+   "source": "https://cafef.vn/6-ngay-dien-ro-lam-nao-loan-thi-truong-tai-chinh-my-nhu-the-nao-20200314194009359.chn",
+   "lesson": "Pandemic fear can drive record one-day falls; circuit breakers halt trading but do not stop the slide.",
+   "keywords": [
+    "Covid-19",
+    "pandemic",
+    "circuit breaker",
+    "S&P 500",
+    "đại dịch",
+    "ngắt mạch"
+   ],
+   "status": "new",
+   "note": "The 'travel ban' cause is my context, not from the opened page."
+  },
+  {
+   "id": "fed-emergency-cut-2020-03-03",
+   "type": "fed_dovish",
+   "date": "2020-03-03",
+   "region": "us",
+   "event": "The Fed made an emergency 0.5 percentage point rate cut over Covid-19, but stocks still fell.",
+   "move": "Dow Jones -786 points (about -3%) to 25,917; S&P 500 -2.8% on Mar 3, 2020",
+   "moveQuote": "chỉ số công nghiệp Dow Jones giảm gần 786 điểm, tương đương gần 3%, xuống 25.917 điểm ... S&P 500 giảm 2,8% (Dow fell nearly 786 points, almost 3%, to 25,917; S&P 500 fell 2.8%)",
+   "source": "https://vnexpress.net/pho-wall-lao-doc-du-fed-ha-lai-suat-4063823.html",
+   "lesson": "A surprise emergency cut can read as a sign of crisis rather than relief.",
+   "keywords": [
+    "Fed",
+    "emergency rate cut",
+    "hạ lãi suất",
+    "Covid",
+    "Dow Jones",
+    "khẩn cấp"
+   ],
+   "status": "new",
+   "note": "Page is dated Mar 4, 2020 and reports the Mar 3 session; Fed cut size 0.5% from the same page."
+  },
+  {
+   "id": "oil-price-war-2020-03-09",
+   "type": "oil_shock",
+   "date": "2020-03-09",
+   "region": "global",
+   "event": "Talks between OPEC and Russia collapsed and Saudi Arabia started a price war, sending oil sharply lower.",
+   "move": "Brent -20.76% to $35.87 and WTI -20.52% to $32.87 (intraday, Mar 9, 2020)",
+   "moveQuote": "Dầu Brent hiện mất 20,76% về 35,87 USD một thùng. Dầu WTI giảm 20,52% xuống 32,87 USD. (Brent is down 20.76% to $35.87; WTI down 20.52% to $32.87.)",
+   "source": "https://vnexpress.net/kinh-doanh/cac-nuoc-cham-ngoi-cuoc-chien-gia-dau-4066212.html",
+   "lesson": "A supply fight on top of falling demand can cut oil about 20% in a day and drag energy stocks and the whole market.",
+   "keywords": [
+    "oil price war",
+    "OPEC+",
+    "Saudi Arabia",
+    "Russia",
+    "chiến tranh giá dầu",
+    "giá dầu giảm"
+   ],
+   "status": "new",
+   "note": "Intraday figure (live blog during the session), not a close. Cafef says Brent lost up to 31% at the worst but the page does not date it explicitly."
+  },
+  {
+   "id": "wti-negative-2020-04-20",
+   "type": "oil_shock",
+   "date": "2020-04-20",
+   "region": "global",
+   "event": "WTI May futures turned negative for the first time because demand collapsed and storage filled up.",
+   "move": "WTI May contract closed at -$37.63 a barrel on Apr 20, 2020 (previous Friday: $18.27)",
+   "moveQuote": "Chốt phiên, mỗi thùng dầu loại này chỉ còn âm 37,63 USD (At the close, a barrel of this oil was at minus $37.63.) ... đóng cửa tuần trước ở 18,27 USD (prior close $18.27)",
+   "source": "https://vnexpress.net/gia-dau-tho-lan-dau-trong-lich-su-xuong-am-4087664.html",
+   "lesson": "Expiring futures can price far below spot demand when storage is full; the longer-dated contracts barely moved.",
+   "keywords": [
+    "negative oil price",
+    "WTI",
+    "giá dầu âm",
+    "dầu thô",
+    "futures",
+    "kho chứa"
+   ],
+   "status": "new",
+   "note": "The $18.27 prior close came from a second fetch of a vnexpress article with the same ID; the $55.90 drop is my arithmetic."
+  },
+  {
+   "id": "oil-opec-no-cut-2014-11-27",
+   "type": "oil_shock",
+   "date": "2014-11-27",
+   "region": "global",
+   "event": "OPEC decided to keep output unchanged and oil fell to its lowest in over five years, starting the 2014-16 collapse.",
+   "move": "US crude $68.11 and Brent $71.58, about -8% in the immediate aftermath; about -34% since June",
+   "moveQuote": "Giá dầu thô của Mỹ chỉ còn ở mức 68,11 USD/thùng trong khi giá dầu Brent Biển Bắc ở Anh chỉ ở mức 71,58 USD/thùng. ... đã giảm xấp xỉ 34% và riêng trong tháng 11 giảm 13% (US crude $68.11, Brent $71.58; down about 34% since June and 13% in November alone.)",
+   "source": "https://cafef.vn/nang-luong-tai-nguyen/hai-mat-cua-buc-tranh-gia-dau-giam-2014113014231872711.chn",
+   "lesson": "When a producer cartel stops defending prices, oil can fall by a third in months; producers and exporters suffer, importers gain.",
+   "keywords": [
+    "OPEC",
+    "oil collapse",
+    "giá dầu giảm",
+    "không cắt giảm sản lượng",
+    "shale",
+    "dầu thô"
+   ],
+   "status": "new",
+   "note": "The '8% in the aftermath' is a summary of the article by the fetch tool, not a verbatim sentence; the 34% and 13% figures are quoted. Page is dated Nov 30, 2014."
+  },
+  {
+   "id": "russia-ukraine-brent-2022-03-03",
+   "type": "oil_shock",
+   "date": "2022-03-03",
+   "region": "global",
+   "event": "Brent climbed to a multi-year high as the West weighed sanctions on Russian energy after the invasion of Ukraine.",
+   "move": "Brent +6.1% intraday to $119.84, highest since May 2012 (Mar 3, 2022)",
+   "moveQuote": "Giá dầu Brent chiều nay có thời điểm tăng 6,1%, chạm 119,84 USD một thùng – cao nhất kể từ tháng 5/2012. (Brent at one point rose 6.1% to $119.84, the highest since May 2012.)",
+   "source": "https://vnexpress.net/gia-dau-tho-len-cao-nhat-14-nam-4434403.html",
+   "lesson": "War with a major energy exporter lifts oil, gas and inflation expectations; the peak is often a spike, not a trend.",
+   "keywords": [
+    "Russia",
+    "Ukraine",
+    "Brent",
+    "giá dầu tăng",
+    "Nga",
+    "cấm vận dầu"
+   ],
+   "status": "new",
+   "note": "Intraday. Page title says 14-year high but body says highest since May 2012; the $139 peak (Mar 7) was not confirmed from an opened page."
+  },
+  {
+   "id": "opec-plus-surprise-cut-2023-04-03",
+   "type": "oil_shock",
+   "date": "2023-04-03",
+   "region": "global",
+   "event": "OPEC+ announced a surprise output cut of about 1.16 million barrels a day from May.",
+   "move": "Crude rose by more than $4 a barrel on Apr 3, 2023",
+   "moveQuote": "Giá dầu thô đã tăng hơn 4 USD/thùng vào thứ Hai (3/4). (Crude oil rose by more than $4 a barrel on Monday, Apr 3.)",
+   "source": "https://cafef.vn/thi-truong-xang-dau-the-gioi-se-dien-bien-ra-sao-sau-sau-dong-thai-opec-giam-san-luong-18823040408422093.chn",
+   "lesson": "Surprise supply cuts push oil and inflation expectations up and can keep interest rates higher for longer.",
+   "keywords": [
+    "OPEC+",
+    "production cut",
+    "cắt giảm sản lượng",
+    "giá dầu tăng",
+    "Saudi Arabia",
+    "bất ngờ"
+   ],
+   "status": "new",
+   "note": "Page gives dollars, not percent; do not state a percent. Cut size 1.16 million bpd from the same page."
+  },
+  {
+   "id": "israel-hamas-oil-gold-2023-10-09",
+   "type": "geopolitical_shock",
+   "date": "2023-10-09",
+   "region": "global",
+   "event": "After Hamas attacked Israel on Oct 7, oil and gold rose on the first trading day.",
+   "move": "WTI +4.3% to $86, Brent +4.2% to $88, gold +$28 to $1,861 (Oct 9, 2023 close)",
+   "moveQuote": "Dầu WTI tăng 4,3%, còn Brent tăng 4,2%, lên lần lượt 86 USD và 88 USD một thùng. ... mỗi ounce vàng tăng gần 28 USD, lên 1.861 USD (WTI +4.3%, Brent +4.2%; gold up nearly $28 to $1,861.)",
+   "source": "https://vnexpress.net/gia-vang-dau-tang-vot-vi-xung-dot-tai-trung-dong-4662884.html",
+   "lesson": "Regional conflicts lift oil and gold at first; the move fades unless supply is actually hit.",
+   "keywords": [
+    "Israel",
+    "Hamas",
+    "Middle East",
+    "xung đột Trung Đông",
+    "giá dầu",
+    "vàng"
+   ],
+   "status": "new",
+   "note": "Oil's biggest one-day gain in six months per the same page."
+  },
+  {
+   "id": "israel-iran-strike-2025-06-13",
+   "type": "geopolitical_shock",
+   "date": "2025-06-13",
+   "region": "global",
+   "event": "Israel launched strikes on Iran, causing a jump in oil and gold.",
+   "move": "Brent about +11% to $77 and WTI +10.8% to $75.3 (intraday, Jun 13, 2025); spot gold +$54 to $3,437",
+   "moveQuote": "Dầu Brent hiện tăng 11% lên 77 USD một thùng. Dầu WTI tăng 10,8% lên 75,3 USD. (Brent is now up 11% to $77; WTI up 10.8% to $75.3.) ... Giá vàng thế giới giao ngay tăng gần 54 USD lên 3.437 USD.",
+   "source": "https://vnexpress.net/gia-vang-dau-tang-vot-vi-israel-khong-kich-iran-4898301.html",
+   "lesson": "Strikes near the Gulf send oil up sharply on supply fear; the closing gain was smaller than the intraday peak.",
+   "keywords": [
+    "Israel",
+    "Iran",
+    "airstrike",
+    "không kích",
+    "giá dầu",
+    "Strait of Hormuz"
+   ],
+   "status": "new",
+   "note": "Intraday live figures. A search summary gave Brent close +7.02% to $74.23 but I did not open that page, so do not cite it."
+  },
+  {
+   "id": "red-sea-shipping-freight-2024",
+   "type": "geopolitical_shock",
+   "date": "2024-01 to 2024-03",
+   "region": "global",
+   "event": "Houthi attacks in the Red Sea forced ships to detour around Africa instead of using the Suez Canal.",
+   "move": "Asia-Europe container freight more than doubled vs the 2023 average to $3,500 per 40-foot container; fuel costs up to $2 million more per Suez-avoiding trip",
+   "moveQuote": "Giá cước từ châu Á đến châu Âu đã tăng hơn gấp đôi so với trung bình năm 2023 ... lên đến 3.500 USD cho mỗi container 40 feet. (Asia-Europe rates more than doubled from the 2023 average to $3,500 per 40ft container.)",
+   "source": "https://vnexpress.net/xung-dot-va-thoi-tiet-bat-loi-de-doa-nganh-van-tai-bien-4697840.html",
+   "lesson": "Shipping chokepoint attacks raise freight costs and delivery times, hitting exporters like Vietnam before they hit stock indexes.",
+   "keywords": [
+    "Red Sea",
+    "Houthi",
+    "Suez Canal",
+    "freight rate",
+    "Biển Đỏ",
+    "cước vận tải"
+   ],
+   "status": "new",
+   "note": "Page's date not stated in fetch; it is a Jan 2024 article (ID 4697840). Freight is a shipping rate, not a market index move."
+  },
+  {
+   "id": "brexit-vote-2016-06-24",
+   "type": "geopolitical_shock",
+   "date": "2016-06-24",
+   "region": "eu",
+   "event": "Britain voted to leave the EU, causing a global sell-off and a record drop in sterling.",
+   "move": "Nikkei -7.9%, DAX -6.8%, CAC 40 -8%, FTSE 100 -3.15%, sterling -8% vs USD (closes, Jun 24, 2016)",
+   "moveQuote": "Mạnh nhất là Nhật Bản, khi chỉ số Nikkei 225 chốt phiên mất 7,9%. ... FTSE 100 chỉ mất 3,15%. ... Bảng Anh cũng có ngày mất giá mạnh nhất lịch sử, khi giảm hơn 8% so với USD. (Nikkei lost 7.9% at the close; FTSE 100 lost just 3.15%; sterling had its worst day ever, down more than 8% vs the dollar.)",
+   "source": "https://vnexpress.net/ngay-thu-sau-den-toi-cua-tai-chinh-toan-cau-3425632.html",
+   "lesson": "A political surprise hits currency and risk assets together, but the damage differs by market (Japan and Germany fell more than the FTSE).",
+   "keywords": [
+    "Brexit",
+    "referendum",
+    "sterling",
+    "bảng Anh",
+    "Anh rời EU",
+    "stock sell-off"
+   ],
+   "status": "new",
+   "note": "The DAX/CAC closing figures appear as 'DAX và CAC 40 giảm 6,8% và 8%' on the same page; sterling's intraday low was about -10%."
+  },
+  {
+   "id": "china-crash-2015-07",
+   "type": "china_slowdown",
+   "date": "2015-06 to 2015-07-08",
+   "region": "cn",
+   "event": "China's stock market crash of mid-2015: more than 1,300 firms halted trading to limit the slide.",
+   "move": "Shanghai Composite lost about one-third of its value since mid-June; as much as -8.2% at the open on Jul 8, 2015 (intraday); up as much as 5.76% the next session",
+   "moveQuote": "cổ phiếu tại sàn Thượng Hải đã mất một phần ba giá trị từ giữa tháng 6 (Shanghai shares had lost one third of their value since mid-June) ... Đầu phiên, Shanghai Composite Index mất tới 8,2% - mạnh nhất từ năm 2007.",
+   "source": "https://vnexpress.net/nhung-dieu-can-biet-ve-khung-hoang-chung-khoan-trung-quoc-3245991.html",
+   "lesson": "Leveraged retail-driven rallies in China can unwind by a third in weeks, and trading halts do not stop the fall.",
+   "keywords": [
+    "China stock crash",
+    "Shanghai Composite",
+    "trading halt",
+    "chứng khoán Trung Quốc",
+    "khủng hoảng",
+    "Thượng Hải"
+   ],
+   "status": "new",
+   "note": "The Aug 24, 2015 'Black Monday' and Jan 2016 circuit-breaker figures were not verified (Wikipedia unreachable). 8.2% is intraday."
+  },
+  {
+   "id": "evergrande-default-fear-2021-09-20",
+   "type": "china_slowdown",
+   "date": "2021-09-20",
+   "region": "global",
+   "event": "Fear that China's Evergrande would default on its debts triggered a global equity sell-off.",
+   "move": "S&P 500 -1.7% (worst session since May) and Hang Seng -3.3% (lowest close since Oct 2020) on Sep 20, 2021",
+   "moveQuote": "S&P 500 vừa ghi nhận phiên giao dịch tồi tệ nhất kể từ tháng 5 khi mất 1,7% trong phiên 20/9. ... Chỉ số Hang Seng của thị trường Hong Kong giảm 3,3%, đóng cửa thấp nhất kể từ tháng 10/2020",
+   "source": "https://vnexpress.net/chung-khoan-toan-cau-chao-dao-do-lo-ngai-qua-bom-no-evergrande-4359555.html",
+   "lesson": "A property-developer debt scare in China spreads to world markets but a contained one can fade within weeks.",
+   "keywords": [
+    "Evergrande",
+    "default",
+    "vỡ nợ",
+    "China property",
+    "Hang Seng",
+    "bất động sản Trung Quốc"
+   ],
+   "status": "new",
+   "note": "Dow close (-1.78%) from search summary was not confirmed on the opened page."
+  },
+  {
+   "id": "japan-boj-nikkei-crash-2024-08-05",
+   "type": "financial_stress",
+   "date": "2024-08-05",
+   "region": "jp",
+   "event": "Nikkei suffered its worst day since 1987 after a weak US jobs report and the BOJ's rate hike and yen surge.",
+   "move": "Nikkei 225 -12.4% to 31,458.42 on Aug 5, 2024",
+   "moveQuote": "Nikkei 225 chốt phiên giảm 12,4% xuống còn 31.458,42 điểm (Nikkei 225 closed down 12.4% to 31,458.42.)",
+   "source": "https://cafef.vn/nikkei-vua-trai-qua-ngay-toi-te-nhat-trong-gan-4-thap-ky-kospi-tam-dung-giao-dich-vi-ban-thao-manh-188240805144817439.chn",
+   "lesson": "Carry-trade unwinds can cause record falls, followed by a quick rebound; cafef headline gives 13.47%, so sources differ.",
+   "keywords": [
+    "Nikkei",
+    "BOJ",
+    "yen carry trade",
+    "Nhật Bản",
+    "tăng lãi suất",
+    "bán tháo"
+   ],
+   "status": "new",
+   "note": "Page shows both 12.4% (text) and 13.47% (a linked headline, same page). Use 12.4%. The Aug 6 rebound (+10.2%) was not verified since vietstock is blocked in this session."
+  },
+  {
+   "id": "bitcoin-spot-etf-2024-01",
+   "type": "financial_stress",
+   "date": "2024-01-10 to 2024-01-12",
+   "region": "global",
+   "event": "The SEC approved spot Bitcoin ETFs on Jan 10, 2024 and they began trading Jan 11; Bitcoin sold off after the launch.",
+   "move": "Bitcoin rose to about $49,000, fell back to $46,000 the same day, then -10% to $41,500 in the next 24 hours",
+   "moveQuote": "đẩy giá Bitcoin lên 49.000 USD ... rơi về 46.000 USD cùng ngày. ... Bitcoin giảm 10% xuống 41.500 USD khi chứng kiến đợt bán tháo ồ ạt. (pushed Bitcoin to $49,000; fell back to $46,000 the same day; down 10% to $41,500 amid heavy selling.)",
+   "source": "https://vnexpress.net/tuan-le-etf-bitcoin-ket-thuc-trong-hoai-nghi-4700257.html",
+   "lesson": "A long-awaited approval can be a 'sell the news' event; the first-day high did not hold.",
+   "keywords": [
+    "Bitcoin ETF",
+    "SEC",
+    "spot ETF",
+    "ETF Bitcoin",
+    "sell the news",
+    "tiền số"
+   ],
+   "status": "new",
+   "note": "Prices are intraday quotes from the article, not daily closes."
+  },
+  {
+   "id": "gold-4000-record-2025-10-08",
+   "type": "geopolitical_shock",
+   "date": "2025-10-08",
+   "region": "global",
+   "event": "Spot gold passed $4,000 an ounce for the first time ever.",
+   "move": "Spot gold above $4,000 on Oct 8, 2025; +52% since the start of the year",
+   "moveQuote": "Sáng 8/10, giá vàng thế giới giao ngay vượt 4.000 USD một ounce lần đầu tiên trong lịch sử. ... Từ đầu năm, giá giao ngay đã tăng 52%. (On Oct 8, spot gold rose above $4,000 for the first time; up 52% since the start of the year.)",
+   "source": "https://vnexpress.net/gia-vang-the-gioi-vuot-moc-4-000-usd-4948642.html",
+   "lesson": "Record gold runs are driven by haven demand and central-bank buying, but they can pull back sharply from the peak.",
+   "keywords": [
+    "gold",
+    "record high",
+    "giá vàng",
+    "4.000 USD",
+    "tài sản trú ẩn",
+    "kỷ lục"
+   ],
+   "status": "new",
+   "note": "Pullback below $4,000 on Oct 27 and peak $4,381 on Oct 20 are from a search summary only, not verified."
+  }
+ ],
+ "dropped": [
+  {
+   "event": "Credit Suisse rescue by UBS (Mar 2023)",
+   "why": "No opened page with a measured market move; Wikipedia, Reuters, CNBC, AP, Investopedia are not reachable from this session (host not allowed / fetch refused) and eastmoney has no Credit Suisse series I could open.",
+   "file": "past-events-A.json"
+  },
+  {
+   "event": "UK gilt crisis / LDI after the Sep 23 2022 mini-budget (gilt yield and sterling moves)",
+   "why": "No gilt-yield or GBP series reachable and no reachable article with the measured move; two sources failed.",
+   "file": "past-events-A.json"
+  },
+  {
+   "event": "Fed cut 50bp (Sep 2024) described as 'rose to a record'",
+   "why": "Record-high claim is not on any opened page; sentence removed (index closes verified).",
+   "file": "past-events-A.json"
+  },
+  {
+   "event": "Existing VN entries (46% tariff on Vietnam, VN corporate bond freeze)",
+   "why": "Out of scope for this share (non-Vietnam only); not re-verified.",
+   "file": "past-events-A.json"
+  },
+  {
+   "event": "2020-04 negative oil price, 2022-10 Truss resignation, 2023 debt ceiling deal day moves",
+   "why": "Not attempted: no suitable opened source.",
+   "file": "past-events-A.json"
+  },
+  {
+   "event": "Vietnam FTSE Russell upgrade decision, Oct 8, 2025",
+   "why": "Two opened pages (cafef, vnexpress) confirm the decision and the Sep 21, 2026 effective date but neither states a measured VN-Index move for the day.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "Tan Hoang Minh bond cancellation, Apr 2022",
+   "why": "Only the search result said VN-Index barely moved; the tuoitre page is blocked in this session; no opened page gives a measured move.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "SCB bank run, Oct 2022",
+   "why": "Pages found state the run and the special-control decision, but no market move; nothing opened with a measured figure.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "Novaland 2022 bond/price floor",
+   "why": "Search returned 2026 articles only; no 2022 page opened.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "VN-Index around Israel-Hamas (~-9% in Oct 2023)",
+   "why": "Seen only in a search snippet, not opened.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "Japan earthquake / Fukushima, Mar 2011",
+   "why": "Opened cafef page says only 'Nikkei fell an average 10%' with no date; second source did not give a close.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "China Aug 24, 2015 Black Monday and Jan 2016 circuit breaker",
+   "why": "Wikipedia unreachable (host blocked); vnexpress page covers only the Jul 8, 2015 session.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "Brent $139 peak on Mar 7, 2022",
+   "why": "Seen in search summary only.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "Nikkei rebound Aug 6, 2024 (+10.2%)",
+   "why": "Source is vietstock, blocked in this session.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "Dow -12.9% on Mar 16, 2020",
+   "why": "Seen in search summary only; the opened cafef article does not cover that date.",
+   "file": "past-events-B.json"
+  },
+  {
+   "event": "Bank-of-Japan / Wikipedia-based entries (2024 Japan crash page, 2016 Brexit page, 2015 China page)",
+   "why": "en.wikipedia.org, vietstock.vn, tuoitre.vn and e.vnexpress.net fail DNS in this session; need allowing for further verification.",
+   "file": "past-events-B.json"
+  }
+ ]
+}

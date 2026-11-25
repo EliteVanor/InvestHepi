@@ -6,6 +6,7 @@
  * `npx tsx scripts/v13test.ts`
  */
 import assert from "node:assert/strict";
+import { isStoryCall, storyReply } from "./story-reply";
 import { promises as fs } from "fs";
 import { pinClock } from "./clock";
 
@@ -29,6 +30,9 @@ const calls: { model: string; system: string }[] = [];
 /** The fake clock the price mocks follow (set by the tick's `now`). */
 let mockNow = Date.now();
 let down = false;
+let feedFetches = 0;
+let vnStoryRuns = 0;
+let vnIntoVi = 0;
 const analysisJson = JSON.stringify({
   headline: "AI headline", mood: "mixed", summary: ["s"],
   events: [{ title: "E", what_happened: "w", why_it_matters: "y", importance: 3, source_ids: [0], impacts: [], analog: null, what_could_go_wrong: "c" }],
@@ -45,7 +49,14 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     if (down) return new Response("unavailable", { status: 503 });
     const user: string = body.messages[1]?.content ?? "";
     let content = analysisJson;
+    if (system.startsWith("You translate") && user.includes("VN-STORY-LINE") && system.includes("Vietnamese")) vnIntoVi++;
     if (system.startsWith("You translate")) content = JSON.stringify((JSON.parse(user) as string[]).map((s) => `vi:${s}`));
+    else if (isStoryCall(system)) {
+      // v19b: the briefing is the story call. The Vietnam run (asked for Vietnamese) gets a marked line.
+      const vn = system.includes("in Vietnamese");
+      if (vn) vnStoryRuns++;
+      content = storyReply(user, vn ? { bigPicture: ["VN-STORY-LINE", "b", "c"] } : {});
+    }
     else if (system.includes("You are the forecaster")) {
       // One call per market in the prompt (plus a weekly one before the open).
       const marks = [...user.matchAll(/^- (.+?) \(benchmark (\S+?)[;)]/gm)];
@@ -77,7 +88,9 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     return new Response(JSON.stringify({ data: { preClose: 100, trends: mins(120, 60).map((sec, i) => `${bj(sec)},${100 + i * 0.01}`) } }), { status: 200 });
   }
   if (/rss|news\.google|feeds|\.xml/.test(url)) {
-    const items = Array.from({ length: 5 }, (_, i) => `<item><title>Stocks rise on day ${i}</title><link>https://n/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("");
+    // Plus one headline new on every fetch, so each briefing run has a story without a card (v19b: fresh cards are kept, not re-sent).
+    feedFetches++;
+    const items = Array.from({ length: 5 }, (_, i) => `<item><title>Stocks rise on day ${i}</title><link>https://n/${i}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`).join("") + `<item><title>Wire update ${feedFetches}</title><link>https://n/w${feedFetches}</link><pubDate>${new Date().toUTCString()}</pubDate></item>`;
     return new Response(`<?xml version="1.0"?><rss><channel>${items}</channel></rss>`, { status: 200 });
   }
   return new Response("", { status: 404 });
@@ -292,6 +305,8 @@ const MIN = 60_000;
   const plain = await (await status.GET(new Request("http://x/api/status"))).json();
   assert.equal(plain.schedule, undefined, "page loads don't pay for the report");
 
+  assert.ok(vnStoryRuns > 0, "Vietnam briefings ran");
+  assert.equal(vnIntoVi, 0, "the Vietnam briefing is written in Vietnamese: never pre-translated into Vietnamese (v19b)");
   console.log("V13 OK");
 })().catch((e) => {
   console.error(e);

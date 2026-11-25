@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import type { Feed } from "./config";
 import { safeHttpUrl } from "./safe-url";
+import { clusterStories, toHeadlines } from "./stories/cluster";
 import { getJSON, setJSON } from "./store";
 import type { Interest, NewsItem } from "./types";
 
@@ -12,6 +13,18 @@ function text(v: unknown): string {
   if (typeof v === "string" || typeof v === "number") return String(v);
   if (typeof v === "object" && "#text" in (v as Record<string, unknown>)) return String((v as Record<string, unknown>)["#text"]);
   return "";
+}
+
+/** Longest title and summary kept at parse time (a feed can send anything). */
+export const MAX_TITLE_CHARS = 200;
+export const MAX_SUMMARY_CHARS = 500;
+
+/** Cut at a word boundary and end with "…" when text is longer than max (result is at most max long). */
+export function capText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max - 1);
+  const sp = cut.lastIndexOf(" ");
+  return `${(sp > max / 2 ? cut.slice(0, sp) : cut).trimEnd()}…`;
 }
 
 function stripHtml(s: string): string {
@@ -86,7 +99,7 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
 
   const out: NewsItem[] = [];
   for (const r of rawItems) {
-    let title = stripHtml(text(r.title));
+    let title = stripHtml(text(r.title)); // capped below, after the Google News publisher split
     if (!title) continue;
     let link = text(r.link);
     if (!link && r.link && typeof r.link === "object") {
@@ -104,13 +117,15 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
     }
     const dateStr = text(r.pubDate) || text(r.published) || text(r.updated) || text(r["dc:date"]);
     const d = dateStr ? new Date(dateStr) : new Date();
-    const summary = stripHtml(text(r.description) || text(r.summary)).slice(0, 400);
+    const undated = !dateStr || isNaN(d.getTime());
+    const summary = capText(stripHtml(text(r.description) || text(r.summary)), MAX_SUMMARY_CHARS);
     out.push({
       id: hash(title.toLowerCase()),
-      title,
+      title: capText(title, MAX_TITLE_CHARS),
       link: safeHttpUrl(link),
       source,
-      publishedAt: isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(),
+      publishedAt: undated ? new Date().toISOString() : d.toISOString(),
+      ...(undated ? { undated: true } : {}),
       // Google News descriptions just repeat the title + publisher list, so drop them
       summary: summary && !summary.startsWith(title.slice(0, 30)) ? summary : undefined,
     });
@@ -148,7 +163,8 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
           backoff[host] = now + Math.max(COOL_MS, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 0);
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return fixFeedTimes(parseFeed(await res.text(), f.name), f.url);
+        const items = fixFeedTimes(parseFeed(await res.text(), f.name), f.url).map((i) => (f.kind ? { ...i, feedKind: f.kind } : i));
+        return f.max ? items.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt)).slice(0, f.max) : items;
       } catch (e) {
         errors.push(`${f.name}: ${(e as Error).message}`);
         return [];
@@ -162,44 +178,9 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
   return { items: results.flat(), errors };
 }
 
-const STOP = new Set("a an the of to in on for and or with at by from as is are was be after over amid says said new its it this that".split(" "));
-function tokens(title: string): Set<string> {
-  return new Set(
-    title
-      .toLowerCase()
-      .replace(/[^a-z0-9$% ]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && !STOP.has(w))
-      .map((w) => w.replace(/(ing|ed|es|s)$/, "")),
-  );
-}
-function jaccard(a: Set<string>, b: Set<string>): number {
-  let inter = 0;
-  for (const w of a) if (b.has(w)) inter++;
-  return inter / (a.size + b.size - inter || 1);
-}
-
-/** Drop old items and near-duplicate headlines (same story from several outlets). Keeps the earliest seen. */
-export function dedupe(items: NewsItem[], maxAgeHours = 36): NewsItem[] {
-  const cutoff = Date.now() - maxAgeHours * 3600_000;
-  const sorted = items
-    .filter((i) => new Date(i.publishedAt).getTime() >= cutoff)
-    .sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
-  const kept: { item: NewsItem; tok: Set<string> }[] = [];
-  for (const item of sorted) {
-    const tok = tokens(item.title);
-    const dup = kept.find((k) => k.item.id === item.id || jaccard(k.tok, tok) >= 0.55);
-    if (dup) {
-      if (item.tags) dup.item.tags = [...new Set([...(dup.item.tags ?? []), ...item.tags])];
-      // Remember other outlets covering the same story (coverage breadth = importance signal).
-      if (item.source && item.source !== dup.item.source && !dup.item.alsoIn?.includes(item.source)) {
-        dup.item.alsoIn = [...(dup.item.alsoIn ?? []), item.source].slice(0, 12);
-      }
-      continue;
-    }
-    kept.push({ item, tok });
-  }
-  return kept.map((k) => k.item);
+/** Drop items older than 36 h and merge headlines about the same story (see stories/cluster.ts). Keeps the first (newest) of each. */
+export function dedupe(items: NewsItem[]): NewsItem[] {
+  return toHeadlines(clusterStories(items, null, new Date()));
 }
 
 /** Build a matcher for an interest from its query words and tickers. */
@@ -228,6 +209,7 @@ export async function fetchInterestNews(
   interests: Interest[],
   generalFeeds: Feed[],
   finnhubKey?: string,
+  opts: { raw?: boolean } = {},
 ): Promise<{ items: NewsItem[]; errors: string[] }> {
   const errors: string[] = [];
   const all: NewsItem[] = [];
@@ -264,7 +246,8 @@ export async function fetchInterestNews(
   all.push(...general.items);
 
   const tagged = tagInterests(all, interests).filter((i) => (i.tags?.length ?? 0) > 0);
-  return { items: dedupe(tagged), errors };
+  // raw: every outlet's copy, for story clustering (headlines.ts); otherwise one headline per story.
+  return { items: opts.raw ? tagged : dedupe(tagged), errors };
 }
 
 async function fetchFinnhub(it: Interest, key: string): Promise<{ items: NewsItem[]; errors: string[] }> {

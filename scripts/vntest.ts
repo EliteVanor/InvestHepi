@@ -4,6 +4,7 @@
  * `npx tsx scripts/vntest.ts`
  */
 import assert from "node:assert/strict";
+import { isStoryCall, storyReply } from "./story-reply";
 import { promises as fs } from "fs";
 import { pinClock } from "./clock";
 
@@ -96,6 +97,8 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     lastPrompt = { sys: msgs[0].content, user: msgs[1].content };
     const names = [...lastPrompt.user.matchAll(/^- (.+?) \(benchmark (\S+?)[;)]/gm)].map((m) => [m[1], m[2]]);
     const outlook = names.map(([n, t]) => ({ interest: n, ticker: t, direction: "up", confidence: 60, horizon: "today", action: "HOLD", action_trigger: "t", rationale: "r", risks: "k" }));
+    // v19b: the briefing is the story call.
+    if (isStoryCall(msgs[0].content)) return new Response(JSON.stringify({ choices: [{ message: { content: storyReply(msgs[1].content) } }] }), { status: 200 });
     return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ headline: "ok", mood: "risk-on", summary: ["s"], events: [], watch_next: [], movers: [], scenarios: [], outlook }) } }] }), { status: 200 });
   }
   return new Response(`<?xml version="1.0"?><rss><channel><item><title>VN-Index tăng điểm nhờ nhóm ngân hàng</title><link>https://cafef.vn/1</link><pubDate>${new Date().toUTCString()}</pubDate></item></channel></rss>`, { status: 200 });
@@ -201,7 +204,10 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   const { SECTION_STRIPS } = await import("../src/lib/config");
   const d = await P.refreshShared("vn", "vi");
   assert.equal(d.analysis.outlook, undefined, "briefings make no calls (v18)");
-  assert.ok(lastPrompt.user.includes("MARKETS COVERED") && lastPrompt.user.includes("VN-Index (benchmark ^VNINDEX.VN"), "groups in the briefing prompt");
+  // v19b: the story prompt has no group list; every group's benchmark is priced in its snapshot instead.
+  const { VN_GROUPS } = await import("../src/lib/config");
+  const snap = lastPrompt.user.split("MARKET SNAPSHOT:")[1]?.split("MACRO:")[0] ?? "";
+  assert.ok(VN_GROUPS.every((g) => snap.includes(g.tickers[0])) && snap.includes("^VNINDEX.VN"), "every group's benchmark in the briefing prompt's snapshot");
   assert.ok(!/SPY|QQQ|SOXX|NVDA/.test(lastPrompt.user.split("MACRO:")[0]), "no US interests or benchmarks in the Vietnam snapshot");
   assert.ok(lastPrompt.user.includes("ICT") && /HOSE/.test(lastPrompt.user), "Vietnam clock and session");
   assert.ok(lastPrompt.sys.includes("VIETNAM SECTION") && lastPrompt.sys.includes("Vietnamese"), "Vietnam rules + Vietnamese output");
