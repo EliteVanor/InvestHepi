@@ -168,4 +168,6 @@ export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
 };
 
 export const MAX_ITEMS_PER_SECTION = 60;
+/** Headlines shown to a model: the full prompt, and the compact one free providers get (their per-minute token limits). */
 export const MAX_ITEMS_TO_LLM = 45;
+export const MAX_ITEMS_TO_LLM_COMPACT = 30;

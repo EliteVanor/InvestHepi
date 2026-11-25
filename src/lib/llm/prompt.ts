@@ -1,7 +1,7 @@
 import { EVENT_KEYWORDS, PLAYBOOK, type EventType, type PlaybookEntry } from "../analogs";
 import { calendarAsText } from "../calendar";
 import { earlyCloseMins, isHoliday } from "../holidays";
-import { SECTION_MACRO } from "../config";
+import { MAX_ITEMS_TO_LLM, MAX_ITEMS_TO_LLM_COMPACT, SECTION_MACRO } from "../config";
 import { sectorsAsText } from "../chart";
 import { langInfo } from "../languages";
 import { macroAsText, quotesAsText } from "../market";
@@ -158,7 +158,7 @@ function techFor(p: PromptInput, opts: PromptOptions): Record<string, Technicals
 }
 
 export function buildUserPrompt(p: PromptInput, opts: PromptOptions): string {
-  const maxHeadlines = opts.maxHeadlines ?? (opts.compact ? 30 : 45);
+  const maxHeadlines = opts.maxHeadlines ?? (opts.compact ? MAX_ITEMS_TO_LLM_COMPACT : MAX_ITEMS_TO_LLM);
   const interests = p.interests
     .map((i) => `- ${i.name} (benchmark ${i.tickers[0]}${i.tickers.length > 1 ? `; also ${i.tickers.slice(1).join(", ")}` : ""})`)
     .join("\n");

@@ -5,6 +5,7 @@
  * show it or keep the last AI briefing).
  * LLM_PROVIDER=claude|groq|gemini|rules forces one provider family to the front.
  */
+import { MAX_ITEMS_TO_LLM, MAX_ITEMS_TO_LLM_COMPACT } from "../config";
 import type { Analysis } from "../types";
 import { CLAUDE_MODEL, analyzeWithClaude, completeWithClaude } from "./claude";
 import { analyzeWithCompat, completeWithCompat, estimateTokens, jsonWithCompat, outputTokens, tokenBudget, ProviderError, type CompatProvider } from "./openai-compat";
@@ -105,7 +106,7 @@ export async function analyze(input: PromptInput, route: Route = "shared"): Prom
   for (const step of providerChain(route)) {
     try {
       const { system, user, maxHeadlines } = fitPrompt(input, step);
-      const shown = Math.min(input.news.length, maxHeadlines ?? (step.compact ? 30 : 45));
+      const shown = Math.min(input.news.length, maxHeadlines ?? (step.compact ? MAX_ITEMS_TO_LLM_COMPACT : MAX_ITEMS_TO_LLM));
       const analysis = await guarded(step.def, route, async () => {
         const r = await step.run(system, user, shown);
         return { value: r.analysis, tokens: r.tokens };
