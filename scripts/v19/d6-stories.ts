@@ -82,13 +82,15 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   assert.equal(P.storyScore(S[2], quotes), 1 + 6, "outlets + the largest move of a ticker its headlines name");
   assert.equal(P.storyScore(S[0], quotes), 2);
   const r1 = P.pickForRun(S, {}, quotes, now, P.SHARED_PICK);
-  assert.deepEqual(r1.explain.map((s) => s.id), ["c", "b", "e", "d", "a", "i2", "i1"], "5 important by score + the 2 best interesting, in rank order (ties: clustering order)");
+  // Candidates (owner Q16): up to 10 important + twice the interesting quota go to the model, in rank order (ties:
+  // clustering order); the model scores them and selectCards keeps 5 + 2 (pinned in scripts/v19/audit-q16.ts).
+  assert.deepEqual(r1.explain.map((s) => s.id), ["c", "b", "e", "d", "a", "g", "i2", "f", "i1", "i3"], "candidates in rank order (ties: clustering order)");
   assert.deepEqual(r1.keep, []);
-  // fewer interesting than the quota: important fill in
+  // fewer interesting stories: every important candidate is still offered
   const onlyOne = S.filter((s) => s.id !== "i1" && s.id !== "i3");
-  assert.deepEqual(P.pickForRun(onlyOne, {}, quotes, now).explain.map((s) => s.id), ["c", "b", "e", "d", "a", "g", "i2"], "one interesting: a 6th important fills the 7th place");
-  // toModel caps the candidates (interesting ones are still offered)
-  assert.deepEqual(P.pickForRun(S, {}, quotes, now, { important: 5, interesting: 2, toModel: 3 }).explain.map((s) => s.id), ["c", "b", "e", "i2", "i1"], "only the top 3 by score compete for the important places");
+  assert.deepEqual(P.pickForRun(onlyOne, {}, quotes, now).explain.map((s) => s.id), ["c", "b", "e", "d", "a", "g", "i2", "f"], "one interesting: all important candidates offered");
+  // toModel caps the important candidates (interesting ones are still offered, up to twice their quota)
+  assert.deepEqual(P.pickForRun(S, {}, quotes, now, { important: 5, interesting: 2, toModel: 3 }).explain.map((s) => s.id), ["c", "b", "e", "i2", "i1", "i3"], "only the top 3 important by score are candidates");
   // fresh cards are kept: under 12 h and fewer than 3 new outlets since; otherwise re-explained
   const cards = {
     b: card("b", "2026-11-25T08:00:00Z", 3), // 6 h old, 2 new outlets: fresh
@@ -98,11 +100,11 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   const r2 = P.pickForRun(S, cards, quotes, now);
   assert.deepEqual(r2.keep.map((c) => c.id), ["b"]);
   assert.deepEqual(r2.keep[0].outlets, S[1].outlets, "a kept card shows the story's current outlets");
-  assert.deepEqual(r2.explain.map((s) => s.id), ["c", "e", "d", "a", "i2", "i1"]);
+  assert.deepEqual(r2.explain.map((s) => s.id), ["c", "e", "d", "a", "g", "i2", "f", "i1", "i3"]);
   // My Interests: tagged stories only, up to 6, no interesting quota
   const I = [story("x", 3), story("t1", 1, "important", "Nvidia earnings", ["chips"]), story("t2", 2, "interesting", "Nvidia museum", ["chips"]), ...Array.from({ length: 6 }, (_, k) => story(`u${k}`, 1, "important", `Tagged ${k}`, ["chips"]))];
   const ri = P.pickForRun(I, {}, quotes, now, P.INTERESTS_PICK);
-  assert.equal(ri.explain.length, 6, "at most 6");
+  assert.equal(ri.explain.length, 8, "all 8 tagged stories are candidates (up to 10); selectCards keeps 6");
   assert.ok(!ri.explain.some((s) => s.id === "x"), "untagged stories are left out");
   assert.equal(ri.explain[0].id, "t2", "interesting counts like any other story there (2 outlets ranks first)");
 

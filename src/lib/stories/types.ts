@@ -24,4 +24,6 @@ export interface StoryCard {
   watch?: string;
   concepts: string[];
   memberIds: string[];
+  /** The model's importance, 1-5 (5 = matters to most readers today); cards written before it count as 3. */
+  importance?: number;
 }

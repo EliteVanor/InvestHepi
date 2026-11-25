@@ -158,6 +158,8 @@ Checked against production. Fixed on the branch (not deployed yet):
 
 - Nov 25: the owner merged PR #2 (v19b, ~06:46 UTC) and approved the whole past-event list; `LIBRARY_APPROVED = true` (prompt +~800 tokens per story call for up to 3 candidates per story).
 
+- Nov 25 08:45 audit of the 08:10 runs (World 08:17, Vietnam 08:16 UTC): numbers trace to the snapshot; Google News still 429 on every Google feed; BBC/NPR carried World. Found: (1) owner Q16 was not built: the code picked 7 and the model explained all, so with single-outlet stories World showed the newest (a UK fly-tip, "White Christmas?"); fixed: up to 10 + 4 candidates, the model picks 5 + 2 and scores importance, `selectCards` keeps the quota (prompt about +1.5-2K tokens per story call, still under Groq's room after whole-story fitting); (2) two PNJ stories in Vietnam: `relatedStories` now treats a shared company code plus one distinctive word as one subject. PR to merge after the owner's OK.
+
 **Handoff (Nov 25, end of the v19b session)**
 - Goal: v19 news first. v19a is live on `main` (PR #1). v19b is complete on `claude/brave-cerf-ccrvoy` as PR #2 (CI green), waiting for the owner's merge.
 - Decisions: this section (Nov 25 answers above; owner: "build everything till the end, do as you think best"; past-event citations stay off until the owner approves the list).

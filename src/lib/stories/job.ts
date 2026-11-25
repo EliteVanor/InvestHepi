@@ -10,7 +10,7 @@ import type { Analysis, CalendarEvent, NewsItem, Quote, SectionId } from "../typ
 import type { Story } from "./cluster";
 import { loadConcepts, writeConcepts } from "./concepts";
 import { explainStories } from "./explain";
-import { INTERESTS_PICK, SHARED_PICK, pickForRun, shownStories } from "./pick";
+import { INTERESTS_PICK, SHARED_PICK, pickForRun, selectCards, shownStories } from "./pick";
 import { indexStories, loadCards, loadRun, saveCards, saveRun, type RunRecord } from "./store";
 import type { StoryCard, StoryScope } from "./types";
 
@@ -71,7 +71,11 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
 
   // One AI call per run (owner Q14): new and stale stories get cards; fresh ones are only named, so the big
   // picture, movers and watch line always come from today's data.
-  const r = await explainStories({ scope, section: o.section, stories: explain, covered: [...keep.map((c) => c.title), ...skipped], market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
+  // Candidates mode (owner Q16): the model picks the most important among the candidates and scores them;
+  // a big-story run explains only its story.
+  const opts = pickOpts(scope);
+  const want = o.only ? undefined : { important: opts.important, interesting: opts.interests ? 0 : opts.interesting };
+  const r = await explainStories({ scope, section: o.section, stories: explain, covered: [...keep.map((c) => c.title), ...skipped], want, market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
   const fresh = r.cards;
   await saveCards(fresh);
   const slugs = await writeConcepts(fresh.flatMap((c) => c.concepts), storyLang(o.section), o.route, o.now).catch(() => [] as string[]);
@@ -82,8 +86,8 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
   const run = { bigPicture: r.bigPicture, movers: r.movers, watch: r.watch, provider: r.provider, note: r.note, leftOut: r.leftOut, news: members(sent) };
 
   const byId = new Map([...Object.values(cards), ...keep, ...fresh].map((c) => [c.id, c] as const));
-  // A shown story whose new card was dropped (or left out) keeps its previous card, if any.
-  const ordered = shown.flatMap((s) => (byId.has(s.id) ? [byId.get(s.id)!] : []));
+  // A candidate whose new card was dropped (or left out) keeps its previous card, if any; then the quota by importance.
+  const ordered = selectCards(shown.flatMap((s) => (byId.has(s.id) ? [byId.get(s.id)!] : [])), opts, new Set(o.only ?? []));
   const record: RunRecord = {
     at: o.now.toISOString(),
     cardIds: ordered.map((c) => c.id),
