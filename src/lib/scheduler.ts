@@ -419,45 +419,38 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
       await setJSON("sched:lastUnit:brief", { at: startedAt, used120: false } satisfies LastUnit);
       const a = await runBigStory(big, clock());
       out.unit = { slot: `big:${big.scope}`, item: big.scope, ok: a.ok, note: a.note };
-      return await finishTick(out, token, opts);
-    }
-    const u = units[lane]!;
-    const end = itemEnd(u.occ, u.item);
-    let wait = Math.min(wp, wb);
-    // The lane's gap would end after this item's deadline (a before-market run waiting past the open):
-    // a try now beats a certain miss. The gap protects Groq's tokens-per-minute on gpt-oss-120b, so when
-    // the previous unit on this lane used it, 120b sits out the rest of the gap and the run starts on
-    // the route's next model instead of risking a 429 (and a longer 120b cooldown).
-    if (wait > 0 && t0 + wait >= end) {
-      if ((await lastOf(lane)).used120) await holdOff("groq120", t0 + wait);
-      wait = 0;
-    }
-    if (wait > 0) await sleep(wait);
-    const unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8) };
-    if (clock().getTime() >= end) {
-      // The wait itself ran past the deadline: don't start a run that can no longer count; record it so the chain ends.
-      const prev = u.set ? u.run.sets[setKey(u.item, u.set.hash)] : u.run.items[u.item];
-      const note = prev ? `gave up: ${prev.note ?? "failed"}` : "missed: too late";
-      await record(u, { at: iso(clock().getTime()), n: MAX_ATTEMPTS, ok: false, note });
-      out.unit = { ...unit, ok: false, note };
     } else {
-      const startedAt = clock().getTime();
-      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: true } satisfies LastUnit); // until we know (a cut-off run counts as 120b)
-      const before = await requests120();
-      const a = await runUnit(u, clock());
-      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: (await requests120()) > before } satisfies LastUnit);
-      out.unit = { ...unit, ok: a.ok, note: a.note };
+      const u = units[lane]!;
+      const end = itemEnd(u.occ, u.item);
+      let wait = Math.min(wp, wb);
+      // The lane's gap would end after this item's deadline (a before-market run waiting past the open):
+      // a try now beats a certain miss. The gap protects Groq's tokens-per-minute on gpt-oss-120b, so when
+      // the previous unit on this lane used it, 120b sits out the rest of the gap and the run starts on
+      // the route's next model instead of risking a 429 (and a longer 120b cooldown).
+      if (wait > 0 && t0 + wait >= end) {
+        if ((await lastOf(lane)).used120) await holdOff("groq120", t0 + wait);
+        wait = 0;
+      }
+      if (wait > 0) await sleep(wait);
+      const unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8) };
+      if (clock().getTime() >= end) {
+        // The wait itself ran past the deadline: don't start a run that can no longer count; record it so the chain ends.
+        const prev = u.set ? u.run.sets[setKey(u.item, u.set.hash)] : u.run.items[u.item];
+        const note = prev ? `gave up: ${prev.note ?? "failed"}` : "missed: too late";
+        await record(u, { at: iso(clock().getTime()), n: MAX_ATTEMPTS, ok: false, note });
+        out.unit = { ...unit, ok: false, note };
+      } else {
+        const startedAt = clock().getTime();
+        await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: true } satisfies LastUnit); // until we know (a cut-off run counts as 120b)
+        const before = await requests120();
+        const a = await runUnit(u, clock());
+        await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: (await requests120()) > before } satisfies LastUnit);
+        out.unit = { ...unit, ok: a.ok, note: a.note };
+      }
     }
   } finally {
     await releaseLock(LOCK, token);
   }
-  if (opts.chain && out.unit) out.chained = await chainTick();
-  return out;
-}
-
-/** The early exit of a big-story unit: release the lock (the `finally` then finds it gone and does nothing) and chain. */
-async function finishTick(out: TickResult, token: string, opts: TickOptions): Promise<TickResult> {
-  await releaseLock(LOCK, token);
   if (opts.chain && out.unit) out.chained = await chainTick();
   return out;
 }
