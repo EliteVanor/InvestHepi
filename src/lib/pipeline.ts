@@ -29,7 +29,7 @@ import { symLabel } from "./symbols";
 import { ALIASES } from "./tickers";
 import type { Action, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
 import { callsKeyFor, currentCallsKey, currentInterestSet, interestHash, loadInterests, withHoldings } from "./interests";
-import { basePrefix, interestBriefingStale, loadDigest, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
+import { basePrefix, interestBriefingStale, loadDigest, pretranslateSet, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
 
 /** A returning user's briefing older than this is refreshed when they open the app. */
 export const CATCH_UP_AFTER_MS = 12 * 3600_000;
@@ -44,6 +44,7 @@ export async function ensureInterestBriefing(uid: string, allowed?: () => Promis
   if (!(await interestBriefingStale(hash, maxAgeMs))) return "fresh";
   if (allowed && !(await allowed())) return "capped";
   await refreshInterestSet(interests, "en", [uid]);
+  await pretranslateSet(hash, [uid]).catch(() => []); // opens already translated for a reader of another language
   return "refreshed";
 }
 
@@ -113,17 +114,25 @@ export function coverage(section: SectionId, interests: Interest[], extra: strin
   return { symbols, macro: SECTION_MACRO[section], sectors: section === "us", tech: [bench, ...firsts, ...stripSyms], bench, breadth, strip };
 }
 
-/** Prices, macro, sectors and technicals, shared across sections and users for 10 minutes. */
+/**
+ * Prices, macro, sectors and technicals, shared across sections and users for 10 minutes; for one
+ * minute when any price is a stale fallback, so a briefing doesn't keep an old price after the source
+ * recovers.
+ */
+const STALE_MARKET_TTL_MS = 60_000;
+/** How long a market snapshot is reused (exported for tests). */
+export const marketTtl = (d: Pick<MarketData, "quotes" | "macro" | "sectors">) => ([...d.quotes, ...d.macro, ...d.sectors].some((q) => q.stale) ? STALE_MARKET_TTL_MS : MARKET_TTL_MS);
+
 export async function marketData(cov: Coverage): Promise<MarketData> {
   const key = [[...new Set(cov.symbols.map((s) => s.toUpperCase()))].sort().join(","), cov.macro.join(","), cov.sectors ? "s" : "", cov.tech.slice(0, 16).join(",")].join("|");
   const slot = `market:${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
   const cached = await getJSON<MarketData>(slot).catch(() => null);
-  if (cached && cached.key === key && Date.now() - cached.at < MARKET_TTL_MS && cached.quotes.length) return cached;
+  if (cached && cached.key === key && Date.now() - cached.at < marketTtl(cached) && cached.quotes.length) return cached;
   // Freshened: a close the daily source hasn't posted yet is taken from an intraday series.
   const [quotes, macro, sectors, technicals] = await Promise.all([
     getQuotes(cov.symbols).then((q) => freshenQuotes(q)),
     getQuotes(cov.macro).then((q) => freshenQuotes(q)),
-    cov.sectors ? getQuotes(SECTORS.map((x) => x.symbol)) : Promise.resolve([] as Quote[]),
+    cov.sectors ? getQuotes(SECTORS.map((x) => x.symbol)).then((q) => freshenQuotes(q)) : Promise.resolve([] as Quote[]),
     getTechnicals(cov.tech).catch(() => ({}) as Record<string, Technicals>),
   ]);
   const data: MarketData = { key, at: Date.now(), quotes, macro, sectors, technicals };

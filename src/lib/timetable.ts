@@ -6,14 +6,14 @@
  * cron-job.org, GitHub) only call /api/cron/tick on a plain interval and never repeat these times.
  *
  * Two kinds of slots:
- *  - Predictions (the market's weekdays only): two runs per market, "before market" and "mid-day",
+ *  - Predictions (the market's trading days only: weekdays minus the holidays in holidays.ts): two runs per market, "before market" and "mid-day",
  *    each calling only its own market. Every World market (Japan, China & Hong Kong, Europe, US
  *    stocks, oil, gold) has its own pair; each interest set runs its US part on the New York clock and
  *    its Vietnam part on the Hanoi clock. Only the before-market run makes weekly calls.
  *  - Briefings (every day, weekends included): World 4, US 5, Vietnam 5; the admin's interests 6,
  *    everyone else's 4.
  */
-import { MARKET_TZ, preDeadline, zonedToUtc, type Phase, type SlotMarket } from "./markets";
+import { MARKET_TZ, marketCloseOn, preDeadline, runPossible, zonedToUtc, type Phase, type SlotMarket } from "./markets";
 
 export type BriefItem = "vn" | "world" | "us" | "interests:all" | "interests:admin";
 export type PredItem = `p:${SlotMarket}:${Phase}`;
@@ -59,7 +59,7 @@ export const TIMETABLE: Slot[] = [
   // Briefings, every day.
   { id: "b-0115", days: EVERY_DAY, at: "01:15", items: ["vn", "world", "interests:all"] }, // before the HOSE open
   { id: "b-0215", days: EVERY_DAY, at: "02:15", items: ["us"] }, // US evening
-  { id: "b-0435", days: EVERY_DAY, at: "04:35", items: ["vn", "interests:admin"] }, // HOSE lunch break
+  { id: "b-0435", days: EVERY_DAY, at: "04:35", items: ["vn", "interests:all"] }, // HOSE lunch break; everyone's set (owner decision, v19)
   { id: "b-0810", days: EVERY_DAY, at: "08:10", items: ["vn", "world", "interests:all"] }, // after the HOSE close; Europe open
   { id: "b-1030", days: EVERY_DAY, at: "10:30", items: ["interests:admin"] },
   { id: "b-1230", days: EVERY_DAY, at: "12:30", items: ["us", "world", "vn", "interests:all"] }, // before the US open
@@ -98,12 +98,23 @@ const MIN = 60_000;
 function startsOn(dayMs: number): Occurrence[] {
   const date = new Date(dayMs).toISOString().slice(0, 10);
   const wd = new Date(dayMs).getUTCDay();
-  return TIMETABLE.filter((s) => s.days.includes(wd)).map((slot) => {
+  const out: Occurrence[] = [];
+  for (const slot of TIMETABLE) {
+    if (!slot.days.includes(wd)) continue;
     const [h, m] = slot.at.split(":").map(Number);
     // A local slot happens on that local date; the UTC instant moves with summer time.
     const start = slot.tz ? zonedToUtc(date, h * 60 + m, slot.tz).getTime() : dayMs + (h * 60 + m) * MIN;
-    return { slot, date, start, end: 0 };
-  });
+    // A prediction item doesn't exist on a day its market doesn't trade, or (mid-day) when the session ends less
+    // than two hours later (holidays.ts): no run, no "unavailable" note, no late alarm. The occurrence carries
+    // only the items that remain, so the scheduler needs no holiday logic.
+    const items = slot.items.filter((i) => {
+      if (!isPred(i)) return true;
+      const { market, phase } = predParts(i);
+      return runPossible(market, phase, start);
+    });
+    if (items.length) out.push({ slot: items.length === slot.items.length ? slot : { ...slot, items }, date, start, end: 0 });
+  }
+  return out;
 }
 
 function rawOccurrences(from: number, to: number): Occurrence[] {
@@ -116,13 +127,13 @@ function rawOccurrences(from: number, to: number): Occurrence[] {
 /**
  * When an item of an occurrence stops being runnable:
  *  - before-market predictions: the market's open (a "before market" call made after it would see the session);
- *  - mid-day predictions: 90 minutes after the slot;
+ *  - mid-day predictions: 90 minutes after the slot, never past that day's close;
  *  - briefings: when the same briefing's next run starts, at most 6 hours later.
  */
 export function itemEnd(o: Pick<Occurrence, "start" | "slot">, item: SlotItem, all?: Occurrence[]): number {
   if (isPred(item)) {
     const { market, phase } = predParts(item);
-    return phase === "pre" ? Math.min(preDeadline(market, o.start).getTime(), o.start + MAX_LATE_MIN * MIN) : o.start + MID_LATE_MIN * MIN;
+    return phase === "pre" ? Math.min(preDeadline(market, o.start).getTime(), o.start + MAX_LATE_MIN * MIN) : Math.min(o.start + MID_LATE_MIN * MIN, marketCloseOn(market, o.start));
   }
   const list = all ?? rawOccurrences(o.start, o.start + MAX_LATE_MIN * MIN);
   const next = list.find((x) => x.start > o.start && x.slot.items.some((i) => !isPred(i) && family(i) === family(item)));

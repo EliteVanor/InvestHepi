@@ -4,19 +4,20 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { relTime, type MsgKey } from "@/lib/i18n";
 import { LANGUAGES, langInfo, type LangCode } from "@/lib/languages";
 import type { AlertSettings } from "@/lib/alerts";
-import type { ChartData } from "@/lib/chart";
 import { tickerMatcher } from "@/lib/tickers";
 import { exchangeTz } from "@/lib/symbols";
 import { SECTION_IDS, type Digest, type Holding, type Interest, type Outlook, type Quote, type SectionId } from "@/lib/types";
 import { IconArrow, IconBolt, IconChart, IconCheck, IconGear, IconMoon, IconPlus, IconStar, IconX } from "./Icons";
 import { usePrefs, type Theme } from "./prefs";
-import { LiveChart } from "./LiveChart";
+import { LiveChart, type ChartReply } from "./LiveChart";
+import { showsLevel, windowChange, type CurrentQuote } from "@/lib/quote-view";
 import { Ring, Sheet, arrow, fmtPct, fmtPrice, symLabel, openOverlay } from "./primitives";
 import { AlertsTab } from "./alerts-tab";
 import { useAccount } from "./account";
 import { VN_PRESET } from "@/lib/config";
 import { QUICK_ZONES, allZones, deviceZone, zoneOffset } from "@/lib/zones";
 import { HoldingsEditor, TickerSearch } from "./portfolio";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 /* -------------------------------------------------------------- Settings */
 
@@ -286,7 +287,7 @@ interface Status {
   cronSecret: boolean;
   email: "resend" | "smtp" | "none";
   lastRefresh: Record<SectionId, { at: string; ok: boolean; provider?: string; error?: string } | null>;
-  schedule?: { lastTick: { at: string; src: string } | null; late: string[]; slots?: { slot: string; start: string }[] };
+  schedule?: { lastTick: { at: string; src: string } | null; late: string[]; slots?: { slot: string; start: string }[]; grading?: { lastOk: string | null; failing: { at: string; n: number; error: string; retryAt: string } | null } };
   /** Admin only: today's use per model against its free allowance. */
   aiUsage?: { key: string; model: string; tokens: number; tokensPerDay?: number; requests: number; requestsPerDay?: number; byRoute: Record<string, number>; cooldownUntil?: string; lastError?: string }[];
 }
@@ -371,6 +372,12 @@ function StatusTab() {
               )}
             </div>
           )}
+          {s.schedule?.grading?.failing && (
+            <div className="row">
+              <span className="label">{t("st.gradeFail")}</span>
+              <span className="value bad">{s.schedule.grading.failing.n}× · {relTime(s.schedule.grading.failing.at, lang)} · {s.schedule.grading.failing.error}</span>
+            </div>
+          )}
           <div className="row"><span className="label">{t("st.email")}</span>{s.email === "none" ? onOff(false) : <span className="ok">{s.email === "resend" ? "Resend" : "SMTP"}</span>}</div>
         </div>
       </div>
@@ -437,7 +444,9 @@ function ShortcutsTab() {
 
 export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAlert, action }: { symbol: string; quote?: Quote; digests: Digest[]; calls?: Outlook[]; onClose: () => void; onAlert?: (symbol: string) => void; action?: React.ReactNode }) {
   const { t, lang, api, marketTime } = usePrefs();
-  const [cd, setCd] = useState<ChartData | null>(null);
+  const [cd, setCd] = useState<ChartReply | null>(null);
+  // The current quote (quote.ts) comes with every chart reply: the same price and 5D/1M on every range.
+  const [cq, setCq] = useState<CurrentQuote | null>(null);
   const [alertMsg, setAlertMsg] = useState("");
   // The latest prediction on this ticker (daily first).
   const call = calls.find((o) => o.ticker === symbol);
@@ -452,10 +461,13 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
       .filter((n) => (seen.has(n.id) ? false : (seen.add(n.id), true)))
       .slice(0, 10);
   }, [digests, symbol]);
-  const h = quote?.history ?? [];
-  const price = cd?.price ?? quote?.price;
-  const chg5 = h.length > 5 && price ? ((price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : null;
-  const chg1m = h.length > 1 && price ? ((price - h[0][1]) / h[0][1]) * 100 : null;
+  const price = cq?.price ?? quote?.price;
+  // 5D and 1M only from the current quote (the same numbers as the watchlist and the chart header).
+  // While it loads (or if it fails) the briefing quote's own daily history gives the same windows.
+  const chg5 = cq ? cq.changes?.["5d"] ?? null : quote?.history ? windowChange(quote.history, quote.price, "5d") : null;
+  const chg1m = cq ? cq.changes?.["1mo"] ?? null : quote?.history ? windowChange(quote.history, quote.price, "1mo") : null;
+  // An ETF stand-in's levels are the ETF's: no day range, 52-week range or level alerts for the symbol (Q5).
+  const levels = cq ? showsLevel(cq) : quote ? showsLevel(quote) : true;
   const fmtVol = (v?: number) => (v == null ? "–" : new Intl.NumberFormat(langInfo(lang).locale, { notation: "compact", maximumFractionDigits: 1 }).format(v));
 
   const quickAlert = async (op: "above" | "below") => {
@@ -474,15 +486,22 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
 
   return (
     <Sheet title={<span>{symLabel(symbol)}{cd?.name && cd.name !== symLabel(symbol) ? <span className="muted" style={{ fontWeight: 500, fontSize: 15, marginLeft: 8 }}>{cd.name}</span> : null}</span>} onClose={onClose} wide actions={action}>
-      <LiveChart symbol={symbol} height={300} onData={(d) => d.range === "1d" && setCd(d)} />
+      <LiveChart
+        symbol={symbol}
+        height={300}
+        onData={(d) => {
+          if (d.quote) setCq(d.quote);
+          if (d.range === "1d") setCd(d);
+        }}
+      />
       <div className="stats stats-5" style={{ marginTop: 14 }}>
         <div className="stat"><small>{t("tk.5d")}</small><b className={`num ${(chg5 ?? 0) >= 0 ? "up" : "down"}`}>{chg5 == null ? "–" : fmtPct(chg5, 1)}</b></div>
         <div className="stat"><small>{t("tk.1m")}</small><b className={`num ${(chg1m ?? 0) >= 0 ? "up" : "down"}`}>{chg1m == null ? "–" : fmtPct(chg1m, 1)}</b></div>
-        <div className="stat"><small>{t("tk.dayRange")}</small><b className="num range" style={{ fontSize: 15 }}>{cd?.dayLow != null && cd.dayHigh != null ? `${fmtPrice(cd.dayLow)} – ${fmtPrice(cd.dayHigh)}` : "–"}</b></div>
-        <div className="stat"><small>{t("tk.52w")}</small><b className="num range" style={{ fontSize: 15 }}>{cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : tech?.low52 != null && tech.high52 != null ? `${fmtPrice(tech.low52)} – ${fmtPrice(tech.high52)}` : "–"}</b></div>
+        <div className="stat"><small>{t("tk.dayRange")}</small><b className="num range" style={{ fontSize: 15 }}>{levels && cd?.dayLow != null && cd.dayHigh != null ? `${fmtPrice(cd.dayLow)} – ${fmtPrice(cd.dayHigh)}` : "–"}</b></div>
+        <div className="stat"><small>{t("tk.52w")}</small><b className="num range" style={{ fontSize: 15 }}>{!levels ? "–" : cd?.fiftyTwoWeekLow != null && cd.fiftyTwoWeekHigh != null ? `${fmtPrice(cd.fiftyTwoWeekLow)} – ${fmtPrice(cd.fiftyTwoWeekHigh)}` : tech?.low52 != null && tech.high52 != null ? `${fmtPrice(tech.low52)} – ${fmtPrice(tech.high52)}` : "–"}</b></div>
         <div className="stat"><small>{t("tk.volume")}</small><b className="num">{fmtVol(cd?.volume)}</b></div>
       </div>
-      {tech && (
+      {tech && levels && (
         <div className="sheet-section">
           <h3>
             {t("tk.levels")} · <span className={tech.trend === "up" ? "up" : tech.trend === "down" ? "down" : "flat"}>{t(`trend.${tech.trend}` as MsgKey)}</span> <span className="muted">({t("trend.span")})</span>
@@ -522,7 +541,7 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
           </div>
         </div>
       )}
-      {price != null && onAlert && (
+      {price != null && levels && onAlert && (
         <div className="sheet-actions" style={{ justifyContent: "flex-start" }}>
           <button className="pill-btn" onClick={() => quickAlert("above")}>↑ {t("tk.alertAbove", { p: fmtPrice(Number((price * 1.05).toFixed(price >= 100 ? 0 : 2))) })}</button>
           <button className="pill-btn" onClick={() => quickAlert("below")}>↓ {t("tk.alertBelow", { p: fmtPrice(Number((price * 0.95).toFixed(price >= 100 ? 0 : 2))) })}</button>
@@ -561,7 +580,7 @@ export function TickerSheet({ symbol, quote, digests, calls = [], onClose, onAle
         ) : (
           related.map((n) => (
             <div className="news" key={n.id} style={{ gridTemplateColumns: "1fr" }}>
-              <a href={n.link} target="_blank" rel="noreferrer">{n.title}</a>
+              <a href={safeHttpUrl(n.link) || undefined} target="_blank" rel="noreferrer">{n.title}</a>
               <div className="news-meta">{n.source} · {relTime(n.publishedAt, lang)}</div>
             </div>
           ))

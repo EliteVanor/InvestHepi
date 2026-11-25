@@ -1,7 +1,7 @@
 /**
  * "Up next" catalysts: earnings for the user's tickers + US macro releases.
  * Every source is optional; the panel just shows what loaded.
- *  - FOMC: hard-coded from the Fed's published 2026 schedule (update yearly).
+ *  - FOMC: hard-coded from the Fed's published 2026 and 2027 schedules (update yearly).
  *  - BLS (CPI, jobs, PPI, JOLTS): BLS release-schedule iCal feed, when reachable.
  *  - Earnings: Finnhub (if FINNHUB_API_KEY) else Nasdaq's public calendar API.
  */
@@ -11,9 +11,14 @@ import type { CalendarEvent, Interest } from "./types";
 import { dayIn, NY } from "./dates";
 
 // Decision day (second day of each meeting). Statement 2:00 PM ET, press conference 2:30 PM ET.
-// Source: federalreserve.gov FOMC calendar for 2026.
+// Source: https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm (2026), and the Fed's revised 2027
+// schedule of Nov 12 2026 (https://www.federalreserve.gov/newsevents/pressreleases/monetary20261112a.htm): the last
+// meeting moved from Dec 7-8 to Nov 16-17; Oct 26-27 is a strategy-only meeting with no policy decision, so it is not
+// listed. The Fed marks each date tentative until the meeting before it confirms it. Which 2027 meetings carry
+// projections (SEP_MONTHS covers Mar, Jun, Sep) was not checked for Nov 17.
 const FOMC: Record<number, string[]> = {
   2026: ["2026-01-28", "2026-03-18", "2026-04-29", "2026-06-17", "2026-07-29", "2026-09-16", "2026-10-28", "2026-12-09"],
+  2027: ["2027-01-27", "2027-03-17", "2027-04-28", "2027-06-09", "2027-07-28", "2027-09-15", "2027-11-17"],
 };
 const SEP_MONTHS = new Set(["03", "06", "09", "12"]); // meetings with economic projections (dot plot)
 

@@ -1,58 +1,53 @@
 "use client";
 
-/** Live prices on the page: polling /api/quotes while a market is open, and the rule for laying a live quote over a briefing's snapshot (canOverlay). */
+/** Live prices on the page: polling /api/quotes on each symbol's own exchange hours (quote-view.ts pollPlan). */
 import { useEffect, useState } from "react";
-import { type LiveQuote } from "@/lib/chart";
-import { marketClock, vnMarketClock } from "@/lib/marketTime";
+import { overlayQuote, pollPlan, type CurrentQuote } from "@/lib/quote-view";
 import { type Quote } from "@/lib/types";
 import { usePrefs } from "./prefs";
 
 /**
- * Live prices for the given symbols. Polls every minute while the relevant market is in session and
- * the page is visible, every 5 minutes otherwise (FX, futures and crypto move around the clock).
+ * Current quotes for the given symbols while the page is visible: each minute only the symbols whose
+ * own market trades now (Vietnam on Hanoi hours, FX/futures/crypto near 24 h), the whole set every
+ * 5 minutes (pollPlan). `everyMs` slows the minute step (the sector heatmap: 2 minutes); `windows`
+ * adds the 5D/1M changes.
  */
-export function useLiveQuotes(symbols: string[], market: "us" | "vn" | "world" = "us", everyMs = 60_000): Map<string, LiveQuote> {
+export function useLiveQuotes(symbols: string[], opts: { windows?: boolean; everyMs?: number } = {}): Map<string, CurrentQuote> {
   const { api } = usePrefs();
-  const [map, setMap] = useState<Map<string, LiveQuote>>(new Map());
+  const [map, setMap] = useState<Map<string, CurrentQuote>>(new Map());
   const key = symbols.join(",");
+  const windows = !!opts.windows;
+  const everyMs = opts.everyMs ?? 60_000;
   useEffect(() => {
     if (!key) return;
     let stop = false;
-    let last = 0;
-    const open = () => {
-      if (market === "world") return new Date().getUTCDay() % 6 !== 0;
-      return (market === "vn" ? vnMarketClock() : marketClock()).phase === "open";
-    };
+    let lastFull = 0;
+    let lastAny = 0;
+    const syms = key.split(",");
     const tick = async (force = false) => {
       if (!force && document.visibilityState !== "visible") return;
-      if (!force && !open() && Date.now() - last < 5 * 60_000) return;
-      last = Date.now();
+      const want = pollPlan(syms, Date.now(), { lastFull: force ? 0 : lastFull, lastAny: force ? 0 : lastAny, everyMs });
+      if (!want.length) return;
+      lastAny = Date.now();
       try {
-        const j = await api<{ quotes: LiveQuote[] }>(`/api/quotes?symbols=${encodeURIComponent(key)}`);
-        if (!stop) setMap(new Map(j.quotes.map((q) => [q.symbol, q])));
+        const j = await api<{ quotes: CurrentQuote[] }>(`/api/quotes?symbols=${encodeURIComponent(want.join(","))}${windows ? "&windows=1" : ""}`);
+        // A failed full poll doesn't count: the next minute tick asks again.
+        if (want.length === syms.length) lastFull = lastAny;
+        if (!stop) setMap((m) => new Map([...[...m].filter(([k]) => syms.includes(k)), ...j.quotes.map((q) => [q.symbol, q] as const)]));
       } catch {}
     };
     tick(true);
-    const id = setInterval(tick, everyMs);
+    const id = setInterval(tick, 60_000);
+    const onVis = () => document.visibilityState === "visible" && tick();
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       stop = true;
       clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
     };
-  }, [api, key, everyMs, market]);
+  }, [api, key, windows, everyMs]);
   return map;
 }
 
-/**
- * Whether a live quote may replace a briefing's quote: same basis (both real, or the same ETF), or a
- * real level replacing an ETF stand-in. Never an ETF price over a real level. Exported for tests.
- */
-export const canOverlay = (digestProxy?: string, liveProxy?: string) => (digestProxy ?? "") === (liveProxy ?? "") || (!!digestProxy && !liveProxy);
-
-/** Overlay live prices on digest quotes (keeps the 1-month history for sparklines). */
-export function mergeLive(quotes: Quote[], live: Map<string, LiveQuote>): Quote[] {
-  return quotes.map((q) => {
-    const l = live.get(q.symbol);
-    // Never mix an index level with its tracking ETF's price; a real level may replace an ETF stand-in.
-    return l && canOverlay(q.proxy, l.proxy) ? { ...q, proxy: l.proxy, price: l.price, prevClose: l.prevClose, changePct: l.changePct, spark: l.intraday ? l.spark : undefined } : q;
-  });
-}
+/** A briefing's quotes with the current quotes laid over them (quote-view.ts overlayQuote). */
+export const withLive = (quotes: Quote[], live: Map<string, CurrentQuote>): Quote[] => quotes.map((q) => overlayQuote(q, live.get(q.symbol)));

@@ -46,7 +46,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const L = await import("../src/lib/vnlist");
   const S = await import("../src/lib/search");
   const Y = await import("../src/lib/yahoo");
@@ -98,7 +98,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 
   // listing down on a cold start → the built-in list of big Vietnamese names
   listDown = true;
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   L.resetVnList();
   const cold = await L.searchVn("masan");
   assert.equal(cold[0]?.code, "MSN", "built-in Vietnamese list as a backup");

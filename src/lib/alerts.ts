@@ -9,14 +9,19 @@
  * Every alert has a de-dupe key per ET day, all alerts from one check go out as one email,
  * and there's a daily cap so a bad day can't flood the inbox.
  */
-import { getLiveQuotes, type LiveQuote } from "./chart";
+import { currentQuotes, type CurrentQuote } from "./quote";
+import { levelLabel } from "./quote-view";
 import { appUrl, emailProvider, sendEmail } from "./email";
 import { makeT, type MsgKey, type T } from "./i18n";
 import { isLang, langInfo, type LangCode } from "./languages";
-import { ukey } from "./context";
+import { currentUid, hasUser, OWNER, ukey } from "./context";
+import { multiUser } from "./mode";
+import { listUsers } from "./users";
 import { getJSON, setJSON } from "./store";
 import type { CalendarEvent, Digest, Interest, Outlook } from "./types";
 import { dayIn, NY } from "./dates";
+import { isHoliday } from "./holidays";
+import { nextTradingDay } from "./markets";
 
 export type PriceOp = "above" | "below" | "pct_up" | "pct_down";
 
@@ -30,6 +35,8 @@ export interface PriceAlert {
   note?: string;
   createdAt: string;
   lastFiredAt?: string;
+  /** A level rule (above/below) waiting because only this ETF stand-in's price is available (Q5). */
+  pausedVia?: string;
 }
 
 export interface AlertSettings {
@@ -92,6 +99,25 @@ export async function loadAlertSettings(): Promise<AlertSettings> {
   };
 }
 
+/**
+ * Multi-user: a non-owner's alerts go only to the Google account's own address (the registry's
+ * email, written when they open the app), so nobody can use the app to email strangers. The owner
+ * may use any address. Old settings that don't match are kept but never sent to.
+ */
+export async function emailBlocked(email: string): Promise<boolean> {
+  if (!email || !multiUser()) return false;
+  if (!hasUser()) return true; // never fall back to the owner's rights without an account in context
+  const uid = currentUid();
+  if (uid === OWNER) return false;
+  const rec = (await listUsers()).find((u) => u.uid === uid);
+  return !rec || rec.email.trim().toLowerCase() !== email.trim().toLowerCase();
+}
+
+async function sendToAccount(to: string, mail: { subject: string; html: string; text: string }) {
+  if (await emailBlocked(to)) return { ok: false, provider: emailProvider(), error: "Alerts only go to your own account address." };
+  return sendEmail({ to, ...mail });
+}
+
 export async function saveAlertSettings(s: AlertSettings): Promise<void> {
   await setJSON(ukey("alerts:settings"), s);
 }
@@ -135,25 +161,36 @@ async function mailLang(): Promise<LangCode> {
 
 const fmtPct = (n: number) => `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
 const fmtPx = (n: number) => (n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n.toFixed(2));
+/** An ETF stand-in's price is never written as the symbol's level. */
+const shownPx = (q: CurrentQuote) => levelLabel(q, { fmt: fmtPx });
 
 /* --------------------------------------------------------- price checks */
 
-/** Pure evaluation of price rules against quotes. Exported for tests. */
+/**
+ * Pure evaluation of price rules against current quotes. A level rule (above/below) never compares a
+ * level with an ETF stand-in's price: it is reported in `paused` instead; % rules work on any basis.
+ * Exported for tests.
+ */
 export function evaluatePriceRules(
   settings: AlertSettings,
-  quotes: LiveQuote[],
+  quotes: CurrentQuote[],
   followed: string[],
   date: string,
   t: T,
-): { events: AlertEvent[]; fired: string[] } {
+): { events: AlertEvent[]; fired: string[]; paused: string[] } {
   const events: AlertEvent[] = [];
   const fired: string[] = [];
+  const paused: string[] = [];
   const q = new Map(quotes.map((x) => [x.symbol, x]));
 
   for (const a of settings.priceAlerts) {
     if (!a.active) continue;
     const quote = q.get(a.symbol);
     if (!quote) continue;
+    if ((a.op === "above" || a.op === "below") && quote.basis === "proxy") {
+      paused.push(a.id);
+      continue;
+    }
     let hit = false;
     let title = "";
     if (a.op === "above" && quote.price >= a.value) {
@@ -175,7 +212,7 @@ export function evaluatePriceRules(
       kind: "price",
       symbol: a.symbol,
       title,
-      detail: `${fmtPx(quote.price)} (${fmtPct(quote.changePct)})${a.note ? ` · ${a.note}` : ""}`,
+      detail: `${shownPx(quote)} (${fmtPct(quote.changePct)})${a.note ? ` · ${a.note}` : ""}`,
       tone: quote.changePct >= 0 ? "up" : "down",
     });
     fired.push(a.id);
@@ -193,23 +230,37 @@ export function evaluatePriceRules(
         kind: "move",
         symbol: sym,
         title: t("alert.move", { symbol: sym, chg: fmtPct(quote.changePct) }),
-        detail: fmtPx(quote.price),
+        detail: shownPx(quote),
         tone: quote.changePct >= 0 ? "up" : "down",
       });
     }
   }
-  return { events, fired };
+  return { events, fired, paused };
 }
 
 export async function checkPriceAlerts(interests: Interest[], now = new Date()) {
   const settings = await loadAlertSettings();
   if (!settings.enabled) return { skipped: "alerts disabled", sent: 0 };
+  if (await emailBlocked(settings.email)) return { skipped: "address is not the account's", sent: 0 };
   const lang = await mailLang();
   const t = makeT(lang);
   const followed = [...new Set(interests.flatMap((i) => i.tickers))];
   const symbols = [...new Set([...followed, ...settings.priceAlerts.filter((a) => a.active).map((a) => a.symbol)])];
-  const quotes = await getLiveQuotes(symbols);
-  const { events, fired } = evaluatePriceRules(settings, quotes, followed, dayIn(NY, now), t);
+  const quotes = await currentQuotes(symbols, { now });
+  const { events, fired, paused } = evaluatePriceRules(settings, quotes, followed, dayIn(NY, now), t);
+  // Mark level rules paused on an ETF stand-in (and clear the mark once a real level is back), so the
+  // alerts tab can say why they wait; saved only when a mark changed.
+  const viaOf = new Map(quotes.map((q) => [q.symbol, q.basis === "proxy" ? q.via : undefined]));
+  let marksChanged = false;
+  settings.priceAlerts = settings.priceAlerts.map((a) => {
+    if (!viaOf.has(a.symbol)) return a;
+    const via = paused.includes(a.id) ? viaOf.get(a.symbol) : undefined;
+    if (via === a.pausedVia) return a;
+    marksChanged = true;
+    const next = { ...a, pausedVia: via };
+    if (!via) delete next.pausedVia;
+    return next;
+  });
 
   const result = await dispatch(events, settings, lang, now);
   // Disarm once-only alerts that actually went out; stamp repeating ones.
@@ -219,7 +270,7 @@ export async function checkPriceAlerts(interests: Interest[], now = new Date()) 
       sentIds.has(a.id) ? { ...a, active: a.repeat ? a.active : false, lastFiredAt: now.toISOString() } : a,
     );
     await saveAlertSettings(settings);
-  }
+  } else if (marksChanged) await saveAlertSettings(settings);
   return { sent: result.sentKeys.length, checked: quotes.length, error: result.error };
 }
 
@@ -279,11 +330,9 @@ export function evaluateBriefingRules(
   return events;
 }
 
-function nextWeekday(iso: string): string {
-  const d = new Date(iso + "T12:00:00Z");
-  do d.setUTCDate(d.getUTCDate() + 1);
-  while ([0, 6].includes(d.getUTCDay()));
-  return d.toISOString().slice(0, 10);
+/** The next NYSE trading day after `iso` (weekends and NYSE holidays skipped). */
+export function nextWeekday(iso: string): string {
+  return nextTradingDay(iso, NY);
 }
 
 /** After a prediction run of the current user's interest set: call changes and high-confidence calls. */
@@ -311,6 +360,7 @@ export interface RefreshContext {
 export async function afterRefresh(ctx: RefreshContext, now = new Date()) {
   const settings = await loadAlertSettings();
   if (!settings.enabled) return { skipped: "alerts disabled" };
+  if (await emailBlocked(settings.email)) return { skipped: "address is not the account's" };
   const lang = await mailLang();
   const t = makeT(lang);
   const date = dayIn(NY, now);
@@ -326,7 +376,7 @@ export async function afterRefresh(ctx: RefreshContext, now = new Date()) {
   }
 
   // Morning briefing: first refresh between 7:30 and 9:30 ET on a weekday, once per day.
-  const weekdayOk = !["Sat", "Sun"].includes(weekday);
+  const weekdayOk = !["Sat", "Sun"].includes(weekday) && !isHoliday(NY, date); // no "before the open" email on a NYSE holiday
   if (settings.morningBriefing && weekdayOk && mins >= 7 * 60 + 30 && mins < 9 * 60 + 30 && interests) {
     const key = `morning:${date}`;
     const ledger = await loadLedger(now);
@@ -359,7 +409,7 @@ async function dispatch(events: AlertEvent[], settings: AlertSettings, lang: Lan
 
   const t = makeT(lang);
   const mail = renderAlerts(batch, t, lang, now);
-  const res = await sendEmail({ to: settings.email, ...mail });
+  const res = await sendToAccount(settings.email, mail);
   await appendLog(batch.map((e) => ({ at: now.toISOString(), kind: e.kind, title: e.title, ok: res.ok, error: res.error })));
   if (!res.ok) return { sentKeys: [] as string[], error: res.error };
   ledger.keys.push(...batch.map((e) => e.key));
@@ -369,7 +419,7 @@ async function dispatch(events: AlertEvent[], settings: AlertSettings, lang: Lan
 }
 
 async function sendTracked(settings: AlertSettings, key: string, kind: AlertKind, title: string, mail: { subject: string; html: string; text: string }, now: Date) {
-  const res = await sendEmail({ to: settings.email, ...mail });
+  const res = await sendToAccount(settings.email, mail);
   await appendLog([{ at: now.toISOString(), kind, title, ok: res.ok, error: res.error }]);
   if (res.ok) {
     const ledger = await loadLedger(now);
@@ -391,7 +441,7 @@ export async function sendTestEmail(to: string) {
       <p style="margin:0;font-size:14px;color:#6e6e73">${esc(t("mail.provider", { p: emailProvider() }))}</p>`,
     t,
   });
-  const res = await sendEmail({ to, subject: t("mail.testTitle"), html, text: t("mail.testBody") });
+  const res = await sendToAccount(to, { subject: t("mail.testTitle"), html, text: t("mail.testBody") });
   await appendLog([{ at: new Date().toISOString(), kind: "test", title: t("mail.testTitle"), ok: res.ok, error: res.error }]);
   return res;
 }

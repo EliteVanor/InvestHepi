@@ -8,6 +8,10 @@
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T12:00:00Z");
 
 process.env.VERCEL = "1";
 delete process.env.KV_REST_API_URL;
@@ -57,7 +61,7 @@ const at = (iso: string) => new Date(iso);
 const T = (iso: string) => Date.parse(iso);
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const TT = await import("../src/lib/timetable");
   const MK = await import("../src/lib/markets");
   const TR = await import("../src/lib/track");
@@ -70,7 +74,7 @@ const T = (iso: string) => Date.parse(iso);
   assert.deepEqual(sat, { vn: 5, world: 4, us: 5, interests: 6 }, "World 4, US 5, Vietnam 5, the admin's set 6");
   const usTimes = TT.TIMETABLE.filter((s) => s.items.includes("us")).map((s) => s.at).sort();
   assert.deepEqual(usTimes, ["02:15", "12:30", "15:30", "17:00", "21:20"], "US briefings at the planned UTC times");
-  assert.equal(TT.TIMETABLE.filter((s) => s.items.includes("interests:all")).length, 4, "everyone else's set 4 a day");
+  assert.equal(TT.TIMETABLE.filter((s) => s.items.includes("interests:all")).length, 5, "everyone else's set 5 a day (owner decision v19, fix-plan item 4: 04:35 UTC added)");
 
   /* ---------------- each market's clock */
   assert.deepEqual(MK.dailyTarget(at("2026-11-17T01:16:00Z"), "^VNINDEX.VN"), { date: "2026-11-17", opened: false, tz: "Asia/Ho_Chi_Minh" }, "08:16 Hanoi: today's session, not open yet");
@@ -122,18 +126,20 @@ const T = (iso: string) => Date.parse(iso);
   calls = (await getJSON<Call[]>("calls:t"))!;
   const w = byId("2026-11-18:AAA:w");
   assert.deepEqual([w.gradedOn, w.outcomeClose, w.correct], ["2026-11-23", 104, true], "5th day was a holiday: graded on Monday's close");
-
-  // Daily on a holiday: market closed, not graded; a late-posted bar is waited for.
-  await TR.recordCalls([o("CCC", "today")], [{ id: "c", name: "C", query: "", tickers: ["CCC"] }], "groq", at("2026-11-26T12:30:00Z"), "calls:h", { phase: "pre" });
-  closes.CCC = [["2026-11-24", 10], ["2026-11-25", 10.1]];
+  // Daily on a closure the holiday table does not know (Seoul has no table; v19 row09 covers listed holidays): market closed, not graded; a late-posted bar is waited for.
+  await TR.recordCalls([o("CCC.KS", "today")], [{ id: "c", name: "C", query: "", tickers: ["CCC.KS"] }], "groq", at("2026-11-26T00:30:00Z"), "calls:h", { phase: "pre" });
+  closes["CCC.KS"] = [["2026-11-24", 10], ["2026-11-25", 10.1]];
   assert.equal(await TR.gradeCalls(at("2026-11-26T22:00:00Z"), "calls:h"), 0, "no bar yet, could still be posted: wait");
-  closes.CCC.push(["2026-11-27", 10.3]);
+  closes["CCC.KS"].push(["2026-11-27", 10.3]);
   assert.equal(await TR.gradeCalls(at("2026-11-27T22:00:00Z"), "calls:h"), 1);
   const hol = (await getJSON<Call[]>("calls:h"))![0];
-  assert.deepEqual([hol.closed, hol.correct, hol.returnPct], [true, undefined, undefined], "Thanksgiving: market closed, not graded");
-  await TR.recordCalls([o("DDD", "today")], [{ id: "d", name: "D", query: "", tickers: ["DDD"] }], "groq", at("2026-11-26T12:30:00Z"), "calls:h2", { phase: "pre" });
-  closes.DDD = [["2026-11-24", 10], ["2026-11-25", 10.1]];
-  assert.equal(await TR.gradeCalls(at("2026-11-28T23:00:00Z"), "calls:h2"), 1, "no later bar, but two days passed: closed");
+  assert.deepEqual([hol.closed, hol.correct, hol.returnPct], [true, undefined, undefined], "unlisted closure: market closed, not graded");
+  await TR.recordCalls([o("DDD.KS", "today")], [{ id: "d", name: "D", query: "", tickers: ["DDD.KS"] }], "groq", at("2026-11-26T00:30:00Z"), "calls:h2", { phase: "pre" });
+  closes["DDD.KS"] = [["2026-11-24", 10], ["2026-11-25", 10.1]];
+  assert.equal(await TR.gradeCalls(at("2026-11-28T23:00:00Z"), "calls:h2"), 0, "no later bar: could be an outage (v19 row 12), not 'closed' even after two days");
+  assert.ok(!(await getJSON<Call[]>("calls:h2"))![0].closed);
+  closes["DDD.KS"].push(["2026-11-27", 10.2]);
+  assert.equal(await TR.gradeCalls(at("2026-11-29T05:00:00Z"), "calls:h2"), 1, "a later bar proves the market traded without that day: closed");
   assert.equal((await getJSON<Call[]>("calls:h2"))![0].closed, true);
 
   /* ---------------- stats: independent days, uncounted, closed, by phase */

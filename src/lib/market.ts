@@ -13,9 +13,10 @@ import { isVnSymbol, pool, vnDaily, vndirectDaily } from "./vnmarket";
 import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
 import { emSession, hasEastmoney } from "./eastmoney";
-import { SESSIONS, lastFinishedSession, localNow, prevWeekday } from "./markets";
+import { calendarKey, lastFinishedSession, localNow, prevWeekday, sessionHours, zoneOf } from "./markets";
 import { exchangeTz } from "./symbols";
 import { dayIn } from "./dates";
+import { windowBase, windowChange } from "./quote-view";
 
 const day = (t: number) => new Date(t * 1000).toISOString().slice(0, 10);
 
@@ -24,7 +25,7 @@ export function quoteFromCloses(symbol: string, points: [number, number][], sour
   // One close per calendar day (Yahoo can append today's live point with an intraday timestamp).
   const byDay = new Map<string, number>();
   for (const [t, c] of points) byDay.set(day(t), c);
-  const history = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-25) as [string, number][];
+  const history = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).slice(-30) as [string, number][]; // enough for 1M across a long holiday
   if (history.length < 2) return null;
   const price = history.at(-1)![1];
   const prior = history.at(-2)![1];
@@ -41,7 +42,8 @@ async function singleQuote(symbol: string): Promise<Quote | null> {
       const { bars, source } = await vnDaily(symbol, 30);
       return fromBars(symbol, bars, source);
     }
-    const d = await getChart(symbol, "1mo");
+    // World levels: 6 months of daily closes (the 1-month chart keeps only 22, too few for 1M across a holiday).
+    const d = await getChart(symbol, hasWorldDaily(symbol) ? "6mo" : "1mo");
     // 1mo charts are hourly; collapse to daily closes.
     const q = quoteFromCloses(symbol, d.bars.map((b) => [b.t, b.c]), d.source);
     if (!q) return null;
@@ -81,8 +83,12 @@ async function rememberAndFill(uniq: string[], got: Map<string, Quote>, allowSta
   await setJSON(LAST_KEY, kept).catch(() => {});
 }
 
-/** Quotes for many symbols. `allowStale` (default) fills gaps from the last good copy; grading turns it off. */
-export async function getQuotes(symbols: string[], opts: { allowStale?: boolean } = {}): Promise<Quote[]> {
+/**
+ * Quotes for many symbols. `allowStale` (default) fills gaps from the last good copy; grading turns it
+ * off. `remember: false` skips the last-good store entirely (no read, no write): the current-quote
+ * module's hot path (/api/quotes, /api/chart) never touches Redis.
+ */
+export async function getQuotes(symbols: string[], opts: { allowStale?: boolean; remember?: boolean } = {}): Promise<Quote[]> {
   const uniq = [...new Set(symbols.map((s) => s.toUpperCase()))];
   const vn = uniq.filter(isVnSymbol);
   const other = uniq.filter((s) => !isVnSymbol(s));
@@ -90,7 +96,7 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
   await Promise.all([
     (async () => {
       if (!other.length) return;
-      const sp = await yahooSpark(other, "1mo", "1d");
+      const sp = await yahooSpark(other, "3mo", "1d"); // 1M needs the close on or before the same date a month back
       for (const [s, v] of sp) {
         const q = quoteFromCloses(s, v.points, "yahoo");
         if (q) got.set(s, q);
@@ -118,7 +124,7 @@ export async function getQuotes(symbols: string[], opts: { allowStale?: boolean 
     const px = await pool(proxied, 3, async (s) => ({ s, q: got.get(PROXIES[s]) ?? (await singleQuote(PROXIES[s])) }));
     for (const { s, q } of px) if (q && !q.stale) got.set(s, { ...q, symbol: s, proxy: PROXIES[s] });
   }
-  await rememberAndFill(uniq, got, opts.allowStale !== false);
+  if (opts.remember !== false) await rememberAndFill(uniq, got, opts.allowStale !== false);
   return uniq.map((s) => got.get(s)).filter((q): q is Quote => q != null);
 }
 
@@ -137,26 +143,29 @@ export async function freshenQuotes(quotes: Quote[], now = new Date()): Promise<
   await pool(lagging.slice(0, 48), 4, async (q) => {
     const want = lastFinishedSession(q.symbol, now, q.proxy);
     const last = q.history.at(-1)!;
+    const tz = calendarKey(q.symbol, q.proxy);
     const close = await latestClose(q.proxy ?? q.symbol, want).catch(() => null);
     if (!close) return;
     // Eastmoney's previous close must match ours when both are for the same day (a mislabeled series is caught here),
     // and no fill may move more than 25% from our last close (a broken print, not a market move).
-    if (close.prev != null && last[0] === prevWeekday(want) && Math.abs(close.prev / last[1] - 1) > 0.003) return;
+    if (close.prev != null && last[0] === prevWeekday(want, tz) && Math.abs(close.prev / last[1] - 1) > 0.003) return;
     if (Math.abs(close.value / last[1] - 1) > 0.25) return;
-    const prevClose = last[0] === prevWeekday(want) ? last[1] : (close.prev ?? last[1]);
-    fixed.set(q.symbol, { ...q, price: close.value, prevClose, changePct: ((close.value - prevClose) / prevClose) * 100, history: [...q.history, [want, close.value] as [string, number]].slice(-25), closeVia: close.via });
+    const prevClose = last[0] === prevWeekday(want, tz) ? last[1] : (close.prev ?? last[1]);
+    fixed.set(q.symbol, { ...q, price: close.value, prevClose, changePct: ((close.value - prevClose) / prevClose) * 100, history: [...q.history, [want, close.value] as [string, number]].slice(-30), closeVia: close.via });
   });
   return quotes.map((q) => fixed.get(q.symbol) ?? q);
 }
 
 /** A finished session's close from an intraday series: { value, prev (that series' previous close), via }. */
 async function latestClose(symbol: string, want: string): Promise<{ value: number; prev?: number; via: string } | null> {
-  const tz = exchangeTz(symbol);
+  // Oil and gold futures use CME's calendar (Globex trades on Thanksgiving), not NYSE's: Eastmoney's previous close on the
+  // Friday after is Thursday's shortened session.
+  const tz = calendarKey(symbol);
   if (hasEastmoney(symbol)) {
     const em = await emSession(symbol);
     if (em?.session === want) return { value: em.last, prev: em.preClose, via: "eastmoney" };
     // A newer session is under way: its previous close is the one we want.
-    if (em && em.session > want && prevWeekday(em.session) === want) return { value: em.preClose, via: "eastmoney" };
+    if (em && em.session > want && prevWeekday(em.session, tz) === want) return { value: em.preClose, via: "eastmoney" };
   }
   if (hasWorldDaily(symbol)) return null; // index levels: only Eastmoney is trusted for these
   // US stocks and ETFs: the same provider's 1-day bars, so the series matches the daily history by
@@ -164,10 +173,10 @@ async function latestClose(symbol: string, want: string): Promise<{ value: numbe
   // Only bars inside the wanted session's regular hours count: no after-hours print, no guessing.
   const d = await getChart(symbol, "1d");
   if (d.dailyOnly || d.proxy || d.estimatedVia) return null;
-  const close = SESSIONS[tz]?.close ?? 960;
-  const open = SESSIONS[tz]?.open ?? 570;
+  // An early close (13:00 on the day after US Thanksgiving) ends the session then: later prints are after hours.
+  const { open, close } = sessionHours(tz, want);
   const inSession = d.bars.filter((b) => {
-    const l = localNow(b.t * 1000, tz);
+    const l = localNow(b.t * 1000, zoneOf(tz));
     return l.date === want && l.mins >= open && l.mins <= close;
   });
   return inSession.length ? { value: inSession.at(-1)!.c, via: d.source } : null;
@@ -177,9 +186,8 @@ export function quotesAsText(quotes: Quote[]): string {
   if (!quotes.length) return "(price data unavailable)";
   return quotes
     .map((q) => {
-      const h = q.history;
-      const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
-      const mo = h.length > 1 ? ((q.price - h[0][1]) / h[0][1]) * 100 : NaN;
+      const wk = windowChange(q.history, q.price, "5d") ?? NaN;
+      const mo = windowChange(q.history, q.price, "1mo") ?? NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       const name = symLabel(q.symbol);
       const label = `${q.symbol}${name !== q.symbol && !q.symbol.endsWith(".VN") ? ` (${name})` : ""}`;
@@ -213,12 +221,12 @@ export function macroAsText(quotes: Quote[], wanted: string[] = []): string {
   return [...quotes
     .map((q) => {
       const h = q.history;
-      const wk = h.length > 5 ? ((q.price - h[h.length - 6][1]) / h[h.length - 6][1]) * 100 : NaN;
+      const wk = windowChange(h, q.price, "5d") ?? NaN;
       const f = (n: number) => (isNaN(n) ? "n/a" : `${n >= 0 ? "+" : ""}${n.toFixed(1)}%`);
       // Yields move in basis points, not percent of themselves (5.10% → 5.15% is +5 bp, not "+1.0%").
       if (isPercentQuote(q.symbol)) {
         const bp = (d: number) => (Number.isFinite(d) ? `${d >= 0 ? "+" : ""}${Math.round(d * 100)} bp` : "n/a");
-        const back = h.length > 5 ? h[h.length - 6][1] : NaN;
+        const back = windowBase(h, "5d") ?? NaN;
         return `${promptName(q.symbol)}: ${levelText(q)} (1d ${bp(q.price - q.prevClose)}, 5d ${bp(q.price - back)})`;
       }
       if (!q.proxy) return `${promptName(q.symbol)}: ${levelText(q)} (1d ${f(q.changePct)}, 5d ${f(wk)})`;

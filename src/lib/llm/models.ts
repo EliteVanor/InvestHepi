@@ -26,6 +26,7 @@ import { getJSON, setJSON } from "../store";
 import { plannedPerDay } from "../timetable";
 import { geminiProvider, groqProvider, type CompatProvider } from "./openai-compat";
 import { dayIn } from "../dates";
+import { ceilingMarked, currentUid, OWNER } from "../context";
 
 export type ModelKey = "groq120" | "groq20" | "qwen" | "gem35" | "gem31";
 export type Route = "predShared" | "predAdmin" | "predUser" | "shared" | "adminAuto" | "adminManual" | "userAuto" | "userManual" | "translate" | "ask";
@@ -99,12 +100,38 @@ export async function loadUsage(def: ModelDef, now = new Date()): Promise<ModelU
   return { day, tokens: 0, requests: 0, byRoute: {}, cooldownUntil: u?.cooldownUntil };
 }
 
-export async function recordUsage(def: ModelDef, route: Route, tokens: number, ok: boolean, now = new Date()): Promise<void> {
+/** Read-modify-write of a model's counters one at a time per instance (parallel translation chunks would lose counts). */
+const usageQueue = new Map<ModelKey, Promise<unknown>>();
+function serialized<T>(key: ModelKey, fn: () => Promise<T>): Promise<T> {
+  const run = (usageQueue.get(key) ?? Promise.resolve()).then(fn, fn);
+  usageQueue.set(key, run.catch(() => {}));
+  return run;
+}
+
+export function recordUsage(def: ModelDef, route: Route, tokens: number, ok: boolean, now = new Date()): Promise<void> {
+  return serialized(def.key, async () => {
+    const u = await loadUsage(def, now);
+    u.tokens += Math.max(0, Math.round(tokens));
+    u.requests += 1;
+    if (ok) u.byRoute[route] = (u.byRoute[route] ?? 0) + 1;
+    await setJSON(usageKey(def.key), u).catch(() => {});
+  });
+}
+
+/** Make a model unavailable until `untilMs` (never shortens a longer cooldown): the scheduler uses it to keep 120b out of a run that must start inside its token-per-minute window. */
+export async function holdOff(key: ModelKey, untilMs: number, now = new Date()): Promise<void> {
+  const def = modelDef(key);
+  if (!def) return;
   const u = await loadUsage(def, now);
-  u.tokens += Math.max(0, Math.round(tokens));
-  u.requests += 1;
-  if (ok) u.byRoute[route] = (u.byRoute[route] ?? 0) + 1;
-  await setJSON(usageKey(def.key), u).catch(() => {});
+  if ((u.cooldownUntil ?? 0) >= untilMs) return;
+  u.cooldownUntil = untilMs;
+  await setJSON(usageKey(key), u).catch(() => {});
+}
+
+/** Requests made to 120b today (to see whether a unit used it). */
+export async function requests120(now = new Date()): Promise<number> {
+  const def = modelDef("groq120");
+  return def ? (await loadUsage(def, now)).requests : 0;
 }
 
 /** After a refusal: back off for Retry-After, or an hour when the daily quota itself is spent. */
@@ -142,17 +169,48 @@ export function reserveFor120(u: ModelUsage, now = new Date()): number {
   return left * avg;
 }
 
+/** Routes that visitors' own actions use; the admin (owner) is exempt, and guests' translation is marked with withCeiling(). */
+const VISITOR_ROUTES: ReadonlySet<Route> = new Set(["userAuto", "userManual", "ask", "predUser"]);
+function ceilingApplies(route: Route): boolean {
+  return ceilingMarked() || (VISITOR_ROUTES.has(route) && currentUid() !== OWNER);
+}
+
 /** Whether `route` may call this model now: not cooling down, and under 97% of the daily allowance. */
 export async function available(def: ModelDef, route: Route, now = new Date()): Promise<{ ok: boolean; why?: string }> {
   const u = await loadUsage(def, now);
   if (u.cooldownUntil && u.cooldownUntil > now.getTime()) return { ok: false, why: `cooling down until ${new Date(u.cooldownUntil).toISOString().slice(11, 16)} UTC` };
   if (def.tokensPerDay && u.tokens >= def.tokensPerDay * 0.97) return { ok: false, why: "daily tokens used up" };
   if (def.requestsPerDay && u.requests >= def.requestsPerDay * 0.97) return { ok: false, why: "daily requests used up" };
+  if (ceilingApplies(route) && overUserCeiling(def, u)) return { ok: false, why: "kept for shared and admin runs (past the visitor ceiling)" };
   if (def.key === "groq120" && (route === "userAuto" || route === "predUser") && def.tokensPerDay) {
     const room = def.tokensPerDay * 0.97 - u.tokens - reserveFor120(u, now);
     if (room < AVG_RUN_TOKENS) return { ok: false, why: "kept for shared and admin predictions" };
   }
   return { ok: true };
+}
+
+/**
+ * Daily ceiling for work a visitor starts (catch-ups, users' refresh button, first briefings, Ask AI,
+ * on-read translation for signed-out visitors): once a model has used this share of its free daily
+ * allowance (Groq tokens, Flash-Lite requests), that work leaves it alone until its next day. Shared and
+ * admin runs ignore the ceiling and keep going up to the usual 97%. AI_USER_CEILING overrides (0.1-1).
+ */
+export const userCeiling = () => Math.min(1, Math.max(0.1, Number(process.env.AI_USER_CEILING) || 0.7));
+
+export function overUserCeiling(def: ModelDef, u: ModelUsage): boolean {
+  const c = userCeiling();
+  return !!((def.tokensPerDay && u.tokens >= def.tokensPerDay * c) || (def.requestsPerDay && u.requests >= def.requestsPerDay * c));
+}
+
+/**
+ * Only decides the "busy" reply: true when every model in the route's chain is past the ceiling (the
+ * ceiling itself is enforced per model in available()). With no key configured nothing is "busy": the rule-based copy needs no model.
+ */
+export async function userAiBusy(route: Route, now = new Date()): Promise<boolean> {
+  const chain = chainFor(route);
+  if (!chain.length) return false;
+  for (const def of chain) if (!overUserCeiling(def, await loadUsage(def, now))) return false;
+  return true;
 }
 
 /** The models a route will try, in order, that have a key configured. */

@@ -16,7 +16,7 @@
  */
 import { predictionAlerts } from "./alerts";
 import { getCalendar } from "./calendar";
-import { getLiveQuotes } from "./chart";
+import { currentQuotes, type CurrentQuote } from "./quote";
 import { SECTION_MACRO, US_GROUPS, VN_GROUPS, WORLD_GROUPS } from "./config";
 import { withUser } from "./context";
 import { currentInterestSet } from "./interests";
@@ -25,7 +25,7 @@ import type { Route } from "./llm/models";
 import { buildPredictSystem, buildPredictUser, parsePrediction, PREDICT_HINT, predictOutputTokens } from "./llm/predict";
 import { loadHeadlines } from "./headlines";
 import { isLang } from "./languages";
-import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, closeUtc, dailyTarget, lastFinishedSession, nthWeekday, sectionOfMarket, type Phase, type SlotMarket } from "./markets";
+import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, calendarKey, closeUtc, dailyTarget, lastFinishedSession, nthWeekday, sectionOfMarket, tradesToday, type Phase, type SlotMarket } from "./markets";
 import { alignAction, coverage, headlineMentions, marketData, SHARED_CALLS } from "./pipeline";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
@@ -116,7 +116,8 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   const scope = set ? `ib:${set.hash}:${market === "ivn" ? "vn" : "us"}` : sharedScope(market);
   const callsKey = set ? `calls:${set.hash}` : SHARED_CALLS[section as keyof typeof SHARED_CALLS];
   const route: Route = set ? (set.admin ? "predAdmin" : "predUser") : "predShared";
-  await gradeCalls(now, callsKey).catch(() => 0);
+  // Best effort: the hourly tick is the grading path that records failures (scheduler.ts gradeIfDue).
+  await gradeCalls(now, callsKey).catch((e) => console.warn(`grading ${callsKey} failed: ${(e as Error).message.slice(0, 120)}`));
 
   const firsts = interests.map((i) => i.tickers[0]);
   const symbols = [...new Set(interests.flatMap((i) => i.tickers))];
@@ -136,17 +137,17 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   const opened = new Set(symbols.filter((s) => targets.get(s)!.opened));
   const live = new Map<string, { price?: number; chg: number; at: number; via?: string }>();
   if (opened.size) {
-    const sessionOk = (q: { symbol: string; session?: string; intraday?: boolean; dailyOnly?: boolean; changePct: number }, sym: string) =>
-      q.session === targets.get(sym)?.date && q.intraday !== false && !q.dailyOnly && Number.isFinite(q.changePct);
-    for (const q of await getLiveQuotes([...opened]).catch(() => [])) {
-      // Only a price from the graded session itself; a last close or an ETF on another day won't do.
-      if (sessionOk(q, q.symbol)) live.set(q.symbol, { price: q.proxy ? undefined : q.price, chg: q.changePct, at: q.asOf * 1000, ...(q.proxy ? { via: q.proxy } : {}) });
+    // Only a live price from the graded session itself; a last close, a stale print or an ETF on another day won't do.
+    const sessionOk = (q: CurrentQuote, sym: string) => q.session === targets.get(sym)?.date && q.intraday && !q.dailyOnly && !q.stale && Number.isFinite(q.changePct);
+    for (const q of await currentQuotes([...opened], { now }).catch(() => [])) {
+      const proxy = q.basis === "proxy" ? q.via : undefined;
+      if (sessionOk(q, q.symbol)) live.set(q.symbol, { price: proxy ? undefined : q.price, chg: q.changePct, at: q.asOf * 1000, ...(proxy ? { via: proxy } : {}) });
     }
     // A US-hours index or future with no live level of its own: its same-hours ETF's move today is the
     // same % move (calls made during the session are measured as a % from the previous close).
     const viaEtf = [...opened].filter((sym) => !live.has(sym) && PROXIES[sym] && exchangeTz(sym) === "America/New_York");
     if (viaEtf.length) {
-      const etfs = new Map((await getLiveQuotes(viaEtf.map((sym) => PROXIES[sym])).catch(() => [])).map((q) => [q.symbol, q]));
+      const etfs = new Map((await currentQuotes(viaEtf.map((sym) => PROXIES[sym]), { now }).catch(() => [])).map((q) => [q.symbol, q]));
       for (const sym of viaEtf) {
         const q = etfs.get(PROXIES[sym]);
         if (q && sessionOk(q, sym)) live.set(sym, { chg: q.changePct, at: q.asOf * 1000, via: q.symbol });
@@ -171,7 +172,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
   }
   const stale = new Set(symbols.filter((sym) => fresh(sym)));
   const today = dailyTarget(now, firsts[0]).date;
-  const weekEnd = nthWeekday(today, 5);
+  const weekEnd = nthWeekday(today, 5, calendarKey(firsts[0]));
   const input = {
     interests, phase, tz, vn: market === "vn" || market === "ivn",
     quotes: data.quotes, live, opened, macro: data.macro, macroWanted, technicals: data.technicals,
@@ -199,6 +200,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     const it = allowed.get(c.ticker.toUpperCase());
     if (!it) continue;
     if (stale.has(c.ticker.toUpperCase())) continue; // no latest data for this ticker: no call on it
+    if (!tradesToday(c.ticker.toUpperCase(), now)) continue; // its own exchange is closed today (Europe: London on a UK holiday, Frankfurt on Dec 24): no call for a closed market
     // Beyond each market's benchmark, a ticker gets a call only if a headline the model saw names it
     // (the prompt says so; the model once called BID, VND and PNJ "following the sector").
     if (!benchmarks.has(c.ticker.toUpperCase()) && !shown.some((n) => headlineMentions(n.title, c.ticker.toUpperCase()))) continue;
@@ -210,7 +212,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
     const action = alignAction(raw.direction, raw.action, holdings.length > 0);
     const cal = calibrate(raw.confidence, stats);
     const target = targets.get(raw.ticker) ?? dailyTarget(now, raw.ticker);
-    const gradeDate = raw.horizon === "this week" ? nthWeekday(target.date, 5) : target.date;
+    const gradeDate = raw.horizon === "this week" ? nthWeekday(target.date, 5, target.tz) : target.date;
     items.push({
       ...raw,
       action,
@@ -222,7 +224,7 @@ async function predict({ market, phase, now, set }: PredictionJob): Promise<{ ok
       madeAt: now.toISOString(),
       gradeDate,
       // The close that grades it (grading itself runs within the hour after, once prices settle).
-      gradesAt: closeUtc(gradeDate, exchangeTz(raw.ticker)).toISOString(),
+      gradesAt: closeUtc(gradeDate, calendarKey(raw.ticker)).toISOString(),
     });
   }
   if (!items.length) throw new Error(`${provider} returned no usable calls`);

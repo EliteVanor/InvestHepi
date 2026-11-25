@@ -13,7 +13,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 const req = (url: string, init: RequestInit = {}) => new Request(`http://x${url}`, init);
 
 (async () => {
-  await (await import("fs")).promises.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await (await import("fs")).promises.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const ask = await import("../src/app/api/ask/route");
   const r1 = await ask.POST(req("/api/ask", { method: "POST", body: JSON.stringify({ question: "hi?" }) }));
   assert.equal(r1.status, 403, "Ask AI locked without APP_PASSWORD on Vercel");

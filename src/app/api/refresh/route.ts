@@ -2,6 +2,7 @@ import { translateLatest } from "@/lib/briefings";
 import { currentInterestSet } from "@/lib/interests";
 import { refreshInterestSet, refreshShared } from "@/lib/pipeline";
 import { hit, limits, markUserRefresh, userRefreshQuota } from "@/lib/ratelimit";
+import { userAiBusy } from "@/lib/llm/models";
 import { isLang } from "@/lib/languages";
 import { SECTION_IDS, type SectionId } from "@/lib/types";
 import { gate } from "@/lib/users";
@@ -9,7 +10,7 @@ import { gate } from "@/lib/users";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-async function handle(req: Request) {
+export async function POST(req: Request) {
   const params = new URL(req.url).searchParams;
   const s = params.get("section");
   const section = (s && SECTION_IDS.includes(s as SectionId) ? s : "interests") as SectionId;
@@ -26,6 +27,7 @@ async function handle(req: Request) {
       // Users: their own My Interests only, on the lighter model, 5 a day with 90 minutes between
       // presses. Every press writes a new briefing (it isn't swapped for a recent copy).
       if (section !== "interests") return Response.json({ error: "Shared sections refresh automatically several times a day." }, { status: 403 });
+      if (await userAiBusy("userManual")) return Response.json({ error: "busy" }, { status: 503 });
       const quota = await userRefreshQuota();
       if (quota.nextAt) return Response.json({ error: "wait", quota }, { status: 429 });
       const rl = await hit("refresh-user", limits.userRefresh());
@@ -36,7 +38,8 @@ async function handle(req: Request) {
         if (d.language !== lang) await translateLatest(section, lang).catch(() => null);
         return Response.json({ results: [{ section, ok: true, provider: d.provider, keptAi: !!d.keptAi }], quota: await userRefreshQuota() });
       } catch (e) {
-        return Response.json({ results: [{ section, ok: false, error: (e as Error).message }], quota: await userRefreshQuota() });
+        console.error("refresh (user) failed:", e); // the reader gets a generic line, the log has the cause
+        return Response.json({ results: [{ section, ok: false, error: "Refresh failed" }], quota: await userRefreshQuota() });
       }
     }
 
@@ -48,10 +51,9 @@ async function handle(req: Request) {
       if (d.language !== lang) await translateLatest(section, lang).catch(() => null);
       return Response.json({ results: [{ section, ok: true, provider: d.provider, keptAi: !!d.keptAi }], quota: { left: rl.limit - rl.used, limit: rl.limit, nextAt: null } });
     } catch (e) {
-      return Response.json({ results: [{ section, ok: false, error: (e as Error).message }] });
+      console.error("refresh (admin) failed:", e);
+      return Response.json({ results: [{ section, ok: false, error: "Refresh failed" }] });
     }
   });
 }
 
-export const GET = handle; // Vercel cron uses GET
-export const POST = handle;

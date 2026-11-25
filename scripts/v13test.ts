@@ -7,6 +7,10 @@
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T12:00:00Z");
 
 process.env.VERCEL = "1";
 delete process.env.KV_REST_API_URL;
@@ -83,7 +87,7 @@ const T = (s: string) => Date.parse(s);
 const MIN = 60_000;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const TT = await import("../src/lib/timetable");
   const S = await import("../src/lib/scheduler");
   S.setTimetableSince(0); // these tests replay mid-November 2026, before the v18 timetable went live
@@ -173,7 +177,8 @@ const MIN = 60_000;
   /* ---------------- mid-day: daily calls only */
   t = T("2026-11-16T04:36:00Z");
   const u2 = await drain();
-  assert.deepEqual(u2.map((u) => u.item).sort(), ["interests:admin", "p:cn:mid", "p:vn:mid", "us", "vn"].sort(), "nobody poked between 01:20 and 04:36: the 02:15 US briefing catches up, Japan's 02:45 mid-day run (90 min) is missed");
+  // v19 (owner decision, fix-plan item 4): the 04:35 slot refreshes every user's set, so it is "interests:all", not admin-only.
+  assert.deepEqual(u2.map((u) => u.item).sort(), ["interests:all", "p:cn:mid", "p:vn:mid", "us", "vn"].sort(), "nobody poked between 01:20 and 04:36: the 02:15 US briefing catches up, Japan's 02:45 mid-day run (90 min) is missed");
   assert.equal((await S.scheduleReport(t)).slots.find((x) => x.slot === "p-jp-mid")!.state, "missed", "and reported as missed");
   assert.equal((await getJSON<{ id: string }[]>("calls:vn"))!.filter((c) => c.id.endsWith(":m")).length, 6, "mid-day calls kept apart from the before-market ones");
   assert.equal((await getJSON<{ id: string }[]>("calls:vn"))!.filter((c) => c.id.endsWith(":w")).length, 6, "no new weekly calls at mid-day");

@@ -1,7 +1,8 @@
 "use client";
 
 /**
- * The single page. State lives in hooks (components/shell/hooks.ts), the frame (top bar, sidebar,
+ * The single page. State lives in hooks (components/shell/hooks.ts; the per-section briefing, headlines
+ * and predictions in components/shell/section-data.ts), the frame (top bar, sidebar,
  * tab bar) in components/shell/chrome.tsx; this file loads data, wires actions, and lays out the
  * section's content.
  */
@@ -11,10 +12,11 @@ import { AskPanel, AskSheet } from "@/components/ask";
 import { ChartCard, MoodGaugeCard, ScenariosCard, SectorHeatmap } from "@/components/cards";
 import { CatchUp, SinceLastVisit } from "@/components/catchup";
 import { IconAlert, IconPanelRight, IconSearch, IconSparkles } from "@/components/Icons";
-import { mergeLive, useLiveQuotes } from "@/components/live";
+import { useLiveQuotes, withLive } from "@/components/live";
 import { CommandPalette, type PaletteActions } from "@/components/palette";
 import { PortfolioCard, Watchlist } from "@/components/portfolio";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
+import { isStringOrNull } from "@/lib/ls-shape";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
 import { Briefing, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
 import { PredictionsCard } from "@/components/predictions";
@@ -23,25 +25,8 @@ import { SetupChecklist } from "@/components/setup";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, type Tab as SettingsTab } from "@/components/sheets";
 import { TrackSheet } from "@/components/track";
 import { Ambient, Footer, Sidebar, Skeleton, TabBar, TopBar, sectionName, type FrameActions } from "@/components/shell/chrome";
-import {
-  refreshState,
-  savedTab,
-  translateKey,
-  useBriefingPoll,
-  newsFor,
-  useLiveNews,
-  useNewHeadlines,
-  usePredictions,
-  useRulesView,
-  useSavedTab,
-  useShortcuts,
-  useTitleHidden,
-  useTranslateOnRead,
-  useViewport,
-  useWideLayout,
-  type Digests,
-  type RefreshUi,
-} from "@/components/shell/hooks";
+import { refreshState, savedTab, useNewHeadlines, useSavedTab, useShortcuts, useTitleHidden, useViewport, useWideLayout, type RefreshUi } from "@/components/shell/hooks";
+import { newsFor, useSectionData } from "@/components/shell/section-data";
 import { chartSymbols as chartSymbolsFor, planSymbols, stripPlan, stripRows as buildStripRows } from "@/components/shell/strip";
 import { ToastProvider, useToast } from "@/components/toast";
 import { isLang, langInfo } from "@/lib/languages";
@@ -83,9 +68,6 @@ function App() {
   const searchRef = useRef<HTMLInputElement>(null);
 
   /* ---------------------------------------------------------- data */
-  const [digests, setDigests] = useState<Digests>({});
-  // The last run couldn't use AI: per section, when (readers may switch to a rule-based copy).
-  const [aiFail, setAiFail] = useState<Partial<Record<SectionId, string | null>>>({});
   const [oldDigest, setOldDigest] = useState<{ section: SectionId; key: string; digest: Digest } | null>(null);
   const [calendar, setCalendar] = useState<{ events: CalendarEvent[]; notes: string[] }>({ events: [], notes: [] });
   const [interests, setInterests] = useState<Interest[]>([]);
@@ -105,16 +87,6 @@ function App() {
     return () => window.removeEventListener("ih-signin", on);
   }, []);
 
-  const loadDigest = useCallback(
-    async (s: SectionId) => {
-      // ?lang= lets signed-out visitors read shared sections in their language.
-      const j = await api<{ digest: Digest | null; aiFailedAt?: string | null }>(`/api/digest?section=${s}&lang=${lang}`);
-      setDigests((d) => ({ ...d, [s]: j.digest }));
-      setAiFail((a) => ({ ...a, [s]: j.aiFailedAt ?? null }));
-    },
-    [api, lang],
-  );
-  const waitForBriefing = useBriefingPoll(api, lang, setDigests);
   // The calendar follows the tab (shared tabs: their market groups, not personal earnings dates).
   const calTab = useRef<SectionId>("interests");
   const loadCalendar = useCallback(() => api<{ events: CalendarEvent[]; notes: string[] }>(`/api/calendar?section=${calTab.current}`).then(setCalendar).catch(() => {}), [api]);
@@ -123,9 +95,6 @@ function App() {
   // Initial load waits for prefs (read state) so "new" dots are computed correctly.
   useEffect(() => {
     if (!ready || needPassword) return;
-    Promise.all(SECTION_IDS.map((s) => loadDigest(s))).catch((e) => {
-      if (!["401", "signin"].includes((e as Error).message)) setError((e as Error).message);
-    });
     loadCalendar();
     loadInterests();
     Promise.all([api<Account>("/api/me").catch(() => null), api<{ role?: "owner" | "viewer" | null }>("/api/status").catch(() => null)]).then(([me, st]) => {
@@ -137,11 +106,11 @@ function App() {
       if (me?.user || (me?.mode === "single" && st?.role !== "viewer")) {
         api<{ briefingLanguage: string; timeZone?: string }>("/api/settings")
           .then((s) => {
-            const chosen = lsGet<string | null>("ih-lang", null);
+            const chosen = lsGet<string | null>("ih-lang", null, isStringOrNull);
             if (!chosen && isLang(s.briefingLanguage) && s.briefingLanguage !== lang) setLang(s.briefingLanguage);
             else if (s.briefingLanguage !== lang) api("/api/settings", { method: "PUT", body: JSON.stringify({ briefingLanguage: lang }) }).catch(() => {});
             // Time zone: same rule (a device without its own choice adopts the account's).
-            const zoneChosen = lsGet<string | null>("ih-tz", null);
+            const zoneChosen = lsGet<string | null>("ih-tz", null, isStringOrNull);
             if (!zoneChosen && s.timeZone && s.timeZone !== tzSetting) setTz(s.timeZone);
             else if (zoneChosen && s.timeZone !== tzSetting) api("/api/settings", { method: "PUT", body: JSON.stringify({ timeZone: tzSetting }) }).catch(() => {});
           })
@@ -157,7 +126,7 @@ function App() {
       setReadOnly(viewer);
       if (!viewer) api<{ holdings: Holding[] }>("/api/portfolio").then((h) => setHoldings(h.holdings)).catch(() => {});
     });
-  }, [ready, needPassword, loadDigest, loadCalendar, loadInterests, api]);
+  }, [ready, needPassword, loadCalendar, loadInterests, api]);
 
   useEffect(() => {
     if (calTab.current === tab) return;
@@ -166,16 +135,22 @@ function App() {
   }, [tab, ready, loadCalendar]);
 
   /* ------------------------------------------- what the tab shows */
-  const { rulesDigests, setRulesDigests, isRulesTab, toggleRules } = useRulesView(tab, aiFail, api, lang);
-  const active = isRulesTab && rulesDigests[tab] ? rulesDigests[tab] : digests[tab];
+  const onDataError = useCallback((e: Error) => {
+    if (!["401", "signin"].includes(e.message)) setError(e.message);
+  }, []);
+  const { active, digests, aiFail, liveNews, preds, rulesView, toggleRules, translatingTab, translateFailed, translatingPreds, reloadDigest, waitForBriefing } = useSectionData({
+    enabled: ready && !needPassword,
+    api,
+    lang,
+    tab,
+    viewingOld: !!oldDigest,
+    onError: onDataError,
+  });
   const shown = oldDigest?.section === tab ? oldDigest.digest : active;
-  const { translatingTab, translateFailed } = useTranslateOnRead({ tab, lang, api, digests, setDigests, rulesDigests, setRulesDigests, isRulesTab, viewingOld: !!oldDigest });
   // Headlines: the live list (refreshed every 15/30 min without AI), titles translated where the briefing has them.
-  const { liveNews } = useLiveNews({ ready: ready && !needPassword, api });
   const lists = useMemo(() => Object.fromEntries(SECTION_IDS.map((s) => [s, newsFor(digests[s], liveNews[s])])), [digests, liveNews]);
   const activeList = useMemo(() => (oldDigest?.section === tab ? { at: oldDigest.digest.generatedAt, items: oldDigest.digest.news } : newsFor(active, liveNews[tab])), [oldDigest, tab, active, liveNews]);
   const { newIds, interestsNew, badge, markAllRead } = useNewHeadlines({ ready, seen, markSeen, lists, active: activeList, tab });
-  const { preds, translatingPreds } = usePredictions({ ready: ready && !needPassword, api, lang, tab });
   const allCalls = useMemo(() => SECTION_IDS.flatMap((s) => callsOf(preds[s] ?? [])), [preds]);
   // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
@@ -186,11 +161,11 @@ function App() {
   /* -------------------------------------------------------- prices */
   const plan = useMemo(() => stripPlan(shown, tab), [shown, tab]);
   const stripSyms = useMemo(() => planSymbols(plan), [plan]);
-  const live = useLiveQuotes(stripSyms, tab === "vn" ? "vn" : tab === "world" ? "world" : "us");
+  const live = useLiveQuotes(stripSyms);
   const strip = useMemo(() => buildStripRows(shown, plan, live), [shown, plan, live]);
-  const liveQuotes = useMemo(() => (shown ? mergeLive(shown.quotes, live) : []), [shown, live]);
+  const liveQuotes = useMemo(() => (shown ? withLive(shown.quotes, live) : []), [shown, live]);
   const interestsDigest = digests.interests;
-  const interestsLive = useMemo(() => (interestsDigest ? mergeLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
+  const interestsLive = useMemo(() => (interestsDigest ? withLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
   const chartSymbols = useMemo(() => chartSymbolsFor(interests), [interests]);
   const watchSymbols = useMemo(() => [...new Set([...interests.flatMap((i) => i.tickers), ...holdings.map((h) => h.symbol)])], [interests, holdings]);
   const allDigests = useMemo(() => SECTION_IDS.map((s) => digests[s]).filter((d): d is Digest => !!d), [digests]);
@@ -238,8 +213,7 @@ function App() {
         const failed = r.results?.find((x) => !x.ok);
         if (failed) setError(failed.error ?? "Refresh failed");
         setOldDigest(null);
-        setRulesDigests((all) => ({ ...all, [s]: undefined }));
-        await Promise.all([loadDigest(s), loadCalendar()]);
+        await Promise.all([reloadDigest(s), loadCalendar()]);
         // Users see how many presses they have left after each one.
         const left = r.quota && !account.admin ? { n: r.quota.left, limit: r.quota.limit } : null;
         if (!failed) toast(r.results?.[0]?.keptAi ? t("refresh.keptAi") + (left ? ` ${t("refresh.left", left)}.` : "") : left ? t("refresh.doneLeft", left) : t("toast.updated"));
@@ -247,12 +221,13 @@ function App() {
         const m = (e as Error).message;
         if (m === "wait") toast(rs.waitText ?? rs.limitText);
         else if (m === "limit") toast(rs.limitText);
+        else if (m === "busy") toast(t("ai.busy"));
         else if (!["401", "signin"].includes(m)) setError(m);
       } finally {
         setRefreshing(null);
       }
     },
-    [api, loadDigest, loadCalendar, toast, t, lang, account.admin, rs.waitText, rs.limitText, setRulesDigests],
+    [api, reloadDigest, loadCalendar, toast, t, lang, account.admin, rs.waitText, rs.limitText],
   );
   const refreshUi: RefreshUi | null = rs.can
     ? { busy: !!refreshing, disabled: !!refreshing || rs.blocked, title: rs.title, left: !account.admin && rs.quota ? rs.quota.left : undefined, run: () => refresh(tab) }
@@ -432,9 +407,9 @@ function App() {
               <Briefing
                 digest={shown}
                 translating={translatingTab === tab}
-                translateFailed={translateFailed.has(translateKey(tab, lang, shown.generatedAt, isRulesTab && !!rulesDigests[tab]))}
+                translateFailed={translateFailed}
                 aiFailedAt={oldDigest ? null : (aiFail[tab] ?? null)}
-                rulesView={isRulesTab && !!rulesDigests[tab]}
+                rulesView={rulesView}
                 onToggleRules={(on) => toggleRules(tab, on)}
                 viewingOld={!!oldDigest}
                 onBackToLatest={() => setOldDigest(null)}
@@ -531,6 +506,7 @@ function App() {
           digest={shown}
           calls={callsOf(preds[tab] ?? [])}
           calendar={calendar.events}
+          quotes={liveQuotes}
           onClose={() => setSheet(null)}
           onAsk={() => {
             setSheet(null);

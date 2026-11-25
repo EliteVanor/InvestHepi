@@ -24,7 +24,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const T = await import("../src/lib/track");
   const { setJSON, getJSON } = await import("../src/lib/store");
   type Call = import("../src/lib/types").Call;

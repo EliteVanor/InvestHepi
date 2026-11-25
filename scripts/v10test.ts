@@ -6,6 +6,10 @@
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T12:00:00Z");
 
 process.env.VERCEL = "1";
 process.env.APP_PASSWORD = "pw";
@@ -63,13 +67,13 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const C = await import("../src/lib/chart");
   const W = await import("../src/lib/worldmarket");
   const M = await import("../src/lib/market");
 
   /* ---------------- Vietnam: strip == chart sheet, today's session, not DNSE's lagging daily bar */
-  const [lq] = await C.getLiveQuotes(["^UPCOM.VN"]);
+  const [lq] = await (await import("../src/lib/quote")).currentQuotes(["^UPCOM.VN"]);
   const chart = await C.getChart("^UPCOM.VN", "1d");
   assert.equal(lq.price, 121.27, "live price is today's last minute, not Friday's daily close");
   assert.equal(lq.prevClose, chart.prevClose, "same previous close as the chart sheet");
@@ -89,7 +93,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.equal(nk.history.at(-1)![0], sessions(30, false).at(-1), "dated to its last close");
   assert.match(M.levelText(nk), /\[close of \d{4}-\d{2}-\d{2}\]/, "the AI is told the date");
   const vnd = q.find((x) => x.symbol === "VND=X")!;
-  assert.equal(vnd.history.length, 22, "one month of sessions");
+  assert.equal(vnd.history.length, 30, "30 sessions: enough for 1M across a long holiday (v19 row 4)");
   const dup = W.parseWorld({ data: ["VN", "EN_GB"].flatMap((locale) => [{ code: "USD_VND", tradingDate: "2026-11-12", closePrice: 25684, locale }, { code: "USD_VND", tradingDate: "2026-11-13", closePrice: 25707, locale }]) }, "currencies");
   assert.equal(dup.get("USD_VND")!.length, 2, "duplicate language rows merged into one per day");
   const tnx = q.find((x) => x.symbol === "^TNX")!;
@@ -162,7 +166,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.ok(Pl.headlineMentions("Cổ phiếu VIC tăng trần", "VIC.VN") && !Pl.headlineMentions("VICTORY Securities tăng", "VIC.VN"), "codes match as whole words only");
 
   /* ---------------- live overlay: a real level may replace an ETF stand-in, never the reverse */
-  const V3 = await import("../src/components/live");
+  const V3 = await import("../src/lib/quote-view");
   assert.equal(V3.canOverlay("SPY", undefined), true, "real S&P level replaces SPY's price");
   assert.equal(V3.canOverlay(undefined, "SPY"), false, "SPY's price never replaces the real level");
   assert.equal(V3.canOverlay("EWJ", "EWJ"), true);

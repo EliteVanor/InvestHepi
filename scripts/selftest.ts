@@ -4,6 +4,10 @@
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-19T12:00:00Z");
 
 process.env.LLM_PROVIDER = "rules";
 delete process.env.ANTHROPIC_API_KEY;
@@ -73,7 +77,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 async function main() {
-  await fs.rm(".data", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || ".data", { recursive: true, force: true });
   const { parseFeed, dedupe } = await import("../src/lib/news");
   const items = parseFeed(FIXTURE, "Google News: test");
   assert.equal(items.length, 6);
@@ -120,14 +124,14 @@ async function main() {
   assert.ok(!cal.events.some((e) => e.ticker === "ZZZZ"), "other companies' earnings filtered out");
   assert.equal(parseBlsIcs(BLS_ICS, day(0), day(21)).length, 2);
   assert.equal(fomcEvents("2026-12-01", "2026-12-31").events[0].date, "2026-12-09", "FOMC Dec 2026");
-  assert.equal(fomcEvents("2026-12-20", "2027-01-10").covered, false, "flags missing next-year FOMC dates");
+  assert.equal(fomcEvents("2027-12-20", "2028-01-10").covered, false, "flags missing next-year FOMC dates (2028 is not in the app yet)");
 
   // History is capped.
   const { refreshSection } = await import("../src/lib/pipeline");
   for (let i = 0; i < 11; i++) await refreshSection("us", new Date(now + i * 60_000));
   const hist = await loadHistory("us");
   assert.equal(hist.length, 10, "history capped at 10");
-  const files = (await fs.readdir(".data")).filter((f) => /^digest_us_en_\d+\.json$/.test(f));
+  const files = (await fs.readdir(process.env.STORE_DIR || ".data")).filter((f) => /^digest_us_en_\d+\.json$/.test(f));
   assert.equal(files.length, 10, "old archived digests deleted");
 
   // Track record: rules calls are not logged; simulate an AI call and grade it.

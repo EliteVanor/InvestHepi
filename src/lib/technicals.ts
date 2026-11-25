@@ -7,6 +7,9 @@ import { getChart, type Bar } from "./chart";
 import { isVnSymbol, pool, vndirectDaily } from "./vnmarket";
 import { hasWorldDaily, worldDaily } from "./worldmarket";
 import { yahooSpark } from "./yahoo";
+import { dayIn } from "./dates";
+import { windowChange } from "./quote-view";
+import { exchangeTz } from "./symbols";
 
 export interface Technicals {
   symbol: string;
@@ -78,6 +81,10 @@ export function computeTechnicals(symbol: string, bars: Bar[], livePrice?: numbe
   const price = livePrice ?? closes.at(-1)!;
   const prior = bars.slice(-21, -1);
   const year = bars.slice(-252);
+  // 5D and 1M follow the one window rule (quote-view.ts windowChange), on the exchange's calendar.
+  const tz = exchangeTz(symbol);
+  const dated = bars.map((b) => [dayIn(tz, b.t * 1000), b.c] as [string, number]);
+  const session = dated.at(-1)![0];
   const s20 = sma(closes, 20);
   const s50 = sma(closes, 50);
   const s200 = sma(closes, 200);
@@ -101,8 +108,8 @@ export function computeTechnicals(symbol: string, bars: Bar[], livePrice?: numbe
     high52: Math.max(...year.map((b) => b.h)),
     low52: Math.min(...year.map((b) => b.l)),
     atrPct: atrPct(bars),
-    chg5d: pctFrom(closes, 5),
-    chg1m: pctFrom(closes, 21),
+    chg5d: windowChange(dated, price, "5d", session) ?? undefined,
+    chg1m: windowChange(dated, price, "1mo", session) ?? undefined,
     chg3m: pctFrom(closes, 63),
     trend,
   };

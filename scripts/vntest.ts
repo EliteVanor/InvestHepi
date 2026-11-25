@@ -5,6 +5,10 @@
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T12:00:00Z");
 
 delete process.env.AUTH_SECRET;
 delete process.env.ANTHROPIC_API_KEY;
@@ -100,7 +104,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
 const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const V = await import("../src/lib/vnmarket");
   const C = await import("../src/lib/chart");
   const M = await import("../src/lib/market");
@@ -158,7 +162,7 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   // ---- live quotes: one spark for US symbols, DNSE for VN
   C.clearPriceCaches();
   hits.length = 0;
-  const lq = await C.getLiveQuotes(["AAPL", "MSFT", "^GSPC", "FPT.VN", "bad symbol!"]);
+  const lq = await (await import("../src/lib/quote")).currentQuotes(["AAPL", "MSFT", "^GSPC", "FPT.VN", "bad symbol!"]);
   assert.deepEqual(lq.map((q) => q.symbol).sort(), ["AAPL", "FPT.VN", "MSFT", "^GSPC"].sort());
   assert.equal(count(/\/spark\?/), 1);
   assert.equal(lq.find((q) => q.symbol === "AAPL")!.prevClose, 99, "previous session close from spark");

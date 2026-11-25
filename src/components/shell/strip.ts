@@ -2,13 +2,13 @@
  * The price strip under the section title, as plain functions (tested in v15test).
  * My Interests shows the user's tickers; shared sections show their own market groups (from the
  * briefing, or from config for briefings made before strips existed) and their macro list.
- * Live quotes win over the briefing's snapshot when `canOverlay` allows (same basis, or a real level
- * replacing an ETF stand-in), so the strip shows the same numbers as the chart sheet.
+ * Current quotes (quote.ts) win over the briefing's snapshot when `canOverlay` allows (same basis, or a
+ * real level replacing an ETF stand-in), stale label included, so the strip shows the same numbers as
+ * the chart sheet.
  */
 import { SECTION_MACRO, SECTION_STRIPS, type SharedSection } from "@/lib/config";
-import type { LiveQuote } from "@/lib/chart";
+import { overlayQuote, quoteFromCurrent, type CurrentQuote } from "@/lib/quote-view";
 import type { Digest, Quote, SectionId } from "@/lib/types";
-import { canOverlay } from "../live";
 
 export interface StripPlan {
   groups: { key?: string; symbols: string[] }[];
@@ -24,18 +24,14 @@ export function stripPlan(shown: Digest | null | undefined, tab: SectionId): Str
 
 export const planSymbols = (p: StripPlan) => [...p.groups.flatMap((g) => g.symbols), ...p.macro];
 
-export function stripRows(shown: Digest | null | undefined, plan: StripPlan, live: Map<string, LiveQuote>) {
+export function stripRows(shown: Digest | null | undefined, plan: StripPlan, live: Map<string, CurrentQuote>) {
   const known = new Map<string, Quote>();
   for (const q of [...(shown?.quotes ?? []), ...(shown?.macro ?? [])]) known.set(q.symbol, q);
   const resolve = (s: string): Quote | null => {
     const q = known.get(s);
     const l = live.get(s);
-    // Live wins (same numbers as the chart sheet), with its intraday path for the sparkline.
-    const spark = l?.intraday ? l.spark : undefined;
-    const flags = l ? { estimatedVia: l.estimatedVia, dailyOnly: l.dailyOnly, session: l.session } : {};
-    if (q) return l && canOverlay(q.proxy, l.proxy) ? { ...q, proxy: l.proxy, price: l.price, prevClose: l.prevClose, changePct: l.changePct, stale: false, spark, ...flags } : q;
-    if (l) return { symbol: s, price: l.price, prevClose: l.prevClose, changePct: l.changePct, history: l.intraday ? [] : l.spark.map((c, i) => [String(i), c] as [string, number]), spark, source: "yahoo", proxy: l.proxy, ...flags };
-    return null;
+    if (q) return overlayQuote(q, l);
+    return l ? quoteFromCurrent(l) : null;
   };
   const ok = (q: Quote | null): q is Quote => q != null && Number.isFinite(q.price) && Number.isFinite(q.changePct);
   const pick = (syms: string[]) => syms.map(resolve).filter(ok);

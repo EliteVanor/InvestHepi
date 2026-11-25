@@ -3,6 +3,7 @@ import { withUser } from "@/lib/context";
 import { interestBriefingStale } from "@/lib/briefings";
 import { currentInterestSet } from "@/lib/interests";
 import { CATCH_UP_AFTER_MS, ensureInterestBriefing } from "@/lib/pipeline";
+import { userAiBusy } from "@/lib/llm/models";
 import { autogenAllowed, limits, peek, userRefreshQuota } from "@/lib/ratelimit";
 import { asCaller, multiUser, touchUser, type User } from "@/lib/users";
 
@@ -34,6 +35,7 @@ async function catchUp(user: User | null): Promise<string | undefined> {
   const stale = await interestBriefingStale((await currentInterestSet()).hash, CATCH_UP_AFTER_MS).catch(() => null);
   if (!stale?.at) return undefined; // fresh, or no briefing yet (saving interests makes the first one)
   if ((await peek("autogen", limits.autogen())).left < 1) return undefined; // capped today: don't make the page wait
+  if (await userAiBusy("userAuto")) return undefined; // AI is past its daily ceiling for visitors: show the old briefing, don't make the page wait
   void background(() => withUser(user.uid, () => ensureInterestBriefing(user.uid, autogenAllowed, CATCH_UP_AFTER_MS)));
   return stale.at;
 }

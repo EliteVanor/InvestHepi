@@ -9,6 +9,10 @@
 import assert from "node:assert/strict";
 import { promises as fs, readFileSync } from "fs";
 import path from "path";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T12:00:00Z");
 
 process.env.AUTH_SECRET = "test-secret";
 process.env.AUTH_GOOGLE_ID = "gid";
@@ -49,7 +53,7 @@ const until = async (cond: () => Promise<boolean>, ms = 8000) => {
 };
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
   const C = await import("../src/lib/config");
   const U = await import("../src/lib/users");

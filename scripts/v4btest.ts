@@ -20,7 +20,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 }) as typeof fetch;
 
 (async () => {
-  await fs.rm(".data", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || ".data", { recursive: true, force: true });
   const C = await import("../src/lib/chart");
   const d1 = await C.getChart("QQQ", "1d");
   assert.equal(d1.price, 679.89);

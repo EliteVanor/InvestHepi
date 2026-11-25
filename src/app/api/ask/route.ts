@@ -4,6 +4,7 @@ import { ask } from "@/lib/ask";
 import { appendToChat } from "@/lib/chats";
 import { getCalendar } from "@/lib/calendar";
 import { isLang } from "@/lib/languages";
+import { userAiBusy } from "@/lib/llm/models";
 import { hit, limits } from "@/lib/ratelimit";
 import { loadDigest } from "@/lib/briefings";
 import { currentCallsKey, loadInterests } from "@/lib/interests";
@@ -26,10 +27,11 @@ const Body = z.object({
 });
 
 export async function POST(req: Request) {
-  return gate(req, { user: true }, async () => {
+  return gate(req, { user: true }, async (user) => {
     const parsed = Body.safeParse(await req.json().catch(() => null));
     if (!parsed.success) return Response.json({ error: parsed.error.issues[0]?.message ?? "invalid" }, { status: 400 });
     const { question, history, lang, chatId, section } = parsed.data;
+    if (!user?.admin && (await userAiBusy("ask"))) return Response.json({ error: "busy" }, { status: 503 });
     const rl = await hit("ask", limits.ask());
     if (!rl.ok) return Response.json({ error: `Daily Ask AI limit reached (${rl.limit}). It resets at midnight ET.` }, { status: 429 });
     const [digests, interests, calls, preds] = await Promise.all([
@@ -51,7 +53,8 @@ export async function POST(req: Request) {
       return Response.json({ ...r, chatId: id });
     } catch (e) {
       const msg = (e as Error).message;
-      return Response.json({ error: msg === "NO_PROVIDER" ? "NO_PROVIDER" : msg }, { status: msg === "NO_PROVIDER" ? 412 : 502 });
+      if (msg !== "NO_PROVIDER") console.error("ask failed:", e);
+      return Response.json({ error: msg === "NO_PROVIDER" ? "NO_PROVIDER" : "Ask AI is unavailable right now, try again later" }, { status: msg === "NO_PROVIDER" ? 412 : 502 });
     }
   });
 }

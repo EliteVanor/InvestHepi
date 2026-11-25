@@ -8,6 +8,7 @@ import { usePrefs } from "@/components/prefs";
 import { relTime, type MsgKey } from "@/lib/i18n";
 import { SECTION_IDS, type NewsItem, type SectionId } from "@/lib/types";
 import type { RefreshUi } from "./hooks";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 /** What the frame's buttons do (page.tsx wires these to sheets and tabs). */
 export interface FrameActions {
@@ -139,7 +140,7 @@ export function Sidebar(p: { tab: SectionId; rail: boolean; toggleRail: () => vo
         <div className="side-headlines" aria-label={t("side.top")}>
           <div className="side-caption">{t("side.top")}</div>
           {news.slice(0, 5).map((n) => (
-            <a key={n.id} href={n.link} target="_blank" rel="noreferrer" title={n.titleOrig ?? n.title} className={newIds.has(n.id) ? "is-new" : undefined}>
+            <a key={n.id} href={safeHttpUrl(n.link) || undefined} target="_blank" rel="noreferrer" title={n.titleOrig ?? n.title} className={newIds.has(n.id) ? "is-new" : undefined}>
               <span className="side-hl-title">{n.title}</span>
               <small>
                 {n.source} · {relTime(n.publishedAt, lang)}

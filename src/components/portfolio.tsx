@@ -1,6 +1,7 @@
 "use client";
 
 /** The watchlist, the holdings card and editor, and the ticker search they use. */
+import { isBoolean } from "@/lib/ls-shape";
 import { useEffect, useMemo, useState } from "react";
 import { type MsgKey } from "@/lib/i18n";
 import { type Holding, type Outlook, type Quote } from "@/lib/types";
@@ -9,6 +10,7 @@ import { lsGet, lsSet, usePrefs } from "./prefs";
 import { fmtPct, fmtPrice } from "./primitives";
 import { langInfo } from "@/lib/languages";
 import { summarize } from "@/lib/portfolioMath";
+import { levelLabel, overlayQuote, quoteFromCurrent, type QuoteWindow } from "@/lib/quote-view";
 import { type SearchHit } from "@/lib/search";
 import { type Technicals } from "@/lib/technicals";
 import { useLiveQuotes } from "./live";
@@ -19,24 +21,30 @@ type SortKey = "symbol" | "price" | "day" | "d5" | "m1" | "rsi" | "vs50" | "rang
 export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { symbols: string[]; quotes: Quote[]; technicals?: Record<string, Technicals>; outlook: Outlook[]; onOpen: (s: string) => void }) {
   const { t } = usePrefs();
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "day", dir: -1 });
+  // 5D and 1M come from the current quote (quote.ts windows), the same numbers as the ticker sheet.
+  const live = useLiveQuotes(symbols, { windows: true });
 
   const rows = useMemo(() => {
     const list = symbols
       .map((s) => {
-        const q = quotes.find((x) => x.symbol === s);
+        const known = quotes.find((x) => x.symbol === s);
+        const cur = live.get(s);
+        const q = known ? overlayQuote(known, cur) : cur ? quoteFromCurrent(cur) : undefined;
         const tech = technicals?.[s];
         const o = outlook.find((x) => x.ticker === s);
         if (!q && !tech) return null;
         const price = q?.price ?? tech!.price;
-        const h = q?.history ?? [];
-        const back = (n: number) => (h.length > n ? ((price - h[h.length - 1 - n][1]) / h[h.length - 1 - n][1]) * 100 : undefined);
+        // A window change only from the quote's own series (an ETF stand-in's windows aren't the index's).
+        const win = (w: QuoteWindow) => (cur && (q?.proxy ?? "") === (cur.basis === "proxy" ? cur.via ?? "" : "") ? cur.changes?.[w] ?? undefined : undefined);
         const range = tech?.high52 != null && tech.low52 != null && tech.high52 > tech.low52 ? ((price - tech.low52) / (tech.high52 - tech.low52)) * 100 : undefined;
         return {
           symbol: s,
           price,
+          label: q ? levelLabel(q, { fmt: fmtPrice, via: (etf) => t("strip.viaShort", { etf }) }) : fmtPrice(price),
+          stale: !!q?.stale,
           day: q?.changePct,
-          d5: tech?.chg5d ?? back(5),
-          m1: tech?.chg1m ?? back(Math.min(21, h.length - 1)),
+          d5: win("5d") ?? tech?.chg5d,
+          m1: win("1mo") ?? tech?.chg1m,
           rsi: tech?.rsi14,
           vs50: tech?.sma50 ? ((price - tech.sma50) / tech.sma50) * 100 : undefined,
           range,
@@ -56,7 +64,7 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
       const vb = val(b);
       return (typeof va === "string" ? va.localeCompare(vb as string) : (va as number) - (vb as number)) * sort.dir;
     });
-  }, [symbols, quotes, technicals, outlook, sort]);
+  }, [symbols, quotes, live, technicals, outlook, sort, t]);
 
   if (!rows.length) return null;
   const th = (key: SortKey, label: string, cls = "") => (
@@ -93,7 +101,7 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
             {rows.map((r) => (
               <tr key={r.symbol} onClick={() => onOpen(r.symbol)} tabIndex={0} onKeyDown={(e) => e.key === "Enter" && onOpen(r.symbol)}>
                 <td className="wl-sticky"><b>{r.symbol}</b></td>
-                <td className="num">{fmtPrice(r.price)}</td>
+                <td className={`num${r.stale ? " stale" : ""}`} title={r.stale ? t("strip.stale") : undefined}>{r.label}</td>
                 <td>{pct(r.day, 2)}</td>
                 <td className="wl-m-hide">{pct(r.d5)}</td>
                 <td>{pct(r.m1)}</td>
@@ -128,14 +136,14 @@ export function Watchlist({ symbols, quotes, technicals, outlook, onOpen }: { sy
   );
 }
 
-const money = (n: number, locale: string, sign = false) =>
-  `${sign && n > 0 ? "+" : ""}${new Intl.NumberFormat(locale, { style: "currency", currency: "USD", maximumFractionDigits: Math.abs(n) >= 1000 ? 0 : 2 }).format(n)}`;
+const money = (n: number, currency: string, locale: string, sign = false) =>
+  `${sign && n > 0 ? "+" : ""}${new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: Math.abs(n) >= 1000 || currency === "VND" ? 0 : 2 }).format(n)}`;
 
 export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[]; onEdit: () => void; onOpen: (s: string) => void }) {
   const { t, lang } = usePrefs();
   const locale = langInfo(lang).locale;
   const [hide, setHide] = useState(false);
-  useEffect(() => setHide(lsGet("ih-pf-hide", false)), []);
+  useEffect(() => setHide(lsGet("ih-pf-hide", false, isBoolean)), []);
   const live = useLiveQuotes(useMemo(() => holdings.map((h) => h.symbol), [holdings]));
   const s = useMemo(() => summarize(holdings, [...live.values()]), [holdings, live]);
 
@@ -149,7 +157,7 @@ export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[
         </button>
       </section>
     );
-  const amt = (n: number, sign = false) => (hide ? "•••" : money(n, locale, sign));
+  const amt = (n: number, currency: string, sign = false) => (hide ? "•••" : money(n, currency, locale, sign));
   return (
     <section className="card" aria-labelledby="pf-h">
       <h2 className="card-title" id="pf-h">
@@ -174,27 +182,33 @@ export function PortfolioCard({ holdings, onEdit, onOpen }: { holdings: Holding[
         <div className="skeleton" style={{ height: 90 }} />
       ) : (
         <>
-          <div className="pf-total num">{amt(s.value)}</div>
-          <div className="pf-sub">
-            <span className={`num ${s.dayPnl >= 0 ? "up" : "down"}`}>
-              {amt(s.dayPnl, true)} ({fmtPct(s.dayPct)})
-            </span>
-            <span className="muted">{t("pf.today")}</span>
-            <span className={`num ${s.totalPnl >= 0 ? "up" : "down"}`}>{fmtPct(s.totalPct, 1)}</span>
-            <span className="muted">{t("pf.total")}</span>
-          </div>
-          <div className="pf-rows">
-            {s.positions.map((p) => (
-              <button key={p.symbol} className="pf-row" onClick={() => onOpen(p.symbol)}>
-                <b>{p.symbol}</b>
-                <span className="pf-weight" title={`${p.weight.toFixed(0)}%`}>
-                  <i style={{ width: `${p.weight}%` }} />
+          {/* One subtotal per currency: VND and USD are never added together (no conversion). */}
+          {s.groups.map((g) => (
+            <div className="pf-group" key={g.currency}>
+              <div className="pf-total num">{amt(g.value, g.currency)}</div>
+              <div className="pf-sub">
+                <span className={`num ${g.dayPnl >= 0 ? "up" : "down"}`}>
+                  {amt(g.dayPnl, g.currency, true)} ({fmtPct(g.dayPct)})
                 </span>
-                <span className={`num ${p.dayPct >= 0 ? "up" : "down"}`}>{fmtPct(p.dayPct)}</span>
-                <span className="num pf-val">{amt(p.value)}</span>
-              </button>
-            ))}
-          </div>
+                <span className="muted">{t("pf.today")}</span>
+                <span className={`num ${g.totalPnl >= 0 ? "up" : "down"}`}>{fmtPct(g.totalPct, 1)}</span>
+                <span className="muted">{t("pf.total")}</span>
+              </div>
+              <div className="pf-rows">
+                {g.positions.map((p) => (
+                  <button key={p.symbol} className="pf-row" onClick={() => onOpen(p.symbol)}>
+                    <b>{p.symbol}</b>
+                    <span className="pf-weight" title={`${p.weight.toFixed(0)}%`}>
+                      <i style={{ width: `${p.weight}%` }} />
+                    </span>
+                    <span className={`num ${p.dayPct >= 0 ? "up" : "down"}`}>{fmtPct(p.dayPct)}</span>
+                    <span className="num pf-val">{p.via ? t("strip.viaShort", { etf: p.via }) : amt(p.value, p.currency)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+          {s.groups.length > 1 && <p className="hint">{t("pf.perCurrency")}</p>}
         </>
       )}
     </section>

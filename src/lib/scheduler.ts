@@ -20,7 +20,8 @@
 import { checkPriceAlerts, loadAlertSettings } from "./alerts";
 import { OWNER, withUser } from "./context";
 import { appUrl } from "./email";
-import { translateLatest } from "./briefings";
+import { holdOff, requests120 } from "./llm/models";
+import { pretranslateSet, translateLatest } from "./briefings";
 import { refreshHeadlines } from "./headlines";
 import { interestGroups, loadInterests, withHoldings } from "./interests";
 import { interestPart, type Phase, type SlotMarket } from "./markets";
@@ -28,7 +29,7 @@ import { refreshInterestSet, refreshShared, SHARED_CALLS } from "./pipeline";
 import { runPrediction, translatePredictions } from "./predictions";
 import { gradeCalls } from "./track";
 import { loadHoldings } from "./portfolio";
-import { getJSON, releaseLock, setJSON, takeLock } from "./store";
+import { delJSON, getJSON, releaseLock, setJSON, takeLock } from "./store";
 import { LATE_AFTER_MIN, isPred, itemEnd, occurrences, openOccurrences, predParts, runKey, type Occurrence, type SlotItem } from "./timetable";
 import type { Interest, SectionId } from "./types";
 import { activeUsers } from "./users";
@@ -56,6 +57,11 @@ export interface SlotRun {
 }
 
 export type Lane = "pred" | "brief";
+/** When a lane last started a unit, and whether it called gpt-oss-120b (the gap exists for its token rate). */
+interface LastUnit {
+  at: number;
+  used120: boolean;
+}
 interface SetRef {
   hash: string;
   interests: Interest[];
@@ -146,7 +152,9 @@ export async function nextUnits(now: number): Promise<Record<Lane, Unit | null>>
           if (fresh(last, occ)) continue;
           at = last?.at ?? "";
         }
-        if (!due || (s.admin && !due.admin) || (s.admin === due.admin && at < dueAt)) [due, dueAt] = [s, at];
+        // Briefings: the admin's set, then the sets with the most followers (they use the daily pre-translation budget first), then the stalest.
+        const more = !isPred(item) && !!due && s.uids.length !== due.uids.length ? s.uids.length > due.uids.length : null;
+        if (!due || (s.admin && !due.admin) || (s.admin === due.admin && (more ?? at < dueAt))) [due, dueAt] = [s, at];
       }
       if (due) {
         found[lane] = { occ, run, item, lane, set: due };
@@ -202,7 +210,9 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
       ok = !d.keptAi && d.provider !== "rules";
       note = d.provider;
       // Shared sections are pre-translated into Vietnamese only; other languages on first read.
+      // An interest set is pre-translated into the languages of its followers seen in the last day.
       if (!u.set) await translateLatest(u.item as SectionId, "vi").catch(() => null);
+      else if (ok) await pretranslateSet(u.set.hash, u.set.uids).catch(() => []);
     }
   } catch (e) {
     note = (e as Error).message.slice(0, 200);
@@ -215,13 +225,60 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
 /* ------------------------------------------------------------- grading */
 
 const GRADE_KEY = "sched:graded";
+const GRADE_FAIL_KEY = "sched:gradeFail";
+/** A failed grading pass is retried after 5, 10, 20, 40 min, then every 55 (the normal hourly rhythm). */
+const gradeBackoffMin = (fails: number) => Math.min(55, 5 * 2 ** Math.max(0, fails - 1));
 
-/** Grade every call store: the shared sections' and each active interest set's. */
-export async function gradeAll(now = new Date()): Promise<number> {
+export interface GradeFailure {
+  at: string;
+  n: number;
+  error: string;
+  retryAt: string;
+}
+
+/**
+ * Grade every call store: the shared sections' and each active interest set's. One store failing
+ * doesn't stop the others; the errors come back so the tick can record them.
+ */
+export async function gradeAll(now = new Date()): Promise<{ graded: number; errors: string[] }> {
   const keys = [...Object.values(SHARED_CALLS), ...[...(await interestGroups()).keys()].map((h) => `calls:${h}`)];
-  let n = 0;
-  for (const k of keys) n += await gradeCalls(now, k).catch(() => 0);
-  return n;
+  let graded = 0;
+  const errors: string[] = [];
+  for (const k of keys) {
+    try {
+      graded += await gradeCalls(now, k);
+    } catch (e) {
+      errors.push(`${k.slice(0, 14)}: ${(e as Error).message.slice(0, 120)}`);
+    }
+  }
+  return { graded, errors };
+}
+
+/** Hourly grading with a visible failure: the "graded at" mark only moves after a clean pass. */
+async function gradeIfDue(now: Date, out: TickResult) {
+  const [last, fail] = await Promise.all([getJSON<{ at: string }>(GRADE_KEY), getJSON<GradeFailure>(GRADE_FAIL_KEY)]);
+  const t = now.getTime();
+  const due = fail ? t >= new Date(fail.retryAt).getTime() : !last || t - new Date(last.at).getTime() >= 55 * MIN;
+  if (!due) return;
+  // Marked BEFORE the pass: a pass cut off at the function's time limit writes nothing afterwards, and
+  // without this every chained tick would start it again. Success clears it, a failure overwrites it.
+  const n = (fail?.n ?? 0) + 1;
+  const retryAt = new Date(t + gradeBackoffMin(n) * MIN).toISOString();
+  await setJSON(GRADE_FAIL_KEY, { at: now.toISOString(), n, error: "started, not finished", retryAt } satisfies GradeFailure);
+  let res: Awaited<ReturnType<typeof gradeAll>>;
+  try {
+    res = await gradeAll(now);
+  } catch (e) {
+    res = { graded: 0, errors: [(e as Error).message.slice(0, 120)] };
+  }
+  out.graded = res.graded;
+  if (!res.errors.length) {
+    await setJSON(GRADE_KEY, { at: now.toISOString() });
+    await delJSON(GRADE_FAIL_KEY);
+    return;
+  }
+  out.gradeError = res.errors[0];
+  await setJSON(GRADE_FAIL_KEY, { at: now.toISOString(), n, error: res.errors.join("; ").slice(0, 160), retryAt } satisfies GradeFailure);
 }
 
 /* -------------------------------------------------------------- alerts */
@@ -261,6 +318,8 @@ export interface TickResult {
   busy?: boolean;
   alerts?: number;
   graded?: number;
+  /** Grading failed this pass (recorded at `sched:gradeFail`, retried after a short back-off). */
+  gradeError?: string;
   headlines?: number;
   unit?: { slot: string; item: SlotItem; set?: string; ok: boolean; note?: string };
   chained?: boolean | string;
@@ -284,29 +343,46 @@ export async function runTick(opts: TickOptions = {}): Promise<TickResult> {
     }
     // Grade calls whose session has closed, at most hourly (no AI; prices only when something is due),
     // so results show up within the hour after each market closes, not at the next run.
-    const lastGrade = await getJSON<{ at: string }>(GRADE_KEY);
-    if (!lastGrade || now.getTime() - new Date(lastGrade.at).getTime() >= 55 * MIN) {
-      await setJSON(GRADE_KEY, { at: now.toISOString() });
-      out.graded = await gradeAll(now).catch(() => 0);
-    }
+    await gradeIfDue(now, out).catch((e) => void (out.gradeError = (e as Error).message.slice(0, 120)));
     // Headlines (no AI): shared sections every 15 minutes, active interest sets every 30.
     out.headlines = await refreshHeadlines(now).catch(() => 0);
     const units = await nextUnits(clock().getTime());
     const t0 = clock().getTime();
-    const waitOf = async (lane: Lane) => {
-      if (!units[lane]) return Infinity;
-      const last = (await getJSON<number>(`sched:lastUnit:${lane}`)) ?? (await getJSON<number>("sched:lastUnit")) ?? 0;
-      return Math.max(0, last + GAP_MS - t0);
+    const lastOf = async (lane: Lane): Promise<LastUnit> => {
+      const v = (await getJSON<number | LastUnit>(`sched:lastUnit:${lane}`)) ?? (await getJSON<number>("sched:lastUnit")) ?? 0;
+      return typeof v === "number" ? { at: v, used120: true } : v; // an old-format mark: assume the worst
     };
+    const waitOf = async (lane: Lane) => (units[lane] ? Math.max(0, (await lastOf(lane)).at + GAP_MS - t0) : Infinity);
     const [wp, wb] = await Promise.all([waitOf("pred"), waitOf("brief")]);
     if (wp === Infinity && wb === Infinity) return out;
     const lane: Lane = wp <= wb ? "pred" : "brief";
     const u = units[lane]!;
-    const wait = Math.min(wp, wb);
+    const end = itemEnd(u.occ, u.item);
+    let wait = Math.min(wp, wb);
+    // The lane's gap would end after this item's deadline (a before-market run waiting past the open):
+    // a try now beats a certain miss. The gap protects Groq's tokens-per-minute on gpt-oss-120b, so when
+    // the previous unit on this lane used it, 120b sits out the rest of the gap and the run starts on
+    // the route's next model instead of risking a 429 (and a longer 120b cooldown).
+    if (wait > 0 && t0 + wait >= end) {
+      if ((await lastOf(lane)).used120) await holdOff("groq120", t0 + wait);
+      wait = 0;
+    }
     if (wait > 0) await sleep(wait);
-    await setJSON(`sched:lastUnit:${lane}`, clock().getTime());
-    const a = await runUnit(u, clock());
-    out.unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8), ok: a.ok, note: a.note };
+    const unit = { slot: u.occ.slot.id, item: u.item, set: u.set?.hash.slice(0, 8) };
+    if (clock().getTime() >= end) {
+      // The wait itself ran past the deadline: don't start a run that can no longer count; record it so the chain ends.
+      const prev = u.set ? u.run.sets[setKey(u.item, u.set.hash)] : u.run.items[u.item];
+      const note = prev ? `gave up: ${prev.note ?? "failed"}` : "missed: too late";
+      await record(u, { at: iso(clock().getTime()), n: MAX_ATTEMPTS, ok: false, note });
+      out.unit = { ...unit, ok: false, note };
+    } else {
+      const startedAt = clock().getTime();
+      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: true } satisfies LastUnit); // until we know (a cut-off run counts as 120b)
+      const before = await requests120();
+      const a = await runUnit(u, clock());
+      await setJSON(`sched:lastUnit:${lane}`, { at: startedAt, used120: (await requests120()) > before } satisfies LastUnit);
+      out.unit = { ...unit, ok: a.ok, note: a.note };
+    }
   } finally {
     await releaseLock(LOCK, token);
   }
@@ -347,10 +423,19 @@ export interface SlotReport {
   failed?: string[];
 }
 
+/**
+ * What gets reported (503 window, admin's "Late" list): a slot that is late or missed, and one that
+ * finished with an item that failed for good ("partial": a prediction run that failed twice has no
+ * rule-based fallback, so it is a missed run and must not pass silently).
+ */
+const isReportable = (r: SlotReport) => r.state === "late" || r.state === "missed" || r.state === "partial";
+
 function stateOf(o: Occurrence, run: SlotRun | null, now: number): SlotReport {
   const failed = run ? [...Object.entries(run.items), ...Object.entries(run.sets)].filter(([, a]) => a && !a.ok && a.n >= MAX_ATTEMPTS).map(([k]) => k) : [];
+  // A run that couldn't start for lack of data ("unavailable: ...", shown on the card) is a data gap, not a missed run.
+  const missed = run ? [...Object.entries(run.items), ...Object.entries(run.sets)].filter(([k, a]) => failed.includes(k) && !/^(gave up: )?unavailable/.test(a?.note ?? "")) : [];
   let state: SlotState;
-  if (run?.done) state = failed.length ? "partial" : "done";
+  if (run?.done) state = missed.length ? "partial" : "done";
   else if (now < o.start + LATE_AFTER_MIN * MIN) state = "running";
   else state = now < o.end ? "late" : "missed";
   // Interest sets that ran (no hashes: counts only).
@@ -359,25 +444,27 @@ function stateOf(o: Occurrence, run: SlotRun | null, now: number): SlotReport {
 }
 
 /**
- * Slots that went late within the last hour: a tick answers 503 while this isn't empty, so whatever
+ * Slots that went late (or had an item fail for good) within the last hour: a tick answers 503 while this isn't empty, so whatever
  * poked it (cron-job.org emails on failure, Vercel and GitHub show a failed run) reports it once or
  * twice, not for hours.
  */
 export async function lateNow(now: number): Promise<SlotReport[]> {
   const recent = occurrences(now - 2 * LATE_AFTER_MIN * MIN, now - LATE_AFTER_MIN * MIN).filter((o) => o.start >= TIMETABLE_SINCE);
   const reports = await Promise.all(recent.map(async (o) => stateOf(o, await getJSON<SlotRun>(runKey(o)), now)));
-  return reports.filter((r) => r.state === "late" || r.state === "missed");
+  return reports.filter(isReportable);
 }
 
 /** Everything that was due in the last 24 h, for the admin's Status panel and `/api/status?schedule=1`. */
 export async function scheduleReport(now = Date.now()) {
   const recent = occurrences(now - 24 * 60 * MIN, now).filter((o) => o.start >= TIMETABLE_SINCE);
   const slots = await Promise.all(recent.map(async (o) => stateOf(o, await getJSON<SlotRun>(runKey(o)), now)));
-  const [lastTick, alerts] = await Promise.all([getJSON<{ at: string; src: string }>("sched:tick"), getJSON<{ at: string }>(ALERTS_KEY)]);
+  const [lastTick, alerts, graded, failing] = await Promise.all([getJSON<{ at: string; src: string }>("sched:tick"), getJSON<{ at: string }>(ALERTS_KEY), getJSON<{ at: string }>(GRADE_KEY), getJSON<GradeFailure>(GRADE_FAIL_KEY)]);
   return {
     lastTick,
+    /** The hourly grading pass: when it last finished cleanly, and the failure still being retried, if any. */
+    grading: { lastOk: graded?.at ?? null, failing: failing ?? null },
     lastAlerts: alerts?.at ?? null,
-    late: slots.filter((s) => s.state === "late" || s.state === "missed").map((s) => s.slot),
+    late: slots.filter(isReportable).map((s) => s.slot),
     slots: slots.reverse(),
   };
 }

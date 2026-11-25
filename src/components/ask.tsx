@@ -16,6 +16,7 @@ import { IconPanelRight, IconSparkles, IconX } from "./Icons";
 import { calTitle, groupName, symName } from "./labels";
 import { usePrefs } from "./prefs";
 import { Sheet, fmtPct } from "./primitives";
+import { safeHttpUrl } from "@/lib/safe-url";
 
 export interface AskMsg {
   role: "user" | "assistant";
@@ -144,7 +145,7 @@ export function AskPanel({
         }
       } catch (e) {
         const em = (e as Error).message;
-        if (em !== "signin") setMsgs((m) => [...m, { role: "assistant", content: em === "NO_PROVIDER" ? t("ask.noProvider") : em, error: true }]);
+        if (em !== "signin") setMsgs((m) => [...m, { role: "assistant", content: em === "NO_PROVIDER" ? t("ask.noProvider") : em === "busy" ? t("ai.busy") : em, error: true }]);
         else setMsgs((m) => m.slice(0, -1));
       } finally {
         setBusy(false);
@@ -266,7 +267,7 @@ export function AskPanel({
                 {m.role === "assistant" && (m.sources?.length || m.provider) ? (
                   <div className="bubble-meta">
                     {m.sources?.map((s) => (
-                      <a key={s.n} href={s.link} target="_blank" rel="noreferrer" title={s.title}>
+                      <a key={s.n} href={safeHttpUrl(s.link) || undefined} target="_blank" rel="noreferrer" title={s.title}>
                         [{s.n}] {s.source}
                       </a>
                     ))}

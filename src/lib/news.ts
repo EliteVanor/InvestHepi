@@ -1,5 +1,6 @@
 import { XMLParser } from "fast-xml-parser";
 import type { Feed } from "./config";
+import { safeHttpUrl } from "./safe-url";
 import { getJSON, setJSON } from "./store";
 import type { Interest, NewsItem } from "./types";
 
@@ -107,7 +108,7 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
     out.push({
       id: hash(title.toLowerCase()),
       title,
-      link,
+      link: safeHttpUrl(link),
       source,
       publishedAt: isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(),
       // Google News descriptions just repeat the title + publisher list, so drop them

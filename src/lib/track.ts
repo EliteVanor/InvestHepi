@@ -9,7 +9,9 @@
  *    of the call (`baseChg`, its move since the previous close, so it works with any price series).
  *    Without a live price that day it's graded from the previous close but not counted in the
  *    headline (`noLiveBase`): headlines could already say how the morning went.
- * A weekday with no session (a holiday) gets "market closed, not graded" (`closed`). A close the daily
+ * A weekday with no session (a holiday) gets "market closed, not graded" (`closed`), but only when a later
+ * bar proves the exchange traded after it (or a holiday in `holidays.ts`); a missing bar with nothing after it is an
+ * outage: the call waits (looked up every 6 h) and after 10 days is `expired`, not graded. A close the daily
  * source hasn't posted yet comes from an intraday series: graded within the hour as `provisional`,
  * re-graded from the official close when it's posted.
  *
@@ -17,7 +19,8 @@
  * no phase and count as before market (they came from the 08:15 Hanoi run).
  */
 import { freshenQuotes, getQuotes } from "./market";
-import { SETTLE_MINS, addDays, closeUtc, dailyTarget, localNow, nthWeekday, sessionClosed, type Phase } from "./markets";
+import { isHoliday } from "./holidays";
+import { SETTLE_MINS, calendarKey, closeUtc, dailyTarget, localNow, nextTradingDay, nthWeekday, sessionClosed, type Phase } from "./markets";
 import { exchangeTz } from "./symbols";
 import { getJSON, setJSON } from "./store";
 import type { Call, Interest, Outlook } from "./types";
@@ -29,19 +32,15 @@ const MAX_CALLS = 3000;
 
 export const horizonOf = (c: Pick<Call, "id">): "d" | "w" => (c.id.endsWith(":w") ? "w" : "d");
 export const phaseOf = (c: Pick<Call, "id" | "phase">): Phase => c.phase ?? (c.id.endsWith(":m") ? "mid" : "pre");
-/** The session a call is graded on: its own for daily calls, the 5th weekday counting it for weekly ones. */
-export const gradeDateOf = (c: Pick<Call, "id" | "date" | "endDate">) => c.endDate ?? (horizonOf(c) === "w" ? nthWeekday(c.date, 5) : c.date);
+/** The session a call is graded on: its own for daily calls, the 5th trading day counting it (holidays skipped) for weekly ones. */
+export const gradeDateOf = (c: Pick<Call, "id" | "date" | "endDate" | "ticker">) => c.endDate ?? (horizonOf(c) === "w" ? nthWeekday(c.date, 5, calendarKey(c.ticker)) : c.date);
 
 /**
- * Date of the next regular session that has not opened yet on the ticker's own exchange (holidays
- * ignored). Calls before v18 targeted this; it's kept for reports and old tests.
+ * Date of the next regular session that has not opened yet on the ticker's own exchange. Calls before v18 targeted this; it's kept for reports and old tests.
  */
 export function targetSession(now: Date, ticker = "SPY"): string {
   const t = dailyTarget(now, ticker);
-  if (!t.opened) return t.date;
-  let d = addDays(t.date, 1);
-  while ([0, 6].includes(new Date(d + "T12:00:00Z").getUTCDay())) d = addDays(d, 1);
-  return d;
+  return t.opened ? nextTradingDay(t.date, t.tz) : t.date;
 }
 
 export async function loadCalls(key = KEY): Promise<Call[]> {
@@ -79,7 +78,7 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
       action: o.action,
       provider,
       phase,
-      ...(weekly ? { endDate: nthWeekday(target.date, 5) } : {}),
+      ...(weekly ? { endDate: nthWeekday(target.date, 5, target.tz) } : {}),
       // Made after the open: measured from the price then; without one it can't count in the headline.
       ...(target.opened ? (chg != null && Number.isFinite(chg) ? { baseChg: Number(chg.toFixed(3)) } : { noLiveBase: true }) : {}),
     };
@@ -96,11 +95,11 @@ export async function recordCalls(outlook: Outlook[], interests: Interest[], pro
  * The clock that decides when a ticker's session is over: its own exchange, except an ETF stand-in
  * (`proxy`), whose bars follow New York hours whatever index it tracks.
  */
-const gradeTz = (ticker: string, proxy?: string) => (proxy ? "America/New_York" : exchangeTz(ticker));
+const gradeTz = (ticker: string, proxy?: string) => calendarKey(ticker, proxy);
 
 /** When a pending call can be graded: its graded session's close plus settling, in UTC. */
-export function gradesAfter(c: Pick<Call, "date" | "ticker" | "id"> & { endDate?: string }): string {
-  const tz = gradeTz(c.ticker);
+export function gradesAfter(c: Pick<Call, "date" | "ticker" | "id" | "proxy"> & { endDate?: string }): string {
+  const tz = gradeTz(c.ticker, c.proxy);
   return new Date(closeUtc(gradeDateOf(c), tz).getTime() + SETTLE_MINS * 60_000).toISOString();
 }
 
@@ -117,8 +116,37 @@ export function flatBand(closes: number[], weekly: boolean): number {
   return Number((weekly ? day * Math.sqrt(5) : day).toFixed(2));
 }
 
-/** Without a bar for a weekday, it counts as a holiday once a later session exists or two days have passed. */
-const CLOSED_AFTER_MS = 48 * 3600_000;
+/** A call this long past its close that still has no bar is looked up every 6 h, not every hour. */
+const OVERDUE_MS = 48 * 3600_000;
+const RECHECK_MS = 6 * 3600_000;
+/** No bar for 10 days after the close (a source outage, or older than the price history reaches): given up. */
+const EXPIRE_AFTER_MS = 10 * 86_400_000;
+
+const msPastClose = (c: Call, now: Date) => now.getTime() - closeUtc(gradeDateOf(c), gradeTz(c.ticker, c.proxy)).getTime();
+
+/**
+ * Ungraded calls that nothing could grade: an old one is retried every 6 h (`checkedAt`), and after 10
+ * days it's `expired` (not graded, counted apart from "market closed"). Returns whether anything changed.
+ */
+function settleStale(calls: Call[], now: Date, looked: Set<Call>): boolean {
+  let changed = false;
+  for (const c of calls) {
+    if (c.correct !== undefined || c.gradedAt || c.provisional) continue;
+    const age = msPastClose(c, now);
+    if (age > EXPIRE_AFTER_MS) {
+      c.expired = true;
+      c.gradedAt = now.toISOString();
+      changed = true;
+    } else if (age > OVERDUE_MS && looked.has(c)) {
+      c.checkedAt = now.toISOString();
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+/** Overdue and looked up recently without luck: not worth another fetch yet. */
+const resting = (c: Call, now: Date) => !!c.checkedAt && msPastClose(c, now) > OVERDUE_MS && now.getTime() - new Date(c.checkedAt).getTime() < RECHECK_MS;
 
 export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
   const calls = await loadCalls(key);
@@ -130,9 +158,9 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     fixed++;
   }
   // Due: ungraded calls whose graded session has closed, and provisional grades waiting for the official close.
-  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker), now)));
+  const pending = calls.filter((c) => c.provisional || (c.correct === undefined && !c.gradedAt && sessionClosed(gradeDateOf(c), gradeTz(c.ticker, c.proxy), now) && !resting(c, now)));
   if (!pending.length) {
-    if (fixed) await setJSON(key, calls);
+    if (settleStale(calls, now, new Set()) || fixed) await setJSON(key, calls);
     return 0;
   }
   const tickers = [...new Set(pending.map((c) => c.ticker))];
@@ -144,9 +172,17 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
   const officialBy = new Map(official.map((q) => [q.symbol, q]));
   const quotes = new Map((await freshenQuotes(official, now)).map((q) => [q.symbol, q]));
   let graded = 0;
+  let learned = false;
   for (const c of pending) {
     const q = quotes.get(c.ticker);
     if (!q) continue;
+    // Remember which ticker is priced by an ETF stand-in (it grades on New York's clock), so the shown
+    // grade time and the due check use the same clock as the grading below.
+    if (c.proxy !== q.proxy) {
+      if (q.proxy) c.proxy = q.proxy;
+      else delete c.proxy;
+      learned = true;
+    }
     const tz = gradeTz(c.ticker, q.proxy);
     const end = gradeDateOf(c);
     const officialDates = new Set(officialBy.get(c.ticker)?.history.map(([d]) => d) ?? []);
@@ -159,10 +195,11 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     let out = hist.find(([d]) => d === end);
     if (!out) {
       if (c.provisional) continue;
-      // No bar for the graded session yet: still being posted, or the market was closed that day.
-      const later = hist.some(([d]) => d > end);
-      const overdue = now.getTime() - closeUtc(end, tz).getTime() > CLOSED_AFTER_MS;
-      if (!later && !overdue) continue;
+      // No bar for the graded session: still being posted, a source outage, or the market was closed that
+      // day. Only a LATER bar (the exchange traded after it) or a holiday in the table (`isHoliday`) says closed; otherwise it
+      // stays pending (retried every 6 h once overdue, `expired` after 10 days).
+      const later = hist.some(([d]) => d > end) || isHoliday(tz, end);
+      if (!later) continue;
       const inside = weekly ? hist.filter(([d]) => d >= c.date && d < end).at(-1) : undefined;
       if (!inside) {
         // Daily call on a holiday (or a whole week of them): market closed, not graded.
@@ -196,7 +233,7 @@ export async function gradeCalls(now = new Date(), key = KEY): Promise<number> {
     c.gradedAt = now.toISOString();
     graded++;
   }
-  if (graded || fixed) await setJSON(key, calls);
+  if (settleStale(calls, now, new Set(pending)) || graded || fixed || learned) await setJSON(key, calls);
   return graded;
 }
 
@@ -241,6 +278,8 @@ export interface TrackStats {
   uncounted: number;
   /** Weekday calls on a day the market was closed: not graded. */
   closed: number;
+  /** Calls with no price data 10 days after their close: given up, not graded (not "market closed"). */
+  expired: number;
   /** Daily calls by when they were made. */
   byPhase: { pre: Rate; mid: Rate };
   /** Flat calls: right when the move stayed inside the ticker's band. */
@@ -341,7 +380,7 @@ export function computeStats(calls: Call[]): TrackStats {
   const actions = [...new Set(graded.map((c) => String(c.action).toUpperCase()))];
   const pending = calls
     .filter((c) => c.correct === undefined && !c.gradedAt)
-    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: horizonOf(c), phase: phaseOf(c), madeAt: c.madeAt, direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c), gradeDate: gradeDateOf(c), closesAt: closeUtc(gradeDateOf(c), gradeTz(c.ticker)).toISOString() }))
+    .map((c) => ({ id: c.id, ticker: c.ticker, date: c.date, horizon: horizonOf(c), phase: phaseOf(c), madeAt: c.madeAt, direction: c.direction, action: c.action, confidence: c.confidence, gradesAfter: gradesAfter(c), gradeDate: gradeDateOf(c), closesAt: closeUtc(gradeDateOf(c), gradeTz(c.ticker, c.proxy)).toISOString() }))
     .sort((a, b) => a.gradesAfter.localeCompare(b.gradesAfter));
   const daily = graded.filter((c) => horizonOf(c) === "d");
   const of = (cs: Call[]) => rate(cs.length, hits(cs));
@@ -351,8 +390,9 @@ export function computeStats(calls: Call[]): TrackStats {
     graded: graded.length,
     hitRate: graded.length ? hits(graded) / graded.length : null,
     direction: { ...dir, skill: dir.rate != null && dir.base != null ? dir.rate - dir.base : null, noResult: calls.filter((c) => c.noResult).length, calls: directional.length },
-    uncounted: calls.filter((c) => c.noLiveBase && c.gradedAt && !c.closed).length,
+    uncounted: calls.filter((c) => c.noLiveBase && c.gradedAt && !c.closed && !c.expired).length,
     closed: calls.filter((c) => c.closed).length,
+    expired: calls.filter((c) => c.expired).length,
     flat: of(flat),
     brier: graded.length ? graded.reduce((s, c) => s + (c.confidence / 100 - (c.correct ? 1 : 0)) ** 2, 0) / graded.length : null,
     buckets,

@@ -6,6 +6,10 @@
  */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { pinClock } from "./clock";
+
+// Fixtures and code under test share one clock, so the result never depends on when this runs.
+pinClock("2026-11-17T09:00:00Z");
 
 process.env.VERCEL = "1";
 delete process.env.KV_REST_API_URL;
@@ -57,7 +61,7 @@ const reset = () => {
 };
 
 (async () => {
-  await fs.rm("/tmp/invest-helper", { recursive: true, force: true });
+  await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const M = await import("../src/lib/llm/models");
   const { dayIn } = await import("../src/lib/dates");
   const { complete } = await import("../src/lib/llm");
@@ -107,7 +111,8 @@ const reset = () => {
   assert.equal(M.reserveFor120(fresh, weekday), (16 + 4) * 6000, "nothing done yet: 16 shared + 4 admin at 6K");
   assert.equal(M.reserveFor120({ ...fresh, tokens: 60000, requests: 10, byRoute: { predShared: 8, predAdmin: 2 } }, weekday), (8 + 2) * 6000, "uses the measured average");
   assert.deepEqual(M.scheduledPerDay(new Date("2026-11-21T09:00:00Z")), { shared: 0, admin: 0 }, "Saturday: no predictions");
-  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-22T09:00:00Z")), { shared: 1, admin: 0 }, "Sunday UTC: only Japan's Monday before-market run (08:30 Tokyo = 23:30 UTC)");
+  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-22T09:00:00Z")), { shared: 0, admin: 0 }, "Sunday UTC: Japan is closed Monday Nov 23 (Labor Thanksgiving Day, holidays.ts), so no run at all");
+  assert.deepEqual(M.scheduledPerDay(new Date("2026-11-29T09:00:00Z")), { shared: 1, admin: 0 }, "Sunday UTC: only Japan's Monday before-market run (07:30 Tokyo = 22:30 UTC)");
   const { setJSON } = await import("../src/lib/store");
   await setJSON("llm:usage:groq120", { day: dayIn("UTC"), tokens: 120_000, requests: 17, byRoute: { predShared: 2 } });
   assert.equal((await M.available(g120, "userAuto")).ok, false, "users' sets move off 120b once only the reserve is left");

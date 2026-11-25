@@ -9,7 +9,7 @@ import { OWNER, currentUid, ukey, withUser } from "./context";
 import { isLang } from "./languages";
 import { isZone } from "./zones";
 import { getJSON, setJSON } from "./store";
-import { activeUsers, multiUser } from "./users";
+import { SCHEDULED_ACTIVE_DAYS, activeUsers, multiUser } from "./users";
 import type { Interest, Settings } from "./types";
 
 export const DEFAULT_SETTINGS: Settings = { briefingLanguage: "en" };
@@ -84,6 +84,21 @@ export async function interestGroups(): Promise<Map<string, Group>> {
   }
   // Signed-out visitors don't see My Interests (they're asked to sign in), so no guest set is kept fresh.
   return groups;
+}
+
+/**
+ * The languages (not English) chosen by those of `uids` seen in the last day (SCHEDULED_ACTIVE_DAYS):
+ * what a set's briefing is pre-translated into. Someone away longer gets it translated on first read.
+ */
+export async function followerLanguages(uids: string[], now = new Date()): Promise<string[]> {
+  const active = new Set(multiUser() ? await activeUsers(SCHEDULED_ACTIVE_DAYS, now) : [OWNER]);
+  const langs = new Set<string>();
+  for (const uid of uids) {
+    if (!active.has(uid)) continue;
+    const { display } = await withUser(uid, () => currentInterestSet());
+    if (display !== "en") langs.add(display);
+  }
+  return [...langs];
 }
 
 /** Adds held tickers (not already followed) as one extra group so alerts cover them too. */
