@@ -154,6 +154,8 @@ interface BuildOptions {
   route?: Route;
   /** Skip AI entirely: the rule-based copy readers can switch to. */
   rulesOnly?: boolean;
+  /** Big-story run (v19b D8): explain only these story ids. */
+  only?: string[];
 }
 
 /** Track records of the shared sections (calls on market groups, graded like personal ones). */
@@ -185,6 +187,7 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
       now: o.now,
       market,
       calendar: calendar.events,
+      ...(o.only ? { only: o.only, trigger: "big" as const } : {}),
     });
     // Digest.news: the headlines the movers' sourceIds index (the run's stories' members), then the rest of the list.
     const ids = new Set(run.news.map((n) => n.id));
@@ -256,15 +259,16 @@ export function alignMovers<M extends { ticker: string; changePct: number; why: 
 /** A refresh result: the new briefing, flagged when AI failed and readers kept the previous AI one. */
 export type Refreshed = Digest & { keptAi?: boolean };
 
-export async function refreshShared(section: SectionId, lang: string, now = new Date(), route: Route = "shared"): Promise<Refreshed> {
+export async function refreshShared(section: SectionId, lang: string, now = new Date(), route: Route = "shared", only?: string[]): Promise<Refreshed> {
   const shared = section as SharedSection;
   // Each shared section covers its own market groups and keeps its own track record.
   const interests = SECTION_GROUPS[shared];
   const callsKey = SHARED_CALLS[shared];
-  const d = await buildDigest({ section, interests, lang, callsKey, now, route });
+  const d = await buildDigest({ section, interests, lang, callsKey, now, route, only });
   const prefix = prefixFor(section, lang);
   const { keptAi } = await storeBriefing(prefix, d);
-  await setJSON(`${prefix}:last`, { at: d.generatedAt, provider: d.provider, ok: !keptAi });
+  // A big-story run isn't a slot's briefing: it must not make the next slot skip as "fresh".
+  if (!only) await setJSON(`${prefix}:last`, { at: d.generatedAt, provider: d.provider, ok: !keptAi });
   return keptAi ? { ...d, keptAi } : d;
 }
 

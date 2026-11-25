@@ -13,7 +13,8 @@
 import { MAX_ITEMS_PER_SECTION, SECTION_FEEDS, type SharedSection } from "./config";
 import { fetchFeeds, fetchInterestNews } from "./news";
 import { getJSON, releaseLock, setJSON, takeLock } from "./store";
-import { toHeadlines } from "./stories/cluster";
+import { markBigStory } from "./stories/big";
+import { toHeadlines, type Story } from "./stories/cluster";
 import { indexStories } from "./stories/store";
 import type { StoryScope } from "./stories/types";
 import type { Interest, NewsItem, SectionId } from "./types";
@@ -48,10 +49,10 @@ export const storyScope = (section: SectionId, hash?: string): StoryScope => (se
  * scope's story index, which this saves) and return one headline per story, newest first, capped, plus
  * every outlet's copy (`raw`) for a story run.
  */
-export async function fetchSectionNews(section: SectionId, interests: Interest[] = [], hash?: string, now = new Date()): Promise<{ items: NewsItem[]; errors: string[]; raw: NewsItem[] }> {
+export async function fetchSectionNews(section: SectionId, interests: Interest[] = [], hash?: string, now = new Date()): Promise<{ items: NewsItem[]; errors: string[]; raw: NewsItem[]; stories: Story[] }> {
   const r = await fetchSectionItems(section, interests);
   const stories = await indexStories(storyScope(section, hash), r.items, now);
-  return { items: toHeadlines(stories).slice(0, MAX_ITEMS_PER_SECTION), errors: r.errors, raw: r.items };
+  return { items: toHeadlines(stories).slice(0, MAX_ITEMS_PER_SECTION), errors: r.errors, raw: r.items, stories };
 }
 
 /** An undated item (the feed gave no date) keeps the time it was first seen, so it ages instead of looking new on every fetch. */
@@ -117,7 +118,13 @@ export async function refreshHeadlines(now = new Date()): Promise<number> {
   const jobs: Promise<unknown>[] = [];
   for (const s of SHARED) {
     const key = newsKey(s);
-    if (due(await getJSON<LiveNews>(key), SHARED_EVERY_MIN, now)) jobs.push(fetchSectionNews(s, [], undefined, now).then((r) => saveHeadlines(key, r, now)));
+    if (due(await getJSON<LiveNews>(key), SHARED_EVERY_MIN, now)) jobs.push(
+        fetchSectionNews(s, [], undefined, now).then(async (r) => {
+          await saveHeadlines(key, r, now);
+          // A new story that 4+ outlets ran within 30 min and has no card: mark it for the scheduler (no AI here).
+          await markBigStory(s, r.stories, now).catch(() => false);
+        }),
+      );
   }
   for (const [hash, interests] of await readingNow(now)) jobs.push(refreshSetIfStale(hash, interests, now).then((ran) => (ran ? undefined : Promise.reject(new Error("not due")))));
   const done = await Promise.allSettled(jobs);

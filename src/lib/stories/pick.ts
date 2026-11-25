@@ -70,3 +70,25 @@ export function pickForRun(stories: Story[], cards: Record<string, StoryCard>, q
   }
   return { explain, keep };
 }
+
+/** A story is "big" when 4+ distinct outlets ran it within 30 min of its first headline (owner Q18). */
+export const BIG_OUTLETS = 4;
+export const BIG_WINDOW_MS = 30 * 60_000;
+
+/**
+ * The new story that deserves a card before the next slot: important, first seen in the last 30 min,
+ * 4+ distinct outlets all within 30 min of that first headline, and no card yet. The one with most outlets.
+ */
+export function bigStoryDue(stories: Story[], cards: Record<string, StoryCard>, now: Date): Story | null {
+  let best: Story | null = null;
+  for (const s of stories) {
+    if (s.kind !== "important" || cards[s.id]) continue;
+    const first = new Date(s.firstSeen).getTime();
+    const age = now.getTime() - first;
+    if (!(age >= 0 && age <= BIG_WINDOW_MS)) continue;
+    const quick = new Set(s.members.filter((m) => new Date(m.publishedAt).getTime() <= first + BIG_WINDOW_MS).map((m) => m.source));
+    if (quick.size < BIG_OUTLETS) continue;
+    if (!best || s.outlets.length > best.outlets.length) best = s;
+  }
+  return best;
+}

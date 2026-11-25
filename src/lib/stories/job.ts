@@ -39,6 +39,8 @@ export interface RunOpts {
   market: { quotes: Quote[]; macro?: Quote[]; sectors?: Quote[] };
   calendar: CalendarEvent[];
   trigger?: "slot" | "big";
+  /** Big-story run: explain only these stories (shown even if they are not in the top picks); the rest of the run is unchanged. */
+  only?: string[];
 }
 
 /** The Vietnam section is written in Vietnamese; everything else in English. */
@@ -51,12 +53,23 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
   const prev = await loadRun(scope);
   const quotes = o.market.quotes;
   const cards = await loadCards(scope, prev?.cardIds ?? [], o.now);
-  const shown = shownStories(stories, quotes, pickOpts(scope));
-  const { explain, keep } = pickForRun(stories, cards, quotes, o.now, pickOpts(scope));
+  let shown = shownStories(stories, quotes, pickOpts(scope));
+  const picked = pickForRun(stories, cards, quotes, o.now, pickOpts(scope));
+  const { keep } = picked;
+  let explain = picked.explain;
+  let skipped: string[] = [];
+  if (o.only) {
+    // Big-story run: only the named stories are explained; other stale stories keep their old card (named as covered).
+    const ids = new Set(o.only);
+    const extra = stories.filter((s) => ids.has(s.id) && !shown.includes(s));
+    shown = [...extra, ...shown];
+    skipped = picked.explain.filter((s) => !ids.has(s.id) && cards[s.id]).map((s) => cards[s.id].title);
+    explain = [...extra, ...picked.explain].filter((s) => ids.has(s.id));
+  }
 
   // One AI call per run (owner Q14): new and stale stories get cards; fresh ones are only named, so the big
   // picture, movers and watch line always come from today's data.
-  const r = await explainStories({ scope, section: o.section, stories: explain, covered: keep.map((c) => c.title), market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
+  const r = await explainStories({ scope, section: o.section, stories: explain, covered: [...keep.map((c) => c.title), ...skipped], market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
   const fresh = r.cards;
   await saveCards(fresh);
   await writeConcepts(fresh.flatMap((c) => c.concepts), storyLang(o.section), o.route, o.now).catch(() => []);
