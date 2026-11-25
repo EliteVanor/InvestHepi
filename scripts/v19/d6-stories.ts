@@ -179,6 +179,9 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   assert.ok(!/\[[^\]]+\] Reuters: Central bank of Brazil/.test(ai[0].user), "no fresh story's headlines are sent again");
   assert.equal(d2b.stories!.length, 3);
   assert.deepEqual(d2b.stories!.map((c) => c.explainedAt), d2.stories!.map((c) => c.explainedAt), "no card rewritten");
+  // D10: a kept card can still list its sources: every shown card's members are in Digest.news, once each.
+  for (const c of d2b.stories!) assert.ok(c.memberIds.every((id) => d2b.news.some((n) => n.id === id)), `card ${c.id}: members in Digest.news`);
+  assert.equal(new Set(d2b.news.map((n) => n.id)).size, d2b.news.length, "Digest.news has no duplicates with kept cards' members");
 
   // ---- 5. AI down: rule-based analysis, the stored AI briefing (with its stories) kept
   feed = [...feed, { title: "Japan exports fall for a third month", source: "Nikkei", at: "2026-11-25T14:40:00Z" }];
