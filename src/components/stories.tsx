@@ -78,7 +78,7 @@ function Story({ card, digest, quotes, onTicker, onConcept }: { card: StoryCard;
               <h4>{t("story.markets")}</h4>
               <ul className="story-mkts">
                 {card.markets.map((m) => (
-                  <MarketLine key={m.symbol} m={m} quote={quotes.find((q) => q.symbol === m.symbol)} onTicker={onTicker} />
+                  <MarketLine key={m.symbol} m={m} quote={quotes.find((q) => q.symbol === m.symbol) ?? digest.macro?.find((q) => q.symbol === m.symbol)} onTicker={onTicker} />
                 ))}
               </ul>
             </div>
