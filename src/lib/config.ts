@@ -111,8 +111,11 @@ const gnewsSearchVi = (q: string) =>
 const gnewsTopic = (topic: string) =>
   `https://news.google.com/rss/headlines/section/topic/${topic}?hl=en-US&gl=US&ceid=US:en`;
 const gnewsTopicVi = (topic: string) => `https://news.google.com/rss/headlines/section/topic/${topic}?hl=vi&gl=VN&ceid=VN:vi`;
-/** Interesting-news feeds (owner Q17): checked from the cloud on Nov 25 2026; BBC, Guardian, NPR, NASA, ScienceDaily,
- * Smithsonian, Tuoi Tre and Thanh Nien science/culture feeds were unreachable from the build sandbox, so not added. */
+/** Interesting-news feeds (owner Q17): checked from the cloud on Nov 25 2026; Guardian, NASA, ScienceDaily,
+ * Smithsonian, Tuoi Tre and Thanh Nien science/culture feeds were unreachable from the build sandbox, so not added.
+ * BBC and NPR are on the same hosts as feeds production already reads (BBC World, NPR News); they were added
+ * after production's Google News answered 429 on Nov 25 and World lost every Google feed at once, so no
+ * section depends on one host for its news or its interesting stories (pinned by scripts/v19/d9-feeds.ts). */
 const INTERESTING_MAX = 8;
 const interesting = (name: string, url: string): Feed => ({ name, url, kind: "interesting", max: INTERESTING_MAX });
 
@@ -140,7 +143,9 @@ export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
       name: "Global macro",
       url: gnewsSearch('"central bank" OR "oil prices" OR "global economy" OR tariffs OR China economy OR Taiwan'),
     },
+    { name: "BBC Business", url: "https://feeds.bbci.co.uk/news/business/rss.xml" },
     interesting("Google News Science", gnewsTopic("SCIENCE")),
+    interesting("BBC Science", "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
     interesting("Google News Health", gnewsTopic("HEALTH")),
   ],
   us: [
@@ -152,6 +157,7 @@ export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
       url: gnewsSearch('"Federal Reserve" OR inflation OR "jobs report" OR Congress OR "White House" economy OR Treasury yields'),
     },
     interesting("Google News Science", gnewsTopic("SCIENCE")),
+    interesting("NPR Science", "https://feeds.npr.org/1007/rss.xml"),
     interesting("Google News Health", gnewsTopic("HEALTH")),
   ],
   vn: [

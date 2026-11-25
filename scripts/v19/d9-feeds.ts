@@ -13,6 +13,11 @@ globalThis.fetch = (async () => new Response(rss(20), { status: 200 })) as typeo
   for (const s of ["world", "us", "vn"] as const) {
     const n = SECTION_FEEDS[s].filter((f) => f.kind === "interesting").length;
     assert.ok(n >= 2 && n <= 3, `${s}: 2-3 interesting feeds (has ${n})`);
+    // No section depends on one host for its news or its interesting stories (Nov 25: Google News answered
+    // production with 429 and World lost all four Google feeds at once).
+    const hosts = (fs: { url: string }[]) => new Set(fs.map((f) => new URL(f.url).host));
+    assert.ok(hosts(SECTION_FEEDS[s].filter((f) => f.kind === "interesting")).size >= 2, `${s}: interesting feeds span 2+ hosts`);
+    assert.ok(hosts(SECTION_FEEDS[s].filter((f) => !f.kind)).size >= 2, `${s}: news feeds span 2+ hosts`);
     assert.ok(SECTION_FEEDS[s].filter((f) => f.kind === "interesting").every((f) => f.max === 8), `${s}: each capped at 8`);
   }
   assert.equal(SECTION_FEEDS.interests.filter((f) => f.kind).length, 0, "My Interests gets no interesting feeds");

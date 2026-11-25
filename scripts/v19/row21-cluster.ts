@@ -114,6 +114,10 @@ const SPLIT: [string, string][] = [
   const big = stories([mk("Taiwan's elections not about China, but Beijing has a lot to say", "AP", 1), mk("Taiwan's elections not about China, and Beijing has a lot to say", "Reuters", 1)])[0];
   const shownIds = shownStories([big, twB, twC], [], SHARED_PICK).map((s) => s.id);
   assert.ok(shownIds.includes(big.id) && !shownIds.includes(twB.id) && shownIds.includes(twC.id), "related story gives its slot away; unrelated stays");
+  // The same headline from two feeds of one outlet joins its story once.
+  const dupe = stories([mk("Fed holds rates steady at December meeting", "BBC", 2, { id: "same1" }), mk("Fed holds rates steady at December meeting", "BBC", 2, { id: "same1" })]);
+  assert.equal(dupe.length, 1);
+  assert.equal(dupe[0].members.length, 1, "one headline once");
   // Opposite moves are different events, even with the same figure and wording.
   assert.equal(stories([mk("VN-Index tăng 20 điểm nhờ nhóm ngân hàng", "VnExpress", 2), mk("VN-Index mất 20 điểm, nhóm ngân hàng bị bán", "Tuổi Trẻ", 1)]).length, 2, "tăng vs mất stay apart");
   assert.equal(stories([mk("Nvidia shares jump 5% after earnings beat", "Reuters", 2), mk("Nvidia shares fall 5% after earnings", "CNBC", 1)]).length, 2, "jump vs fall stay apart");

@@ -211,7 +211,7 @@ These are the habits from past sessions. Follow them without being asked.
 
 **Delivering**
 - One short-named branch per round (`v12`, `v13`, ...).
-- Before pushing: `npm test`, `npm run typecheck`, and `npm run build` both with and without the `AUTH_*` env vars.
+- Before pushing: `npm test`, `npm run typecheck`, and `npm run build` both with and without the `AUTH_*` env vars. Read each step's real exit code before committing: never pipe a check into `tail`/`grep` inside an `&&` chain (the pipe hides the failure and the chain goes on to commit and push); write the output to a file and check `$?`, or use `set -o pipefail`.
 - Update this file for architecture changes, and add a section to `docs/HANDOFF.md` for the round: what changed, what was verified and how, what wasn't, and open items.
 - Ask before merging to `main` (it deploys) unless the owner said to merge without asking. After a merge, check production with read-only GET requests only. Don't wait for the build inside the session (no polling loops, no background waits): schedule a check-in (`send_later`) about 5 minutes after the push and end the turn. The check-in confirms the new build is live (something only it has: a new CSS rule, UI string or API field), then checks the endpoints, then does a real-browser pass (wide and phone, no console errors). If the build isn't live yet, it schedules itself again rather than waiting.
 - Refactors that must not change the UI: screenshot the views before and after with the same seeded data and a frozen clock, and compare pixel by pixel (`compare -metric AE`); report the counts.

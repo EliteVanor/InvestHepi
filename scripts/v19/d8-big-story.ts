@@ -40,7 +40,9 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     const ts = Array.from({ length: 30 }, (_, i) => day - (29 - i) * 86400);
     return new Response(JSON.stringify(Object.fromEntries(syms.map((s) => [s, { timestamp: ts, close: ts.map(() => 100), chartPreviousClose: 100 }]))), { status: 200 });
   }
-  if (url.includes("bbci.co.uk") || url.includes("vnexpress.net")) return new Response(rss(feed), { status: 200 });
+  // World's feed only: Vietnam's VnExpress feeds get an empty list, so a big story can only come from World.
+  if (url.includes("bbci.co.uk")) return new Response(rss(feed), { status: 200 });
+  if (url.includes("vnexpress.net")) return new Response(rss([]), { status: 200 });
   if (/rss|news\.google|feeds|\.xml|\/rss/.test(url)) return new Response(rss([]), { status: 200 });
   return new Response("{}", { status: 404 });
 }) as typeof fetch;
