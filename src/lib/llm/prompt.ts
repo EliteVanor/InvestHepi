@@ -35,7 +35,7 @@ export interface PromptOptions {
   maxHeadlines?: number;
 }
 
-const SECTION_FOCUS: Record<SectionId, string> = {
+export const SECTION_FOCUS: Record<SectionId, string> = {
   interests: "news directly about the user's followed markets and stocks",
   world: "global news (geopolitics, foreign economies, central banks, commodities, trade)",
   us: "US news (Fed, economic data, fiscal policy, politics, regulation)",

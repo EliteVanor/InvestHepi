@@ -130,6 +130,11 @@ export interface JsonJob<T> {
   hint: string;
   parse: (raw: unknown) => T;
   maxTokens: number;
+  /**
+   * Optional: build a prompt whose input (system + hint + user) fits `limit` tokens, for providers with a
+   * request-size limit, instead of shrinking `maxHeadlines` step by step (stories drop whole items).
+   */
+  fit?: (limit: number) => { system: string; user: string };
 }
 
 /**
@@ -158,7 +163,8 @@ export async function generateJSON<T>(route: Route, job: JsonJob<T>): Promise<{ 
     try {
       const budget = step.provider ? tokenBudget(step.provider) : undefined;
       let prompt = job.build();
-      if (budget) {
+      if (budget && job.fit) prompt = job.fit(budget * 0.94 - job.maxTokens);
+      else if (budget) {
         const limit = budget * 0.94 - job.maxTokens;
         for (const n of [20, 14, 10, 6, 3]) {
           prompt = job.build(n);
