@@ -107,7 +107,8 @@ export function newsFor(digest: Digest | null | undefined, live?: { at: string; 
   if (!live?.items.length) return digest ? { at: digest.generatedAt, items: digest.news } : null;
   if (!digest) return live;
   const tr = new Map(digest.news.filter((n) => n.titleOrig).map((n) => [n.id, n]));
-  return { at: live.at > digest.generatedAt ? live.at : digest.generatedAt, items: live.items.map((n) => (tr.has(n.id) ? { ...n, title: tr.get(n.id)!.title, titleOrig: n.title } : n)) };
+  // Items the server already translated (titleOrig set) keep their title.
+  return { at: live.at > digest.generatedAt ? live.at : digest.generatedAt, items: live.items.map((n) => (!n.titleOrig && tr.has(n.id) ? { ...n, title: tr.get(n.id)!.title, titleOrig: n.title } : n)) };
 }
 
 const lsTry = (fn: () => void) => {
@@ -136,6 +137,7 @@ export function useSectionData(o: Opts) {
   // The last run couldn't use AI: per section, when (readers may switch to a rule-based copy).
   const [aiFail, setAiFail] = useState<Partial<Record<SectionId, string | null>>>({});
   const [news, setNews] = useState<LiveNewsMap>({});
+  const newsSig = useRef<Record<string, string>>({});
   const [preds, setPreds] = useState<PredSets>({});
 
   const last = useRef<LastLoaded>({ digest: {}, news: {}, predictions: {} });
@@ -162,9 +164,13 @@ export function useSectionData(o: Opts) {
     setAiFail((a) => (a[s] === (j.aiFailedAt ?? null) ? a : { ...a, [s]: j.aiFailedAt ?? null }));
   }, []);
   const loadNews = useCallback(function loadNews(s: SectionId, retry = 0): Promise<void> {
-    return tracked(last.current, "news", s, Date.now(), () => cur.current.api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}`), failures.current)
+    return tracked(last.current, "news", s, Date.now(), () => cur.current.api<{ at: string | null; items: NewsItem[]; refreshing?: boolean }>(`/api/news?section=${s}&lang=${cur.current.lang}`), failures.current)
       .then((j) => {
-        if (j.at && j.items.length) setNews((n) => (n[s]?.at === j.at ? n : { ...n, [s]: { at: j.at!, items: j.items } }));
+        if (j.at && j.items.length) {
+          // Same list version but more titles translated since (the server translates 40 new ones a request): replace it too.
+          const sig = `${cur.current.lang}|${j.at}|${j.items.filter((i) => i.titleOrig).length}`;
+          setNews((n) => (newsSig.current[s] === sig && n[s] ? n : ((newsSig.current[s] = sig), { ...n, [s]: { at: j.at!, items: j.items } })));
+        }
         // My Interests' list was stale (back after a while): the server is fetching it now, ask again soon.
         if (j.refreshing && retry < 3) {
           const id = window.setTimeout(() => {
@@ -207,13 +213,14 @@ export function useSectionData(o: Opts) {
     }
     evaluate();
   }, [enabled, evaluate]);
-  // A language change reloads the language-dependent copies (briefings, predictions), not the headlines.
+  // A language change reloads the language-dependent copies (briefings, predictions, headline titles).
   const prevLang = useRef(lang);
   useEffect(() => {
     if (prevLang.current === lang) return;
     prevLang.current = lang;
     last.current.digest = {};
     last.current.predictions = {};
+    last.current.news = {};
     evaluate();
   }, [lang, evaluate]);
   // A different tab may hold old data: load it now rather than at the next check.
