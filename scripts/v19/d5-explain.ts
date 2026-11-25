@@ -49,7 +49,7 @@ const S = Array.from({ length: 10 }, (_, i) =>
 S[0] = story("oil", [item("oil1", "Reuters", "Oil jumps 4.3% after OPEC+ cuts output by 1,700 barrels", "Brent rose to 82.15 dollars as OPEC+ agreed to cut 20% of the planned increase."), item("oil2", "AP", "OPEC+ agrees surprise cut; oil prices rise")]);
 const quotes = [quote("CL=F", 71.2, 3.9), quote("SPY", 600.5, -0.4)];
 const base = (over: Record<string, unknown> = {}) =>
-  ({ scope: "world", section: "world", stories: S, market: { quotes, macro: [] }, calendar: [{ date: "2026-12-10", kind: "macro", title: "FOMC decision", importance: 3 }], lang: "en", now: new Date("2026-11-25T14:00:00Z"), ...over }) as never;
+  ({ scope: "world", section: "world", stories: S, covered: [], market: { quotes, macro: [] }, calendar: [{ date: "2026-12-10", kind: "macro", title: "FOMC decision", importance: 3 }], lang: "en", now: new Date("2026-11-25T14:00:00Z"), ...over }) as never;
 
 const card = (o: Record<string, unknown> = {}) => ({ story: "S1", title: "Oil jumps after OPEC+ cut", what: "OPEC+ agreed to cut output.", why: "Fuel costs matter.", markets: [], world: "Drivers pay more.", past_id: null, different: "", concepts: ["OPEC+"], source_ids: ["oil1"], ...o });
 

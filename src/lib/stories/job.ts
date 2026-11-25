@@ -5,7 +5,6 @@
  * falls back to the rule-based briefing (the stored AI briefing and its cards are kept).
  */
 import type { Route } from "../llm";
-import { alignMovers } from "../pipeline";
 import { cachedCards } from "../translate";
 import type { Analysis, CalendarEvent, NewsItem, Quote, SectionId } from "../types";
 import type { Story } from "./cluster";
@@ -54,22 +53,13 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
   const shown = shownStories(stories, quotes, pickOpts(scope));
   const { explain, keep } = pickForRun(stories, cards, quotes, o.now, pickOpts(scope));
 
-  let run: Omit<StoryRun, "cards" | "explained">;
-  let fresh: StoryCard[] = [];
-  // Every shown card fresh: no AI call. Otherwise one call, even with no stories at all (the big picture and movers then come from the market data).
-  if (explain.length || !keep.length || !prev) {
-    const r = await explainStories({ scope, section: o.section, stories: explain, market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
-    fresh = r.cards;
-    await saveCards(fresh);
-    const sent = explain.filter((s) => !r.leftOut.includes(s.id));
-    run = { bigPicture: r.bigPicture, movers: r.movers, watch: r.watch, provider: r.provider, note: r.note, leftOut: r.leftOut, news: members(sent) };
-  } else {
-    // The last run's lines stay; its movers are re-checked against today's prices and headlines.
-    const news = members(shown);
-    const at = new Map(news.map((n, i) => [n.id, i]));
-    const movers = prev.movers.map(({ sourceItemIds, ...m }) => ({ ...m, sourceIds: sourceItemIds.flatMap((id) => (at.has(id) ? [at.get(id)!] : [])) }));
-    run = { bigPicture: prev.bigPicture, movers: alignMovers(movers, quotes, news), watch: prev.watch, provider: prev.provider, note: `No new stories since ${prev.at}: cards and big picture kept (no AI call).`, leftOut: [], news };
-  }
+  // One AI call per run (owner Q14): new and stale stories get cards; fresh ones are only named, so the big
+  // picture, movers and watch line always come from today's data.
+  const r = await explainStories({ scope, section: o.section, stories: explain, covered: keep.map((c) => c.title), market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
+  const fresh = r.cards;
+  await saveCards(fresh);
+  const sent = explain.filter((s) => !r.leftOut.includes(s.id));
+  const run = { bigPicture: r.bigPicture, movers: r.movers, watch: r.watch, provider: r.provider, note: r.note, leftOut: r.leftOut, news: members(sent) };
 
   const byId = new Map([...Object.values(cards), ...keep, ...fresh].map((c) => [c.id, c] as const));
   // A shown story whose new card was dropped (or left out) keeps its previous card, if any.
@@ -78,7 +68,6 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
     at: o.now.toISOString(),
     cardIds: ordered.map((c) => c.id),
     bigPicture: run.bigPicture,
-    movers: run.movers.map(({ sourceIds, ...m }) => ({ ...m, sourceItemIds: (sourceIds ?? []).flatMap((i) => (run.news[i] ? [run.news[i].id] : [])) })),
     watch: run.watch,
     provider: run.provider,
   };

@@ -38,6 +38,7 @@ export interface PromptParts {
   now: Date;
   market: { quotes: Quote[]; macro?: Quote[]; sectors?: Quote[] };
   calendar: CalendarEvent[];
+  covered: string[];
 }
 
 export function buildExplainSystem(p: Pick<PromptParts, "section" | "lang">): string {
@@ -73,7 +74,10 @@ export function storyBlock(s: Story, i: number, cands: PastEvent[]): string {
 }
 
 export function buildExplainUser(p: PromptParts, stories: Story[], cands: PastEvent[][], context = contextText(p)): string {
-  return `${context}
+  const covered = p.covered.length
+    ? `\n\nALREADY COVERED (cards exist: write no entries for these, but big_picture and watch may mention them):\n${p.covered.map((t) => `- ${t}`).join("\n")}`
+    : "";
+  return `${context}${covered}
 
 STORIES (most important first; cite headline ids in source_ids):
 ${stories.map((s, i) => storyBlock(s, i, cands[i] ?? [])).join("\n\n")}

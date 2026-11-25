@@ -170,13 +170,15 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   assert.equal(d2.stories!.length, 3, "kept + new cards");
   const keptOil = d2.stories!.find((c) => c.id === oil.id)!;
   assert.equal(keptOil.explainedAt, d1.stories!.find((c) => c.id === oil.id)!.explainedAt, "the oil card is the earlier one");
-  // Every shown card fresh: no AI call, the last lines kept.
+  // Every shown card fresh: still one AI call (owner Q14) for today's big picture, movers and watch line;
+  // the fresh stories are only named as covered, and no card is rewritten.
   ai.length = 0;
   const d2b = await Pl.refreshShared("world", "en", T("2026-11-25T14:30:00Z"));
-  assert.equal(ai.length, 0, "nothing new: no AI call");
+  assert.equal(ai.length, 1, "one call per run, even with nothing new to explain");
+  assert.match(ai[0].user, /ALREADY COVERED[\s\S]*\n- /, "fresh stories are named as covered");
+  assert.ok(!/\[[^\]]+\] Reuters: Central bank of Brazil/.test(ai[0].user), "no fresh story's headlines are sent again");
   assert.equal(d2b.stories!.length, 3);
-  assert.deepEqual(d2b.bigPicture, d2.bigPicture);
-  assert.match(d2b.providerNote ?? "", /No new stories/);
+  assert.deepEqual(d2b.stories!.map((c) => c.explainedAt), d2.stories!.map((c) => c.explainedAt), "no card rewritten");
 
   // ---- 5. AI down: rule-based analysis, the stored AI briefing (with its stories) kept
   feed = [...feed, { title: "Japan exports fall for a third month", source: "Nikkei", at: "2026-11-25T14:40:00Z" }];

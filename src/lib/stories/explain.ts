@@ -20,6 +20,8 @@ export interface ExplainInput {
   scope: StoryScope;
   section: SectionId;
   stories: Story[];
+  /** Titles of this run's stories whose cards are still fresh: not explained again, but the big picture may name them. */
+  covered: string[];
   market: { quotes: Quote[]; macro?: Quote[]; sectors?: Quote[] };
   calendar: CalendarEvent[];
   lang: "en" | "vi";

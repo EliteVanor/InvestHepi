@@ -6,7 +6,7 @@
  *   stories:<scope>:run      the latest run: the shown card ids in order, big picture, movers, watch, provider
  */
 import { getJSON, setJSON } from "../store";
-import type { Analysis, NewsItem } from "../types";
+import type { NewsItem } from "../types";
 import { clusterStories, toIndex, type Story, type StoryIndex } from "./cluster";
 import type { StoryCard, StoryScope } from "./types";
 
@@ -16,13 +16,10 @@ export const indexKey = (scope: StoryScope) => `stories:${scope}`;
 export const cardKey = (scope: StoryScope, id: string) => `story:${scope}:${id}`;
 export const runKey = (scope: StoryScope) => `stories:${scope}:run`;
 
-/** A run's movers keep the headline ids behind each reason (indexes change with every Digest.news). */
-export type RunMover = Omit<Analysis["movers"][number], "sourceIds"> & { sourceItemIds: string[] };
 export interface RunRecord {
   at: string;
   cardIds: string[];
   bigPicture: string[];
-  movers: RunMover[];
   watch: string[];
   provider: string;
 }
