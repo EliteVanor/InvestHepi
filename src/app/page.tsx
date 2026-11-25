@@ -18,13 +18,18 @@ import { PortfolioCard, Watchlist } from "@/components/portfolio";
 import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { isStringOrNull } from "@/lib/ls-shape";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
-import { Briefing, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
+import { Briefing } from "@/components/sections/briefing";
+import { Events } from "@/components/sections/events";
+import { Headlines } from "@/components/sections/headlines";
+import { Movers } from "@/components/sections/movers";
+import { MarketStrip, StatusPill } from "@/components/sections/strip";
+import { UpNext, WatchNext } from "@/components/sections/upnext";
 import { PredictionsCard, type StoryLinks } from "@/components/predictions";
 import { StoryList, focusStory } from "@/components/stories";
 import { callsOf } from "@/lib/predictions-view";
 import { layoutOf, relatedStories } from "@/lib/stories/view";
 import { SetupChecklist } from "@/components/setup";
-import type { Tab as SettingsTab } from "@/components/sheets";
+import type { Tab as SettingsTab } from "@/components/sheets/settings";
 import { Ambient, Footer, Sidebar, Skeleton, TabBar, TopBar, sectionName, type FrameActions } from "@/components/shell/chrome";
 import { refreshState, savedTab, useNewHeadlines, useSavedTab, useShortcuts, useTitleHidden, useViewport, useWideLayout, type RefreshUi } from "@/components/shell/hooks";
 import { newsFor, useSectionData } from "@/components/shell/section-data";
@@ -36,10 +41,10 @@ import { SECTION_IDS, type CalendarEvent, type Digest, type Holding, type Intere
 
 /* Everything that opens on demand (sheets, the command palette, Ask AI) loads when first needed, not with the
    first screen. Nothing renders until its code arrives (browser-only, so no server render). */
-const SettingsSheet = dynamic(() => import("@/components/sheets").then((m) => m.SettingsSheet), { ssr: false });
-const TickerSheet = dynamic(() => import("@/components/sheets").then((m) => m.TickerSheet), { ssr: false });
-const HistorySheet = dynamic(() => import("@/components/sheets").then((m) => m.HistorySheet), { ssr: false });
-const PasswordSheet = dynamic(() => import("@/components/sheets").then((m) => m.PasswordSheet), { ssr: false });
+const SettingsSheet = dynamic(() => import("@/components/sheets/settings").then((m) => m.SettingsSheet), { ssr: false });
+const TickerSheet = dynamic(() => import("@/components/sheets/ticker").then((m) => m.TickerSheet), { ssr: false });
+const HistorySheet = dynamic(() => import("@/components/sheets/history").then((m) => m.HistorySheet), { ssr: false });
+const PasswordSheet = dynamic(() => import("@/components/sheets/password").then((m) => m.PasswordSheet), { ssr: false });
 const TrackSheet = dynamic(() => import("@/components/track").then((m) => m.TrackSheet), { ssr: false });
 const CommandPalette = dynamic(() => import("@/components/palette").then((m) => m.CommandPalette), { ssr: false });
 const AskPanel = dynamic(() => import("@/components/ask").then((m) => m.AskPanel), { ssr: false });
