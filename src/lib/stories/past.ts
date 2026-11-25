@@ -6,6 +6,7 @@
 import type { SectionId } from "../types";
 import { fold } from "../mentions";
 import type { Story } from "./cluster";
+import { PAST_EVENT_DATA } from "./past-events";
 
 export interface PastEvent {
   id: string;
@@ -19,8 +20,8 @@ export interface PastEvent {
   keywords: string[];
 }
 
-/** Filled in a later commit, from pages re-verified by opening them. */
-export const PAST_EVENTS: PastEvent[] = [];
+/** Re-verified by opened pages (past-events.ts); cited only once the owner approves (below). */
+export const PAST_EVENTS: PastEvent[] = PAST_EVENT_DATA;
 /** Flips in one commit when the owner approves the list. */
 export const LIBRARY_APPROVED: boolean = false;
 
