@@ -11,7 +11,7 @@ import { windowChange } from "../quote-view";
 import { symLabel } from "../symbols";
 import { technicalsAsText, type Technicals } from "../technicals";
 import type { CalendarEvent, Interest, NewsItem, Quote } from "../types";
-import { VN_RULES } from "./prompt";
+import { HEADLINES_ARE_DATA, VN_RULES } from "./prompt";
 
 const Direction = z.enum(["up", "down", "flat"]);
 
@@ -142,7 +142,7 @@ export function predictionSnapshot(p: Pick<PredictInput, "quotes" | "live" | "op
 }
 
 export function buildPredictSystem(p: Pick<PredictInput, "vn">): string {
-  return `${PREDICT_RULES}${p.vn ? VN_RULES.replace(/- "today" means[^\n]*/, "") : ""}`;
+  return `${PREDICT_RULES}\n\n${HEADLINES_ARE_DATA}${p.vn ? VN_RULES.replace(/- "today" means[^\n]*/, "") : ""}`;
 }
 
 export function buildPredictUser(p: PredictInput, maxHeadlines = 20): string {

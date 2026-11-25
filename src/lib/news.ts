@@ -15,6 +15,18 @@ function text(v: unknown): string {
   return "";
 }
 
+/** Longest title and summary kept at parse time (a feed can send anything). */
+export const MAX_TITLE_CHARS = 200;
+export const MAX_SUMMARY_CHARS = 500;
+
+/** Cut at a word boundary and end with "…" when text is longer than max (result is at most max long). */
+export function capText(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const cut = s.slice(0, max - 1);
+  const sp = cut.lastIndexOf(" ");
+  return `${(sp > max / 2 ? cut.slice(0, sp) : cut).trimEnd()}…`;
+}
+
 function stripHtml(s: string): string {
   return s
     .replace(/<[^>]*>/g, " ")
@@ -87,7 +99,7 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
 
   const out: NewsItem[] = [];
   for (const r of rawItems) {
-    let title = stripHtml(text(r.title));
+    let title = stripHtml(text(r.title)); // capped below, after the Google News publisher split
     if (!title) continue;
     let link = text(r.link);
     if (!link && r.link && typeof r.link === "object") {
@@ -105,13 +117,15 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
     }
     const dateStr = text(r.pubDate) || text(r.published) || text(r.updated) || text(r["dc:date"]);
     const d = dateStr ? new Date(dateStr) : new Date();
-    const summary = stripHtml(text(r.description) || text(r.summary)).slice(0, 400);
+    const undated = !dateStr || isNaN(d.getTime());
+    const summary = capText(stripHtml(text(r.description) || text(r.summary)), MAX_SUMMARY_CHARS);
     out.push({
       id: hash(title.toLowerCase()),
-      title,
+      title: capText(title, MAX_TITLE_CHARS),
       link: safeHttpUrl(link),
       source,
-      publishedAt: isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString(),
+      publishedAt: undated ? new Date().toISOString() : d.toISOString(),
+      ...(undated ? { undated: true } : {}),
       // Google News descriptions just repeat the title + publisher list, so drop them
       summary: summary && !summary.startsWith(title.slice(0, 30)) ? summary : undefined,
     });

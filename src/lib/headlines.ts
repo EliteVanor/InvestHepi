@@ -42,10 +42,18 @@ export async function fetchSectionNews(section: SectionId, interests: Interest[]
   return { items: r.items.slice(0, MAX_ITEMS_PER_SECTION), errors: r.errors };
 }
 
+/** An undated item (the feed gave no date) keeps the time it was first seen, so it ages instead of looking new on every fetch. */
+export function keepFirstSeenTimes(items: NewsItem[], previous: NewsItem[] | undefined): NewsItem[] {
+  if (!previous?.length || !items.some((i) => i.undated)) return items;
+  const before = new Map(previous.map((i) => [i.id, i.publishedAt]));
+  return items.map((i) => (i.undated && before.has(i.id) ? { ...i, publishedAt: before.get(i.id)! } : i));
+}
+
 export async function saveHeadlines(key: string, r: { items: NewsItem[]; errors: string[] }, now = new Date()): Promise<void> {
   // A feed outage shouldn't wipe the list: keep the previous items if nothing came back.
-  if (!r.items.length && (await getJSON<LiveNews>(key))?.items.length) return;
-  await setJSON(key, { at: now.toISOString(), items: r.items, errors: r.errors.slice(0, 10) } satisfies LiveNews);
+  const prev = await getJSON<LiveNews>(key);
+  if (!r.items.length && prev?.items.length) return;
+  await setJSON(key, { at: now.toISOString(), items: keepFirstSeenTimes(r.items, prev?.items), errors: r.errors.slice(0, 10) } satisfies LiveNews);
 }
 
 export const loadHeadlines = (section: SectionId, hash?: string) => getJSON<LiveNews>(newsKey(section, hash));

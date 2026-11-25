@@ -20,6 +20,8 @@ export interface NewsItem {
   source: string;
   publishedAt: string; // ISO
   summary?: string;
+  /** The feed gave no date, so publishedAt is when we first saw it (kept across fetches by saveHeadlines). */
+  undated?: boolean;
   /** Interest ids this item matched (only for the interests section). */
   tags?: string[];
   /** Other outlets that ran the same story (merged by dedupe). */
