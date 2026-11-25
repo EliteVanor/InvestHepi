@@ -163,7 +163,8 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
           backoff[host] = now + Math.max(COOL_MS, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 0);
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return fixFeedTimes(parseFeed(await res.text(), f.name), f.url).map((i) => (f.kind ? { ...i, feedKind: f.kind } : i));
+        const items = fixFeedTimes(parseFeed(await res.text(), f.name), f.url).map((i) => (f.kind ? { ...i, feedKind: f.kind } : i));
+        return f.max ? items.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt)).slice(0, f.max) : items;
       } catch (e) {
         errors.push(`${f.name}: ${(e as Error).message}`);
         return [];
