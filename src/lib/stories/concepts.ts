@@ -13,6 +13,9 @@ import { z } from "zod";
 import { generateJSON, type Route } from "../llm";
 import { getJSON, setJSON } from "../store";
 import { translateSlots } from "../translate";
+import { conceptSlug } from "./view";
+
+export { conceptSlug };
 
 export interface Concept {
   slug: string;
@@ -23,17 +26,6 @@ export interface Concept {
   example?: string;
   lang: string;
   writtenAt: string;
-}
-
-/** Lowercase, accents folded, anything else to "-": "Lãi suất" and "lai suat" share `lai-suat`. */
-export function conceptSlug(term: string): string {
-  return term
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/gi, "d")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
 }
 
 export const conceptKey = (slug: string) => `concept:${slug}`;

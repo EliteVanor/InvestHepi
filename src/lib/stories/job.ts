@@ -26,6 +26,8 @@ export interface StoryRun {
   leftOut: string[];
   /** The headlines the movers' `sourceIds` point into: the explained (or shown) stories' members, in story order. */
   news: NewsItem[];
+  /** Every shown card's member headlines not already in `news` (kept cards' sources), in card order. */
+  shownNews: NewsItem[];
   /** Ids of the stories sent to the model this run (empty when every shown card was fresh). */
   explained: string[];
 }
@@ -87,7 +89,10 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
     provider: run.provider,
   };
   await saveRun(scope, record);
-  return { ...run, cards: ordered, explained: explain.map((s) => s.id) };
+  const inNews = new Set(run.news.map((n) => n.id));
+  const shownIds = new Set(record.cardIds);
+  const shownNews = members(shown.filter((s) => shownIds.has(s.id))).filter((n) => !inNews.has(n.id) && (inNews.add(n.id), true));
+  return { ...run, cards: ordered, shownNews, explained: explain.map((s) => s.id) };
 }
 
 /** The latest run's cards (in order, with any cached translation into `lang`) and big picture. */

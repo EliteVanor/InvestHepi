@@ -26,9 +26,8 @@ import { getJSON, setJSON } from "./store";
 import { getTechnicals, type Technicals } from "./technicals";
 import { computeStats, loadCalls } from "./track";
 import { multiUser } from "./users";
-import { fold, vnNameSync } from "./vnlist";
-import { symLabel } from "./symbols";
-import { ALIASES } from "./tickers";
+import { vnNameSync } from "./vnlist";
+import { mentionsIn } from "./mentions";
 import type { Action, Analysis, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
 import { callsKeyFor, currentCallsKey, currentInterestSet, interestHash, loadInterests, withHoldings } from "./interests";
 import { basePrefix, interestBriefingStale, loadDigest, pretranslateSet, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
@@ -189,8 +188,9 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
       calendar: calendar.events,
       ...(o.only ? { only: o.only, trigger: "big" as const } : {}),
     });
-    // Digest.news: the headlines the movers' sourceIds index (the run's stories' members), then the rest of the list.
-    const ids = new Set(run.news.map((n) => n.id));
+    // Digest.news: the headlines the movers' sourceIds index (the run's stories' members), then the kept cards'
+    // members (so every card can list its sources), then the rest of the list.
+    const ids = new Set([...run.news, ...run.shownNews].map((n) => n.id));
     const analysis: Analysis = {
       headline: run.bigPicture[0] ?? "",
       mood: moodOf(gauge?.score),
@@ -199,7 +199,7 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
       watchNext: run.watch,
       movers: run.movers,
     };
-    return { ...base, provider: run.provider, providerNote: run.note, analysis, stories: run.cards, bigPicture: run.bigPicture, news: [...run.news, ...news.filter((n) => !ids.has(n.id))], language: o.section === "vn" ? "vi" : o.lang };
+    return { ...base, provider: run.provider, providerNote: run.note, analysis, stories: run.cards, bigPicture: run.bigPicture, news: [...run.news, ...run.shownNews, ...news.filter((n) => !ids.has(n.id))], language: o.section === "vn" ? "vi" : o.lang };
   } catch (e) {
     // As before stories: the rule-based analysis of the headlines an AI would have seen (storeBriefing keeps the last AI briefing).
     const msg = (e as Error).message;
@@ -213,13 +213,6 @@ export const moodOf = (score?: number): Analysis["mood"] => (score == null ? "mi
 
 const NO_CLEAR_NEWS = "No clear news in today's headlines.";
 
-/** Words a headline would use for a ticker: its code, our label, and the Vietnamese listing's short name. */
-function namesFor(symbol: string): string[] {
-  const code = symbol.replace(/\.VN$/i, "").replace(/^\^/, "");
-  const names = [code, symLabel(symbol), vnNameSync(code) ?? "", ...(ALIASES[symbol] ?? [])];
-  return [...new Set(names.map((n) => fold(n)).filter((n) => n.length >= 2))];
-}
-
 /**
  * An action that contradicts its call's direction is replaced: "up" with Sell/Trim/Avoid becomes
  * Hold, "down" with Buy/Add becomes Wait, and "down" with Hold becomes Wait unless the investor holds
@@ -232,10 +225,9 @@ export function alignAction(direction: Direction, action: Action, hasPositions =
   return action;
 }
 
-/** Whether a headline mentions the company (code as a whole word, names as substrings; accents ignored). */
+/** Whether a headline mentions the company (code as a whole word, names as substrings; accents ignored), the Vietnamese listing's short name included. */
 export function headlineMentions(title: string, symbol: string): boolean {
-  const t = fold(title);
-  return namesFor(symbol).some((n) => (n.length <= 4 ? new RegExp(`(^|[^a-z0-9])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^a-z0-9]|$)`).test(t) : t.includes(n)));
+  return mentionsIn(title, symbol, [vnNameSync(symbol.replace(/\.VN$/i, "").replace(/^\^/, "")) ?? ""]);
 }
 
 /**

@@ -5,11 +5,14 @@
  * or "Mid-day" with the time on the market's clock and the reader's) and the weekly calls, each with
  * when it's graded. Links to the track record. Calls come from /api/predictions (predictions.ts).
  */
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { SECTION_GROUPS } from "@/lib/config";
 import type { MsgKey } from "@/lib/i18n";
 import { localNow, type SlotMarket } from "@/lib/markets";
 import type { PredictionSet, PredRun } from "@/lib/predictions-view";
 import { nextPredictionRuns } from "@/lib/timetable";
+import type { StoryCard } from "@/lib/stories/types";
+import { mainCall } from "@/lib/stories/view";
 import type { Outlook, SectionId } from "@/lib/types";
 import { IconTarget } from "./Icons";
 import { groupName, symName } from "./labels";
@@ -40,8 +43,20 @@ const MARKET_TZ_OF: Record<SlotMarket, string> = {
   oil: "America/New_York", gold: "America/New_York", jp: "Asia/Tokyo", cn: "Asia/Hong_Kong", eu: "Europe/London",
 };
 
-export function PredictionsCard({ sets, section, onTicker, onTrack, translating }: { sets?: PredictionSet[]; section: SectionId; onTicker: (s: string) => void; onTrack: () => void; translating?: boolean }) {
+/** v19: the stories behind a call (decision 11) and a way to jump to one. */
+export interface StoryLinks {
+  related: (ticker: string) => StoryCard[];
+  open: (id: string) => void;
+}
+
+export function PredictionsCard({ sets, section, onTicker, onTrack, translating, foldable, stories }: {
+  sets?: PredictionSet[]; section: SectionId; onTicker: (s: string) => void; onTrack: () => void; translating?: boolean;
+  /** Phones (v19 layout): folded by default to each market's main call (fix-plan item 8). */
+  foldable?: boolean;
+  stories?: StoryLinks;
+}) {
   const { t, marketTime } = usePrefs();
+  const [unfolded, setUnfolded] = useState(false);
   const now = Date.now();
   const markets = useMemo(() => {
     const have = new Map((sets ?? []).map((s) => [s.market, s]));
@@ -50,6 +65,9 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
   }, [sets, section]);
   if (sets === undefined) return null;
   const multi = markets.length > 1;
+  const folded = !!foldable && !unfolded;
+  const groups = section === "interests" ? [] : SECTION_GROUPS[section];
+  const total = markets.reduce((n, { set }) => n + (set?.daily?.items.length ?? 0) + (set?.weekly?.items.length ?? 0), 0);
   const next = (m: SlotMarket) => nextPredictionRuns(m, now, 1)[0];
 
   return (
@@ -80,8 +98,8 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
             ) : (
               <>
                 {set.unavailable && (!set.daily || set.unavailable.at > set.daily.at) && <Unavailable u={set.unavailable} tz={tz} />}
-                {set.daily && <Run run={set.daily} tz={tz} today={local.date} onTicker={onTicker} />}
-                {set.weekly && <Run run={set.weekly} tz={tz} today={local.date} weekly onTicker={onTicker} />}
+                {set.daily && <Run run={set.daily} tz={tz} today={local.date} onTicker={onTicker} stories={stories} only={folded ? mainCall(set.daily.items, groups) : undefined} />}
+                {set.weekly && (!folded || !set.daily) && <Run run={set.weekly} tz={tz} today={local.date} weekly onTicker={onTicker} stories={stories} only={folded ? mainCall(set.weekly.items, groups) : undefined} />}
                 {(weekend || (set.daily && set.daily.date < local.date)) && n && (
                   <p className="hint pred-note">{weekend ? t("pred.weekend", { when: nextLabel(n) }) : t("pred.next", { when: nextLabel(n) })}</p>
                 )}
@@ -91,6 +109,11 @@ export function PredictionsCard({ sets, section, onTicker, onTrack, translating 
         );
       })}
       </div>
+      {foldable && total > markets.length && (
+        <button className="pill-btn pred-fold" aria-expanded={!folded} onClick={() => setUnfolded((u) => !u)}>
+          {folded ? t("pred.showAll", { n: total }) : t("pred.showMain")}
+        </button>
+      )}
     </section>
   );
 
@@ -117,7 +140,7 @@ function Unavailable({ u, tz }: { u: NonNullable<PredictionSet["unavailable"]>; 
   );
 }
 
-function Run({ run, tz, today, weekly, onTicker }: { run: PredRun; tz: string; today: string; weekly?: boolean; onTicker: (s: string) => void }) {
+function Run({ run, tz, today, weekly, onTicker, stories, only }: { run: PredRun; tz: string; today: string; weekly?: boolean; onTicker: (s: string) => void; stories?: StoryLinks; only?: Outlook }) {
   const { t, marketTime, lang } = usePrefs();
   const gradesAt = run.items[0]?.gradesAt;
   const past = gradesAt ? new Date(gradesAt).getTime() < Date.now() : false;
@@ -133,16 +156,17 @@ function Run({ run, tz, today, weekly, onTicker }: { run: PredRun; tz: string; t
         {old && <span className="muted">{t("pred.from", { day: dayFmt.format(new Date(run.date + "T12:00:00Z")) })}</span>}
       </div>
       <div className="pred-list">
-        {run.items.map((o) => (
-          <PredRow key={`${o.ticker}:${o.horizon}`} o={o} onTicker={onTicker} />
+        {(only ? [only] : run.items).map((o) => (
+          <PredRow key={`${o.ticker}:${o.horizon}`} o={o} onTicker={onTicker} stories={stories} />
         ))}
       </div>
     </div>
   );
 }
 
-function PredRow({ o, onTicker }: { o: Outlook; onTicker: (s: string) => void }) {
+function PredRow({ o, onTicker, stories }: { o: Outlook; onTicker: (s: string) => void; stories?: StoryLinks }) {
   const { t } = usePrefs();
+  const related = stories?.related(o.ticker) ?? [];
   return (
     <details className="pred-row">
       <summary>
@@ -173,6 +197,16 @@ function PredRow({ o, onTicker }: { o: Outlook; onTicker: (s: string) => void })
             </>
           )}
         </div>
+        {related.length > 0 && (
+          <div className="pred-related">
+            <b>{t("story.related")}:</b>
+            {related.map((c) => (
+              <button key={c.id} className="meta-link" onClick={() => stories!.open(c.id)}>
+                {c.title}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
     </details>
   );

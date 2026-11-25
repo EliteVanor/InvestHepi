@@ -192,9 +192,16 @@ export function MarketStrip({ groups, macro, onOpen }: { groups: StripRow[]; mac
 
 export function briefingText(d: Digest, t: ReturnType<typeof usePrefs>["t"]): string {
   const a = d.analysis;
-  const lines = [a.headline, "", ...a.summary.map((s) => `• ${s}`)];
+  const { headline, summary } = heroLines(d);
+  const lines = [headline, "", ...summary.map((s) => `• ${s}`)];
   if (a.watchNext.length) lines.push("", t("watch.title"), ...a.watchNext.map((w) => `• ${w}`));
   return lines.join("\n");
+}
+
+/** v19 digests lead with "The big picture" (its first line as the headline, the rest below); older ones with the briefing headline and summary. */
+function heroLines(d: Digest): { big: boolean; headline: string; summary: string[] } {
+  const big = d.bigPicture ?? [];
+  return big.length ? { big: true, headline: big[0], summary: big.slice(1) } : { big: false, headline: d.analysis.headline, summary: d.analysis.summary };
 }
 
 export function Briefing({
@@ -209,6 +216,7 @@ export function Briefing({
 }) {
   const { t, lang, timeAt } = usePrefs();
   const a = digest.analysis;
+  const hero = heroLines(digest);
   const [speaking, setSpeaking] = useState(false);
   const [copied, setCopied] = useState(false);
   const canSpeak = typeof window !== "undefined" && "speechSynthesis" in window;
@@ -277,13 +285,13 @@ export function Briefing({
       )}
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
         <span className="chip accent">
-          <IconSparkles width={13} height={13} /> {t("brief.title")}
+          <IconSparkles width={13} height={13} /> {t(hero.big ? "story.bigPicture" : "brief.title")}
         </span>
         <span className={`chip mood ${a.mood}`}>{t(`mood.${a.mood}`)}</span>
       </div>
-      <h2 id="brief-h" className="hero-headline">{a.headline}</h2>
+      <h2 id="brief-h" className="hero-headline">{hero.headline}</h2>
       <ul className="hero-summary">
-        {a.summary.map((s, i) => (
+        {hero.summary.map((s, i) => (
           <li key={i}>{s}</li>
         ))}
       </ul>
@@ -552,7 +560,8 @@ export function Headlines({
     return () => window.removeEventListener("ih-search", on);
   }, [searchRef]);
   const news = items ?? digest.news;
-  const keyIds = useMemo(() => new Set(digest.analysis.events.flatMap((e) => e.sourceIds.map((i) => digest.news[i]?.id)).filter(Boolean)), [digest]);
+  // "Key": headlines the briefing's events cite (v18) or that belong to a story card (v19).
+  const keyIds = useMemo(() => new Set([...digest.analysis.events.flatMap((e) => e.sourceIds.map((i) => digest.news[i]?.id)), ...(digest.stories ?? []).flatMap((c) => c.memberIds)].filter(Boolean)), [digest]);
   const tags = useMemo(() => [...new Set(news.flatMap((n) => n.tags ?? []))], [news]);
   const tagName = (id: string) => interests.find((i) => i.id === id)?.name ?? id;
 

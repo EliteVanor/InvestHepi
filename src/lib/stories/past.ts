@@ -4,7 +4,7 @@
  * a past figure. Until the owner approves the list, `candidates` returns nothing ("no close precedent").
  */
 import type { SectionId } from "../types";
-import { fold } from "../vnlist";
+import { fold } from "../mentions";
 import type { Story } from "./cluster";
 
 export interface PastEvent {

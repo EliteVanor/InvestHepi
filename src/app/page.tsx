@@ -19,8 +19,10 @@ import { PrefsProvider, lsGet, usePrefs } from "@/components/prefs";
 import { isStringOrNull } from "@/lib/ls-shape";
 import { FollowButton, StockSearchSheet, useFollow } from "@/components/search";
 import { Briefing, Events, Headlines, MarketStrip, Movers, StatusPill, UpNext, WatchNext } from "@/components/sections";
-import { PredictionsCard } from "@/components/predictions";
+import { PredictionsCard, type StoryLinks } from "@/components/predictions";
+import { StoryList, focusStory } from "@/components/stories";
 import { callsOf } from "@/lib/predictions-view";
+import { layoutOf, relatedStories } from "@/lib/stories/view";
 import { SetupChecklist } from "@/components/setup";
 import { HistorySheet, PasswordSheet, SettingsSheet, TickerSheet, type Tab as SettingsTab } from "@/components/sheets";
 import { TrackSheet } from "@/components/track";
@@ -155,6 +157,9 @@ function App() {
   // Show the skeleton until preferences (and the saved password) are loaded, so nothing renders and fires requests early.
   const loading = !ready || (!needPassword && active === undefined);
   const isHome = tab === "interests";
+  // v19 digests (story cards) read news first: big picture, stories, markets, predictions. Older ones keep the v18 layout.
+  const v19 = layoutOf(shown) === "stories";
+  const storyLinks = useMemo<StoryLinks | undefined>(() => (v19 && shown ? { related: (tk) => relatedStories(tk, shown.stories, shown.news), open: focusStory } : undefined), [v19, shown]);
   // Multi-user mode: My Interests is personal, so signed-out visitors get a sign-in invitation there.
   const gated = isHome && account.mode === "multi" && !account.user && accountKnown;
 
@@ -352,7 +357,7 @@ function App() {
             {tab !== "world" && <StatusPill market={tab === "vn" ? "vn" : "us"} />}
           </div>
 
-          {shown && !gated && <MarketStrip groups={strip.groups} macro={strip.macro} onOpen={openTicker} />}
+          {shown && !gated && !v19 && <MarketStrip groups={strip.groups} macro={strip.macro} onOpen={openTicker} />}
           {isHome && !gated && !readOnly && (
             <button className="ss-bar" onClick={frame.search}>
               <IconSearch />
@@ -416,14 +421,26 @@ function App() {
                 onHistory={() => setSheet({ kind: "history" })}
                 onCatchUp={() => setSheet({ kind: "catchup" })}
               />
-              {!oldDigest && <PredictionsCard sets={preds[tab]} section={tab} onTicker={openTicker} onTrack={frame.track} translating={translatingPreds === tab} />}
+              {v19 && (
+                <>
+                  <StoryList digest={shown} quotes={liveQuotes} onTicker={openTicker} />
+                  <section className="markets" aria-labelledby="markets-h">
+                    <h2 className="section-label" id="markets-h">
+                      {t("story.marketsTitle")}
+                    </h2>
+                    <MarketStrip groups={strip.groups} macro={strip.macro} onOpen={openTicker} />
+                    <div className="market-cards">{marketCards}</div>
+                  </section>
+                </>
+              )}
+              {!oldDigest && <PredictionsCard sets={preds[tab]} section={tab} onTicker={openTicker} onTrack={frame.track} translating={translatingPreds === tab} foldable={v19 && isMobile} stories={storyLinks} />}
               <ScenariosCard scenarios={shown.analysis.scenarios} />
               {isHome && <ChartCard symbols={chartSymbols} quotes={liveQuotes} onOpen={openTicker} />}
               {isHome && <Watchlist symbols={watchSymbols} quotes={liveQuotes} technicals={shown.technicals} outlook={callsOf(preds.interests ?? [])} onOpen={openTicker} />}
               <div className="grid">
                 <div>
-                  {isMobile && marketCards}
-                  <Events events={shown.analysis.events} news={shown.news} />
+                  {isMobile && !v19 && marketCards}
+                  {!v19 && <Events events={shown.analysis.events} news={shown.news} />}
                   {isMobile && aheadCards}
                   <Headlines
                     digest={shown}
@@ -437,7 +454,7 @@ function App() {
                 </div>
                 {!isMobile && (
                   <aside className="rail">
-                    {marketCards}
+                    {!v19 && marketCards}
                     {aheadCards}
                   </aside>
                 )}

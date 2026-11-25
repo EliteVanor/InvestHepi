@@ -3,7 +3,10 @@
  * cached for a day in memory and in the store, with a built-in list of the largest names as backup.
  * Matching ignores Vietnamese accents, so "hoa phat", "Hòa Phát" and "HPG" all find Hoa Phat.
  */
+import { fold } from "./mentions";
 import { getJSON, setJSON } from "./store";
+
+export { fold };
 
 export interface VnListing {
   code: string;
@@ -38,17 +41,6 @@ let mem: { at: number; list: VnListing[] } | null = null;
 /** Tests only. */
 export function resetVnList() {
   mem = null;
-}
-
-/** Lowercase, strip Vietnamese accents (đ → d), collapse spaces. */
-export function fold(s: string): string {
-  return s
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/đ/gi, "d")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
 }
 
 /** Parse VNDirect's /v4/stocks response. Exported for tests. */
