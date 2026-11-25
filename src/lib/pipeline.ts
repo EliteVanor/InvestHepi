@@ -14,11 +14,13 @@ import { getCalendar } from "./calendar";
 import { SECTORS } from "./chart";
 import { BENCHMARKS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTION_GROUPS, SECTION_MACRO, SECTION_STRIPS, type SharedSection, type StripGroup } from "./config";
 import { OWNER, currentUid, withUser } from "./context";
-import { analyze, type Route } from "./llm";
+import type { Route } from "./llm";
 import { analyzeWithRules } from "./llm/rules";
 import { freshenQuotes, getQuotes } from "./market";
 import { computeMood } from "./mood";
-import { fetchSectionNews, newsKey, saveHeadlines } from "./headlines";
+import { fetchSectionItems, newsKey, saveHeadlines, storyScope } from "./headlines";
+import { clusterStories, toHeadlines } from "./stories/cluster";
+import { runStories } from "./stories/job";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
 import { getTechnicals, type Technicals } from "./technicals";
@@ -27,7 +29,7 @@ import { multiUser } from "./users";
 import { fold, vnNameSync } from "./vnlist";
 import { symLabel } from "./symbols";
 import { ALIASES } from "./tickers";
-import type { Action, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
+import type { Action, Analysis, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
 import { callsKeyFor, currentCallsKey, currentInterestSet, interestHash, loadInterests, withHoldings } from "./interests";
 import { basePrefix, interestBriefingStale, loadDigest, pretranslateSet, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
 
@@ -160,57 +162,51 @@ export const SHARED_CALLS: Record<"world" | "us" | "vn", string> = { world: "cal
 async function buildDigest(o: BuildOptions): Promise<Digest> {
   const cov = coverage(o.section, o.interests, o.extraSymbols);
   const [newsRes, market, calendar] = await Promise.all([
-    fetchSectionNews(o.section, o.interests),
+    fetchSectionItems(o.section, o.interests),
     marketData(cov),
     getCalendar(o.interests).catch(() => ({ events: [], notes: [], generatedAt: o.now.toISOString() })),
   ]);
   const { quotes, macro, sectors, technicals } = market;
   const breadth = cov.sectors ? sectors : quotes.filter((q) => cov.breadth.includes(q.symbol));
   const gauge = computeMood({ spy: technicals[cov.bench], sectors: breadth, macro, quotes, benchSymbol: cov.bench });
-  const news = newsRes.items.slice(0, MAX_ITEMS_PER_SECTION);
+  // One headline per story, newest first (the story run clusters again with the saved ids).
+  const news = toHeadlines(clusterStories(newsRes.items, null, o.now)).slice(0, MAX_ITEMS_PER_SECTION);
+  const hash = o.section === "interests" ? interestHash(o.interests, "en") : undefined;
+  const base = { section: o.section, generatedAt: o.now.toISOString(), quotes, macro, sectors, technicals, gauge, strip: cov.strip, feedErrors: newsRes.errors };
+  const rules = (note: string, items = news): Digest => ({ ...base, provider: "rules", providerNote: note, analysis: analyzeWithRules(items, o.interests, quotes), news, language: "en" });
+  if (o.rulesOnly) return rules("Rule-based summary of the latest headlines (no AI).");
   // The headlines just fetched also refresh the live list readers see (no extra requests).
-  if (!o.rulesOnly) await saveHeadlines(newsKey(o.section, o.section === "interests" ? interestHash(o.interests, "en") : undefined), newsRes, o.now).catch(() => {});
-  if (o.rulesOnly) {
-    return {
-      section: o.section, generatedAt: o.now.toISOString(), provider: "rules", providerNote: "Rule-based summary of the latest headlines (no AI).",
-      analysis: analyzeWithRules(news, o.interests, quotes), news, quotes, macro, sectors, technicals, gauge, strip: cov.strip, feedErrors: newsRes.errors, language: "en",
+  await saveHeadlines(newsKey(o.section, hash), { items: news, errors: newsRes.errors }, o.now).catch(() => {});
+  try {
+    const run = await runStories(storyScope(o.section, hash), {
+      section: o.section,
+      headlines: newsRes.items,
+      route: o.route ?? (o.section === "interests" ? "userAuto" : "shared"),
+      now: o.now,
+      market,
+      calendar: calendar.events,
+    });
+    // Digest.news: the headlines the movers' sourceIds index (the run's stories' members), then the rest of the list.
+    const ids = new Set(run.news.map((n) => n.id));
+    const analysis: Analysis = {
+      headline: run.bigPicture[0] ?? "",
+      mood: moodOf(gauge?.score),
+      summary: run.bigPicture,
+      events: [],
+      watchNext: run.watch,
+      movers: run.movers,
     };
+    return { ...base, provider: run.provider, providerNote: run.note, analysis, stories: run.cards, bigPicture: run.bigPicture, news: [...run.news, ...news.filter((n) => !ids.has(n.id))], language: o.section === "vn" ? "vi" : o.lang };
+  } catch (e) {
+    // As before stories: the rule-based analysis of the headlines an AI would have seen (storeBriefing keeps the last AI briefing).
+    const msg = (e as Error).message;
+    const note = msg === "NO_PROVIDER" ? "No AI key configured. Add a free GROQ_API_KEY or GEMINI_API_KEY for real analysis." : msg.slice(0, 2000);
+    return rules(note, news.slice(0, MAX_ITEMS_TO_LLM));
   }
-  const { analysis, provider, note } = await analyze({
-    section: o.section,
-    interests: o.interests,
-    news: news.slice(0, MAX_ITEMS_TO_LLM),
-    quotes,
-    macro,
-    sectors,
-    technicals,
-    gauge,
-    positions: o.positions,
-    calendar: calendar.events,
-    language: o.lang,
-    now: o.now,
-  }, o.route ?? (o.section === "interests" ? "userAuto" : "shared"));
-  // Movers' numbers come from the price data, never from the model (it once reported a 5-day gain as
-  // the last session's). A ticker that isn't in the snapshot is dropped.
-  analysis.movers = alignMovers(analysis.movers ?? [], quotes, news);
-  delete analysis.outlook; // briefings make no calls (predictions.ts does)
-  return {
-    section: o.section,
-    generatedAt: o.now.toISOString(),
-    provider,
-    providerNote: note,
-    analysis,
-    news,
-    quotes,
-    macro,
-    sectors,
-    technicals,
-    gauge,
-    strip: cov.strip,
-    feedErrors: newsRes.errors,
-    language: provider === "rules" ? "en" : o.lang,
-  };
 }
+
+/** The briefing's mood from the gauge (0 fear - 100 greed): 60+ risk-on, 40 or less risk-off. */
+export const moodOf = (score?: number): Analysis["mood"] => (score == null ? "mixed" : score >= 60 ? "risk-on" : score <= 40 ? "risk-off" : "mixed");
 
 const NO_CLEAR_NEWS = "No clear news in today's headlines.";
 

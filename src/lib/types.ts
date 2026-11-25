@@ -167,6 +167,9 @@ export interface Digest {
   feedErrors: string[];
   /** Language the AI prose was written in. */
   language?: string;
+  /** v19b: the explained story cards, best first, and "The big picture" (3 lines). Missing on older digests and rule-based ones. */
+  stories?: import("./stories/types").StoryCard[];
+  bigPicture?: string[];
 }
 
 export interface DigestMeta {

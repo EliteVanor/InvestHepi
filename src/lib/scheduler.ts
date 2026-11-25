@@ -209,10 +209,11 @@ async function runUnit(u: Unit, now: Date): Promise<Attempt> {
         : await refreshShared(u.item as SectionId, "en", now, "shared");
       ok = !d.keptAi && d.provider !== "rules";
       note = d.provider;
-      // Shared sections are pre-translated into Vietnamese only; other languages on first read.
+      // World and US are pre-translated into Vietnamese only (Vietnam is written in Vietnamese); other languages on first read.
       // An interest set is pre-translated into the languages of its followers seen in the last day.
-      if (!u.set) await translateLatest(u.item as SectionId, "vi").catch(() => null);
-      else if (ok) await pretranslateSet(u.set.hash, u.set.uids).catch(() => []);
+      if (!u.set) {
+        if (u.item !== "vn") await translateLatest(u.item as SectionId, "vi").catch(() => null);
+      } else if (ok) await pretranslateSet(u.set.hash, u.set.uids).catch(() => []);
     }
   } catch (e) {
     note = (e as Error).message.slice(0, 200);

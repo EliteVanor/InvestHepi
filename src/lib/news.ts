@@ -209,6 +209,7 @@ export async function fetchInterestNews(
   interests: Interest[],
   generalFeeds: Feed[],
   finnhubKey?: string,
+  opts: { raw?: boolean } = {},
 ): Promise<{ items: NewsItem[]; errors: string[] }> {
   const errors: string[] = [];
   const all: NewsItem[] = [];
@@ -245,7 +246,8 @@ export async function fetchInterestNews(
   all.push(...general.items);
 
   const tagged = tagInterests(all, interests).filter((i) => (i.tags?.length ?? 0) > 0);
-  return { items: dedupe(tagged), errors };
+  // raw: every outlet's copy, for story clustering (headlines.ts); otherwise one headline per story.
+  return { items: opts.raw ? tagged : dedupe(tagged), errors };
 }
 
 async function fetchFinnhub(it: Interest, key: string): Promise<{ items: NewsItem[]; errors: string[] }> {

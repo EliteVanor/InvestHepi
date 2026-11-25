@@ -61,7 +61,8 @@ export async function loadDigest(section: SectionId, at?: string, langOverride?:
   // Shared sections are written once in English and translated; a native copy (older runs, or a
   // language someone generated directly) wins only if it's at least as new.
   const [native, en] = await Promise.all([getJSON<Digest>(`digest:${section}:${lang}`), lang !== "en" ? getJSON<Digest>(`digest:${section}:en`) : null]);
-  if (native && (!en || native.generatedAt >= en.generatedAt)) return native;
+  // The Vietnam section is written in Vietnamese but stored at the base key (digest:vn:en): an English reader gets its translation.
+  if (native && (!en || native.generatedAt >= en.generatedAt)) return lang === "en" ? translated(`digest:${section}:en`, native, lang) : native;
   if (en) return translated(`digest:${section}:en`, en, lang);
   return getJSON<Digest>(`digest:${section}`);
 }
@@ -76,7 +77,8 @@ const translating = new Map<string, Promise<Digest>>();
 export async function translateLatest(section: SectionId, lang: string, onSpend?: () => Promise<boolean>, variant?: "rules"): Promise<Digest | null> {
   const d = variant === "rules" ? await loadRules(section, lang) : await loadDigest(section, undefined, lang);
   if (!d || !isLang(lang) || d.language === lang || d.translatedFrom) return d;
-  const base = section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:${d.language ?? "en"}`;
+  // The stored original lives at the base key whatever its language (Vietnam's is written in Vietnamese).
+  const base = section === "interests" ? `ib:${(await currentInterestSet()).hash}` : `digest:${section}:en`;
   return translateStored(variant === "rules" ? `${base}:rules` : base, d, lang, { onSpend });
 }
 

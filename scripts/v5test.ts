@@ -3,6 +3,7 @@
  * `npx tsx scripts/v5test.ts`
  */
 import assert from "node:assert/strict";
+import { isStoryCall, storyReply } from "./story-reply";
 import { promises as fs } from "fs";
 import { pinClock } from "./clock";
 
@@ -59,7 +60,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
       const arr: string[] = JSON.parse(msgs[1].content);
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(arr.map((s) => `vi:${s}`)) } }] }), { status: 200 });
     }
-    return new Response(JSON.stringify({ choices: [{ message: { content: reply(sys.includes("Vietnamese") ? "vi" : "en") } }] }), { status: 200 });
+    const lang = sys.includes("Vietnamese") ? "vi" : "en";
+    // v19b: briefings are the story call; its big picture's first line is the briefing headline.
+    const content = isStoryCall(sys) ? storyReply(msgs[1].content, { bigPicture: [`headline-${lang}`, "s"] }) : reply(lang);
+    return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
   }
   feedsHit.push(url);
   return new Response(rss, { status: 200 });

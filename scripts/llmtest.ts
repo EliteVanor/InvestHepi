@@ -1,6 +1,7 @@
 /** Checks the free-provider path: a sloppy JSON reply from "Groq" gets normalized, validated, and logged as calls. */
 import assert from "node:assert/strict";
 import { promises as fs } from "fs";
+import { isStoryCall, storyReply } from "./story-reply";
 process.env.GROQ_API_KEY = "test";
 delete process.env.ANTHROPIC_API_KEY;
 delete process.env.LLM_PROVIDER;
@@ -25,7 +26,9 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   if (url.includes("api.groq.com")) {
     const body = JSON.parse(String(init?.body));
     assert.equal(body.model, "openai/gpt-oss-120b");
-    assert.ok(body.messages[1].content.includes("HEADLINES"));
+    // v19b: briefings are the story-explain call; analyze() (the v18 briefing call) is checked directly below.
+    const story = isStoryCall(body.messages[0].content);
+    assert.ok(body.messages[1].content.includes(story ? "STORIES" : "HEADLINES"));
     assert.ok(body.messages[1].content.includes("UPCOMING CATALYSTS"), "calendar in prompt");
     assert.ok(body.messages[1].content.includes("MACRO:"), "macro in prompt");
     assert.ok(!body.messages[0].content.includes("LANGUAGE:"), "briefings are always generated in English (readers get translations), even with Vietnamese chosen");
@@ -33,7 +36,7 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
     assert.ok(body.max_tokens <= 4096, "output capped for free-tier TPM");
     assert.ok(body.messages[0].content.length + body.messages[1].content.length < 14000, "compact prompt stays small");
     lastBody = body;
-    return new Response(JSON.stringify({ choices: [{ message: { content: sloppy } }] }), { status: 200 });
+    return new Response(JSON.stringify({ choices: [{ message: { content: story ? storyReply(body.messages[1].content) : sloppy } }] }), { status: 200 });
   }
   if (url.includes("vndirect.com.vn") && url.includes("q=code:")) {
     // Vietnamese daily closes through Monday Nov 16 2026 (predictions need the latest session's close).
@@ -51,9 +54,16 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   await saveSettings({ briefingLanguage: "vi" });
   const d = await refreshSection("interests");
   assert.equal(d.provider, "groq:openai/gpt-oss-120b");
-  assert.equal(d.analysis.mood, "risk-on");
-  assert.equal(d.analysis.events[0].impacts[0].direction, "up");
-  assert.equal(d.analysis.events[0].importance, 5);
+  assert.ok(isStoryCall(lastBody.messages[0].content), "the briefing is the story-explain call (v19b)");
+  assert.deepEqual(d.bigPicture, ["Markets weighed the day's news.", "Investors watched rates.", "Several stories moved prices."]);
+  // The v18 briefing call (analyze) still repairs a sloppy reply.
+  const { analyze } = await import("../src/lib/llm");
+  const { DEFAULT_INTERESTS } = await import("../src/lib/config");
+  const a = await analyze({ section: "interests", interests: DEFAULT_INTERESTS, news: [], quotes: [], macro: [], sectors: [], technicals: {}, calendar: [], language: "en", now: new Date() } as never, "adminAuto");
+  assert.equal(a.provider, "groq:openai/gpt-oss-120b");
+  assert.equal(a.analysis.mood, "risk-on");
+  assert.equal(a.analysis.events[0].impacts[0].direction, "up");
+  assert.equal(a.analysis.events[0].importance, 5);
   assert.equal(d.analysis.outlook, undefined, "briefings make no calls");
   assert.equal(d.language, "en", "generated in English; readers get it translated into their language");
   assert.ok(lastBody, "groq was called");
@@ -71,7 +81,9 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
         const pred = { calls: [{ interest: "VN-Index", ticker: "^vnindex.vn", horizon: "Today", direction: "Bullish", confidence: "61", action: "buy", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "Banks", ticker: "VCB.VN", horizon: "this week", direction: "down", confidence: 58, action: "BUY", action_trigger: "t", rationale: "r", risks: "k" }, { interest: "x", ticker: "AAPL", horizon: "today", direction: "up", confidence: 70, action: "BUY", action_trigger: "", rationale: "", risks: "" }, { interest: "Banks", ticker: "BID.VN", horizon: "today", direction: "down", confidence: 58, action: "WAIT", action_trigger: "t", rationale: "a headline about BIDV", risks: "k" }, { interest: "Securities firms", ticker: "VND.VN", horizon: "today", direction: "down", confidence: 56, action: "WAIT", action_trigger: "t", rationale: "follows the sector", risks: "k" }] };
         return new Response(JSON.stringify({ choices: [{ message: { content: "```json\n" + JSON.stringify(pred) + "\n```" } }] }), { status: 200 });
       }
-      return new Response(JSON.stringify({ choices: [{ message: { content: sloppy } }] }), { status: 200 });
+      // The story call names NVDA as a mover; with no price data it is dropped (below).
+      const content = isStoryCall(String(body.messages[0].content)) ? storyReply(String(body.messages[1].content), { movers: [{ ticker: "nvda", why: "beat", source_ids: [] }] }) : sloppy;
+      return new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status: 200 });
     }
     return real(input, init);
   }) as typeof fetch;
