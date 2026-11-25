@@ -6,6 +6,7 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 import { type MsgKey, relTime } from "@/lib/i18n";
 import { type Action, type CalendarEvent, type Digest, type Direction, type Outlook, type Quote } from "@/lib/types";
 import { moverChange } from "@/lib/quote-view";
+import { newsItemsOf } from "@/lib/stories/view";
 import { IconAlert, IconHistory, IconSparkles, IconX } from "./Icons";
 import { lsGet, lsSet, usePrefs } from "./prefs";
 import { arrow, fmtPct, openOverlay, Ring } from "./primitives";
@@ -34,7 +35,7 @@ function snapshot(d: Digest, quotes: Quote[], outlook: Outlook[]): Snapshot {
     calls: Object.fromEntries(outlook.filter((o) => o.horizon === "today").map((o) => [o.ticker, { action: o.action, direction: o.direction, confidence: o.confidence }])),
     prices: Object.fromEntries(quotes.map((q) => [q.symbol, q.price])),
     bases: Object.fromEntries(quotes.map((q) => [q.symbol, q.proxy ?? ""])),
-    events: d.analysis.events.map((e) => e.title),
+    events: newsItemsOf(d).map((e) => e.title),
   };
 }
 
@@ -70,7 +71,7 @@ export function SinceLastVisit({ digest, calls: outlook = [], quotes, newCount, 
       .filter((m) => Math.abs(m.pct) >= 1)
       .sort((a, b) => Math.abs(b.pct) - Math.abs(a.pct))
       .slice(0, 4);
-    const events = digest.generatedAt !== prev.digestAt ? digest.analysis.events.filter((e) => !prev.events.includes(e.title)).slice(0, 3) : [];
+    const events = digest.generatedAt !== prev.digestAt ? newsItemsOf(digest).filter((e) => !prev.events.includes(e.title)).slice(0, 3) : [];
     return { calls, moves, events };
   }, [prev, digest, quotes, outlook]);
 
@@ -198,7 +199,23 @@ export function CatchUp({ digest, calls: outlook = [], calendar, quotes = [], on
           </div>
         ),
       });
-    a.events.forEach((e, i) =>
+    if (digest.stories?.length)
+      digest.stories.forEach((c, i) =>
+        list.push({
+          key: `story-${c.id}`,
+          kicker: `${t("story.heading")} · ${i + 1}/${digest.stories!.length}`,
+          body: (
+            <>
+              <h2 className="cu-title sm">{c.title}</h2>
+              <p className="cu-text">{c.what}</p>
+              <p className="cu-text muted">
+                <b>{t("story.why")}:</b> {c.why}
+              </p>
+            </>
+          ),
+        }),
+      );
+    else a.events.forEach((e, i) =>
       list.push({
         key: `ev-${i}`,
         kicker: `${t("events.title")} · ${i + 1}/${a.events.length}`,

@@ -33,6 +33,25 @@ export function layoutOf(d: Pick<Digest, "stories" | "bigPicture"> | null | unde
   return d && ((d.stories?.length ?? 0) > 0 || (d.bigPicture?.length ?? 0) > 0) ? "stories" : "classic";
 }
 
+export interface NewsItemView {
+  key: string;
+  title: string;
+  /** What happened (story) or why it matters (event). */
+  detail: string;
+  /** Why it matters (the same text as `detail` for an event). */
+  why: string;
+}
+
+/**
+ * The news items of a digest, whichever shape it has: story cards for v19 digests (`stories`), key events
+ * for v18 ones. Catch-up, the morning email and Ask AI's suggestions and context all read this one choice.
+ */
+export function newsItemsOf(d: Pick<Digest, "stories" | "analysis"> | null | undefined): NewsItemView[] {
+  if (!d) return [];
+  if (d.stories?.length) return d.stories.map((c) => ({ key: c.id, title: c.title, detail: c.what, why: c.why }));
+  return (d.analysis?.events ?? []).map((e) => ({ key: e.title, title: e.title, detail: e.whyItMatters, why: e.whyItMatters }));
+}
+
 /** The element id a story card is rendered with (prediction rows link to it). */
 export const storyDomId = (id: string) => `story-${id.replace(/[^A-Za-z0-9_-]/g, "_")}`;
 

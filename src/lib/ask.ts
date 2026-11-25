@@ -9,6 +9,7 @@ import { complete, type ChatMessage } from "./llm";
 import { macroAsText, quotesAsText } from "./market";
 import { moodAsText } from "./mood";
 import { technicalsAsText } from "./technicals";
+import { newsItemsOf } from "./stories/view";
 import type { CalendarEvent, Digest, NewsItem } from "./types";
 
 export interface AskSource {
@@ -27,7 +28,8 @@ export function buildAskContext(digests: Digest[], calendar: CalendarEvent[], tr
   const briefs = digests
     .map((d) => {
       const a = d.analysis;
-      return `## ${d.section.toUpperCase()} briefing (${d.generatedAt.slice(0, 16).replace("T", " ")} UTC)\n${a.headline}\n${a.summary.map((s) => `- ${s}`).join("\n")}${a.movers?.length ? `\nMovers: ${a.movers.map((m) => `${m.ticker} ${m.changePct.toFixed(1)}% (${m.why})`).join("; ")}` : ""}`;
+      const stories = d.stories?.length ? `\nStories:\n${newsItemsOf(d).slice(0, 7).map((s) => `- ${s.title}: ${s.detail} Why it matters: ${s.why}`).join("\n")}` : "";
+      return `## ${d.section.toUpperCase()} briefing (${d.generatedAt.slice(0, 16).replace("T", " ")} UTC)\n${a.headline}\n${a.summary.map((s) => `- ${s}`).join("\n")}${stories}${a.movers?.length ? `\nMovers: ${a.movers.map((m) => `${m.ticker} ${m.changePct.toFixed(1)}% (${m.why})`).join("; ")}` : ""}`;
     })
     .join("\n\n");
   const text = `${briefs}

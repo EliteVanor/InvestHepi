@@ -45,9 +45,11 @@ export function suggestionsFor(t: T, digest?: Digest | null, events: CalendarEve
   const a = digest?.analysis;
   for (const o of calls.filter((c) => c.horizon === "today").slice(0, 2)) out.push(t("ask.sWhy", { action: t(`act.${o.action}`), name: groupName(t, o.interest) }));
   if (a) {
-    const ev = [...a.events].sort((x, y) => y.importance - x.importance)[0];
-    const target = ev?.impacts[0]?.interest ?? calls[0]?.interest;
-    if (ev && target) out.push(t("ask.sEvent", { title: ev.title.length > 70 ? `${ev.title.slice(0, 68)}…` : ev.title, name: groupName(t, target) }));
+    const story = digest?.stories?.[0];
+    const ev = story ? undefined : [...a.events].sort((x, y) => y.importance - x.importance)[0];
+    const target = story ? (story.markets[0] ? symName(t, story.markets[0].symbol) : calls[0] ? groupName(t, calls[0].interest) : undefined) : ev?.impacts[0]?.interest ?? calls[0]?.interest;
+    const title = story?.title ?? ev?.title;
+    if (title && target) out.push(t("ask.sEvent", { title: title.length > 70 ? `${title.slice(0, 68)}…` : title, name: ev ? groupName(t, target) : target }));
     const mv = [...(a.movers ?? [])].sort((x, y) => Math.abs(y.changePct) - Math.abs(x.changePct))[0];
     if (mv) out.push(t("ask.sMover", { name: symName(t, mv.ticker), chg: fmtPct(mv.changePct) }));
   }
