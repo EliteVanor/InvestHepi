@@ -215,6 +215,8 @@ export async function explainStories(input: ExplainInput, route: Route): Promise
     const clean = (t: string) => dropUntraceable(t, hay);
     const past = pastFor(c.past_id, cands[i]);
     const watch = c.watch ? clean(c.watch) : "";
+    const what = clean(c.what);
+    if (!what) continue; // every sentence of "what happened" failed the number guard: no card beats an empty one
     cards.push({
       id: s.id,
       scope: input.scope,
@@ -224,7 +226,7 @@ export async function explainStories(input: ExplainInput, route: Route): Promise
       outletsAtExplain: s.outlets.length,
       title: clean(c.title) || s.members[0].title,
       outlets: s.outlets,
-      what: clean(c.what),
+      what,
       why: clean(c.why),
       markets: alignMarkets(c.markets, input.market.quotes).map((m) => ({ ...m, text: clean(m.text) })),
       world: clean(c.world),

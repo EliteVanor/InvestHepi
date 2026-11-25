@@ -105,6 +105,7 @@ const card = (o: Record<string, unknown> = {}) => ({ story: "S1", title: "Oil ju
       card({ story: "S2", title: "Story 1", source_ids: ["oil1"] }),
       card({ story: 3, title: "Story 2", source_ids: ["st2m1"], concepts: ["a", "b", "c", "d"] }),
       card({ story: "S3", title: "duplicate", source_ids: ["st2m2"] }),
+      card({ story: "S4", title: "Story 3", what: "It rose 9,999 points.", source_ids: ["st3m0"] }),
     ],
     movers: [{ ticker: "CL=F", why: "OPEC+ cut.", source_ids: ["oil1"] }, { ticker: "SPY", why: "Earnings beat.", source_ids: ["st1m0"] }, { ticker: "TSLA", why: "x", source_ids: [] }],
     watch: ["FOMC decision on 2026-12-10.", "A 77% chance of a cut."],
@@ -122,6 +123,7 @@ const card = (o: Record<string, unknown> = {}) => ({ story: "S1", title: "Oil ju
   assert.ok(!sent[0].system.includes(VN_RULES), "no Vietnam rules for World");
   assert.ok(sent[0].user.includes("FOMC decision"), "calendar in the prompt");
   assert.deepEqual(r.leftOut, [], "nothing left out for Gemini");
+  assert.ok(!r.cards.some((c) => c.title === "Story 3"), "a card whose 'what happened' fails the number guard is dropped");
   assert.equal(r.provider.startsWith("gemini"), true);
   // cards: S1 kept (st2m0 dropped from sources), S2 dropped (oil1 isn't its member), S3 kept, duplicate S3 dropped
   assert.deepEqual(r.cards.map((c) => c.id), ["oil", "st2"]);
