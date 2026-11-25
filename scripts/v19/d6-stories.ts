@@ -59,7 +59,10 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   const blocks = user.split(/^S\d+ \(/m).slice(1);
   return JSON.stringify({
     big_picture: bigPicture,
-    stories: stories.map((n, i) => ({ story: `S${n}`, title: `Card ${n}`, what: "The outlets reported it.", why: "It matters.", markets: [], world: "Not clear from the reports.", past_id: null, different: "", concepts: [], source_ids: [blocks[i].match(/\[([^\]]+)\]/)![1]] })),
+    stories: stories.map((n, i) => {
+      const [, id, title] = blocks[i].match(/\[([^\]]+)\] [^:]*: ([^\n|]*)/)!;
+      return { story: `S${n}`, title: `Card ${n}: ${title.trim()}`, what: `They reported: ${title.trim()}.`, why: `Why it matters: ${title.trim()}.`, markets: [], world: `Beyond markets: ${title.trim()}.`, past_id: null, different: "", concepts: [], source_ids: [id] };
+    }),
     movers: movers(user),
     watch: ["The next data release."],
   });
@@ -137,7 +140,7 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   assert.equal(d1.language, "en");
   assert.deepEqual(d1.stories!.map((c) => c.id).sort(), [oil.id, idx1!.stories.find((s) => s.id !== oil.id)!.id].sort(), "card ids are the tick's story ids (carried over)");
   assert.deepEqual(d1.bigPicture, ["Oil rose on an OPEC+ cut.", "Chip stocks gained.", "Rates in focus."]);
-  assert.equal(d1.stories![0].title, "Card 1", "cards in rank order");
+  assert.match(d1.stories![0].title, /^Card 1:/, "cards in rank order");
   assert.ok(d1.stories![0].memberIds.some((id) => d1.news.find((n) => n.id === id)?.title.startsWith("TSM")), "TSM (6+% move named) ranks first");
   // v18 shape for old readers
   assert.equal(d1.analysis.headline, "Oil rose on an OPEC+ cut.");
@@ -191,6 +194,7 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   const read = await J.readStories("world", "en");
   assert.deepEqual(read!.cards.map((c) => c.id), d2b.stories!.map((c) => c.id), "readStories: the last run's cards, in order");
 
+  const worldFeed = feed;
   // ---- 6. Vietnam: written in Vietnamese, not pre-translated into Vietnamese, translated on read
   feed = [
     { title: "VN-Index tăng mạnh nhờ nhóm ngân hàng", source: "VnExpress", at: "2026-11-25T08:00:00Z" },
@@ -217,6 +221,36 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   assert.equal(en!.analysis.headline, "en:Thị trường tăng.");
   const enAgain = await Pl.loadDigest("vn", undefined, "en");
   assert.equal(enAgain!.analysis.headline, "en:Thị trường tăng.", "the cached English copy is what English readers then get");
+
+  // ---- 7. per-card translation: a card already translated is never sent again
+  const Tr = await import("../../src/lib/translate");
+  reply = (system, user) => (system.startsWith("You translate") ? JSON.stringify((JSON.parse(user) as string[]).map((t) => `vi:${t}`)) : explainReply(["Oil steadied.", "Japan exports fell.", "Rates in focus."])(system, user));
+  const sentTexts = () => ai.filter((c) => c.system.startsWith("You translate")).flatMap((c) => JSON.parse(c.user) as string[]);
+  const before = (await Pl.loadDigest("world", undefined, "en"))!;
+  ai.length = 0;
+  const t1 = await Pl.translateLatest("world", "vi");
+  for (const c of before.stories!) assert.ok(sentTexts().includes(c.what), `card ${c.id} sent the first time`);
+  assert.equal(sentTexts().filter((t) => t === before.bigPicture![0]).length, 1, "the big picture line and the v18 headline repeating it are sent once");
+  assert.equal(t1!.analysis.headline, `vi:${before.bigPicture![0]}`);
+  assert.equal(t1!.bigPicture![0], `vi:${before.bigPicture![0]}`);
+  assert.equal(t1!.stories![0].what, `vi:${before.stories![0].what}`, "cards are translated");
+  for (const c of before.stories!) assert.ok(await getJSON(Tr.cardTrKey(c, "vi")), "each card's translation is cached at tr:card:<scope>:<id>:<explainedAt>:<lang>");
+  // A new run keeps those cards and adds new ones: translating it sends only the new cards' text.
+  feed = [...worldFeed, { title: "Gold climbs as the dollar slips", source: "Reuters", at: "2026-11-25T15:30:00Z" }];
+  const next = await Pl.refreshShared("world", "en", T("2026-11-25T16:00:00Z"));
+  const keptIds = before.stories!.map((c) => c.id);
+  const newCards = next.stories!.filter((c) => !keptIds.includes(c.id));
+  assert.ok(newCards.length >= 1 && next.stories!.filter((c) => keptIds.includes(c.id)).length === 3, "3 cards kept, new ones added");
+  ai.length = 0;
+  const t2 = await Pl.translateLatest("world", "vi");
+  const sent2 = sentTexts();
+  for (const c of before.stories!) for (const sl of Tr.cardSlots(JSON.parse(JSON.stringify(c)))) assert.ok(!sent2.includes(sl.text), `kept card ${c.id}: "${sl.text}" not sent again`);
+  assert.ok(!sent2.some((t) => before.stories!.some((c) => c.what === t)), "no kept card's text is sent");
+  for (const c of newCards) assert.ok(sent2.includes(c.what), `new card ${c.id} is sent`);
+  for (const c of t2!.stories!) assert.equal(c.what, `vi:${next.stories!.find((x) => x.id === c.id)!.what}`, "every card translated (kept ones from the cache)");
+  const rs = await J.readStories("world", "vi");
+  assert.ok(rs!.cards.every((c) => c.what.startsWith("vi:")), "readStories applies the cached card translations");
+  assert.ok((await J.readStories("world", "en"))!.cards.every((c) => !c.what.startsWith("vi:")), "and the originals for English");
 
   console.log("D6 STORIES OK");
 })();

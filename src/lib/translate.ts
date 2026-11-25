@@ -9,9 +9,74 @@ import { langInfo } from "./languages";
 import { complete } from "./llm";
 import { modelDef } from "./llm/models";
 import { getJSON, setJSON } from "./store";
+import type { StoryCard } from "./stories/types";
 import type { Analysis, Digest, NewsItem, Outlook } from "./types";
 
 type Setter = (v: string) => void;
+type Slot = { text: string; set: Setter };
+
+/** A story card's translatable text, in a fixed order (its per-card cache stores translations in this order). */
+export function cardSlots(c: StoryCard): Slot[] {
+  const out: Slot[] = [];
+  const add = (text: string | undefined, set: Setter) => {
+    if (typeof text === "string" && text.trim()) out.push({ text, set });
+  };
+  add(c.title, (v) => (c.title = v));
+  add(c.what, (v) => (c.what = v));
+  add(c.why, (v) => (c.why = v));
+  for (const m of c.markets) add(m.text, (v) => (m.text = v));
+  add(c.world, (v) => (c.world = v));
+  if (c.past) {
+    const p = c.past;
+    add(p.different, (v) => (p.different = v));
+  }
+  add(c.watch, (v) => (c.watch = v));
+  return out;
+}
+
+/** One card's translation, per card version and language: a run translates only new or re-explained cards. */
+export const cardTrKey = (c: StoryCard, lang: string) => `tr:card:${c.scope}:${c.id}:${c.explainedAt}:${lang}`;
+const CARD_TR_TTL_SEC = 3 * 86400;
+
+/** Fill cards (in place) from their cached translations; returns the slots of the cards that still need one. */
+async function fillCachedCards(cards: StoryCard[], lang: string): Promise<{ card: StoryCard; slots: Slot[] }[]> {
+  const todo: { card: StoryCard; slots: Slot[] }[] = [];
+  await Promise.all(
+    cards.map(async (card) => {
+      const slots = cardSlots(card);
+      if (!slots.length || card.lang === lang) return;
+      const cached = await getJSON<string[]>(cardTrKey(card, lang)).catch(() => null);
+      if (cached && cached.length === slots.length) slots.forEach((sl, i) => sl.set(cached[i]));
+      else todo.push({ card, slots });
+    }),
+  );
+  return todo;
+}
+
+/** Copies of `cards` with every cached translation into `lang` applied (no AI call). */
+export async function cachedCards(cards: StoryCard[], lang: string): Promise<StoryCard[]> {
+  const copy: StoryCard[] = JSON.parse(JSON.stringify(cards));
+  await fillCachedCards(copy, lang);
+  return copy;
+}
+
+/** "The big picture" lines of a digest. */
+function bigPictureSlots(d: Digest): Slot[] {
+  const b = d.bigPicture ?? [];
+  return b.flatMap((t, i) => (t?.trim() ? [{ text: t, set: (v: string) => (b[i] = v) }] : []));
+}
+
+/** Every translatable string of a digest (story cards included), before any per-card cache: sizes the translation lock. */
+export function digestSlots(d: Digest, lang: string): Slot[] {
+  return [...textSlots(d.analysis), ...bigPictureSlots(d), ...(d.stories ?? []).flatMap(cardSlots), ...headlineSlots(d.news ?? [], d.analysis, lang)];
+}
+
+/** Identical strings sent once (the v18 headline and summary repeat the big picture). */
+function mergeSame(slots: Slot[]): Slot[] {
+  const by = new Map<string, Setter[]>();
+  for (const s of slots) by.set(s.text, [...(by.get(s.text) ?? []), s.set]);
+  return [...by].map(([text, sets]) => ({ text, set: (v: string) => sets.forEach((f) => f(v)) }));
+}
 
 /** Every translatable string in an analysis, with a setter to write the translation back. */
 export function textSlots(a: Analysis): { text: string; set: Setter }[] {
@@ -112,7 +177,7 @@ export function headlineLang(title: string): "vi" | "en" | "other" {
  * already in that language (Vietnamese headlines on the Vietnam tab cost nothing for Vietnamese
  * readers). Exported for tests.
  */
-export function headlineSlots(news: NewsItem[], a: Analysis, lang: string): { text: string; set: Setter }[] {
+export function headlineSlots(news: NewsItem[], a: Analysis, lang: string): Slot[] {
   const cited = new Set(a.events.flatMap((e) => e.sourceIds));
   return news
     .map((n, i) => ({ n, i }))
@@ -261,11 +326,20 @@ export function outlookSlots(list: Outlook[]): { text: string; set: Setter }[] {
   return out;
 }
 
-/** A copy of `d` with its text (and its main headlines) in `lang`. Throws if no AI provider can do it. */
+/**
+ * A copy of `d` with its text (and its main headlines) in `lang`. Story cards come from their per-card cache
+ * (`tr:card:<scope>:<id>:<explainedAt>:<lang>`) where present; only the rest are sent, and each card's new
+ * translation is cached after success. Used by translate-on-read and the scheduler's pre-translation alike.
+ * Throws if no AI provider can do it.
+ */
 export async function translateDigest(d: Digest, lang: string, budgetMs = TRANSLATE_ROUTE_BUDGET_MS, onFull: "spill" | "wait" = "spill"): Promise<Digest> {
   const copy: Digest = JSON.parse(JSON.stringify(d));
-  const slots = [...textSlots(copy.analysis), ...headlineSlots(copy.news ?? [], copy.analysis, lang)];
-  if (!slots.length) return { ...copy, language: lang };
+  const todo = await fillCachedCards(copy.stories ?? [], lang);
+  const done = todo.map(() => [] as string[]);
+  const cardTodo = todo.flatMap((t, k) => t.slots.map((sl, i) => ({ text: sl.text, set: (v: string) => ((done[k][i] = v), sl.set(v)) })));
+  const slots = mergeSame([...textSlots(copy.analysis), ...bigPictureSlots(copy), ...cardTodo, ...headlineSlots(copy.news ?? [], copy.analysis, lang)]);
+  if (!slots.length) return { ...copy, language: lang, ...(copy.stories?.length ? { translatedFrom: d.language } : {}) };
   const provider = await translateSlots(slots, lang, undefined, budgetMs, onFull);
+  await Promise.all(todo.map((t, k) => setJSON(cardTrKey(t.card, lang), done[k], CARD_TR_TTL_SEC).catch(() => {})));
   return { ...copy, language: lang, translatedFrom: d.language, translatedBy: provider.split(":")[0] };
 }

@@ -6,6 +6,7 @@
  */
 import type { Route } from "../llm";
 import { alignMovers } from "../pipeline";
+import { cachedCards } from "../translate";
 import type { Analysis, CalendarEvent, NewsItem, Quote, SectionId } from "../types";
 import type { Story } from "./cluster";
 import { explainStories } from "./explain";
@@ -85,11 +86,10 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
   return { ...run, cards: ordered, explained: explain.map((s) => s.id) };
 }
 
-/** The latest run's cards (in order) and big picture, as stored. */
+/** The latest run's cards (in order, with any cached translation into `lang`) and big picture. */
 export async function readStories(scope: StoryScope, lang: string): Promise<{ cards: StoryCard[]; bigPicture: string[] } | null> {
-  void lang; // per-card translations: translate.ts
   const run = await loadRun(scope);
   if (!run) return null;
   const cards = await loadCards(scope, run.cardIds);
-  return { cards: run.cardIds.flatMap((id) => (cards[id] ? [cards[id]] : [])), bigPicture: run.bigPicture };
+  return { cards: await cachedCards(run.cardIds.flatMap((id) => (cards[id] ? [cards[id]] : [])), lang), bigPicture: run.bigPicture };
 }

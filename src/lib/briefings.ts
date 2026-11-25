@@ -13,7 +13,7 @@ import { OWNER, currentUid } from "./context";
 import { isLang } from "./languages";
 import { dayIn } from "./dates";
 import { chainFor, loadUsage } from "./llm/models";
-import { TRANSLATE_ROUTE_BUDGET_MS, TranslateError, chunkSlots, headlineSlots, textSlots, translateClock, translateDigest, translateWorstCaseMs } from "./translate";
+import { TRANSLATE_ROUTE_BUDGET_MS, TranslateError, chunkSlots, digestSlots, translateClock, translateDigest, translateWorstCaseMs } from "./translate";
 import { delJSON, getJSON, releaseLock, setJSON, takeLock } from "./store";
 import type { Digest, DigestMeta, SectionId } from "./types";
 import { currentInterestSet, followerLanguages } from "./interests";
@@ -119,7 +119,7 @@ async function translateOnce(key: string, d: Digest, lang: string, opts: Transla
   const failed = await getJSON<{ at: number; v: string; backoff?: number }>(failKey).catch(() => null);
   if (failed && failed.v === d.generatedAt && Date.now() - failed.at < (failed.backoff ?? FAIL_BACKOFF_MS)) throw new Error("translation unavailable, retrying later");
   const budgetMs = opts.budgetMs ?? TRANSLATE_ROUTE_BUDGET_MS;
-  const chunks = chunkSlots([...textSlots(d.analysis), ...headlineSlots(d.news ?? [], d.analysis, lang)]).length;
+  const chunks = chunkSlots(digestSlots(d, lang)).length;
   const lockKey = `${key}:lock`;
   const token = await takeLock(lockKey, Math.ceil(translateWorstCaseMs(chunks, budgetMs) / 1000) + 10);
   if (!token) {
