@@ -8,7 +8,7 @@
  * interest (a tagged headline), no interesting quota. A shown story whose card is fresh (under 12 h old and
  * fewer than 3 new outlets since it was explained) keeps its card; the rest go to the model, best first.
  */
-import { headlineMentions } from "../pipeline";
+import { headlineMentions } from "../movers";
 import type { Quote } from "../types";
 import { relatedStories, type Story } from "./cluster";
 import type { StoryCard } from "./types";

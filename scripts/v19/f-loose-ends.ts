@@ -149,6 +149,19 @@ const trCalls = () => ai.filter((a) => a.system.startsWith("You translate"));
   assert.equal(trCalls().length, 0, "interest sets: no pre-translation");
   assert.equal(await getJSON("concept:dividend:vi"), null);
 
+  // ---- F3. the story pipeline no longer imports pipeline.ts (no cycle); alignMovers and headlineMentions live in movers.ts
+  for (const f of await fs.readdir("src/lib/stories")) {
+    const src = await fs.readFile(`src/lib/stories/${f}`, "utf8");
+    assert.ok(!/from\s+["']\.\.\/pipeline["']/.test(src) && !/import\(["']\.\.\/pipeline["']\)/.test(src), `stories/${f} does not import ../pipeline`);
+  }
+  const pl = await fs.readFile("src/lib/pipeline.ts", "utf8");
+  assert.ok(!/export (function|const) (alignMovers|headlineMentions)/.test(pl) && !/export \{[^}]*(alignMovers|headlineMentions)/.test(pl), "pipeline.ts exports neither");
+  const mv = await import("../../src/lib/movers");
+  assert.equal(typeof mv.alignMovers, "function");
+  assert.ok(mv.headlineMentions("Cổ phiếu VIC tăng trần", "VIC.VN") && !mv.headlineMentions("VICTORY Securities tăng", "VIC.VN"));
+  const mentionsSrc = await fs.readFile("src/lib/mentions.ts", "utf8");
+  assert.ok(!/from "\.\/(store|vnlist|pipeline)"/.test(mentionsSrc), "mentions.ts stays browser-safe");
+
   console.log("F-LOOSE OK");
 })().catch((e) => {
   console.error(e);

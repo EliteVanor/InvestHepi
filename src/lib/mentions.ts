@@ -1,6 +1,6 @@
 /**
  * Whether a headline names a ticker. Browser-safe (no store, no network): the server adds the Vietnamese
- * listing's short name (`headlineMentions` in pipeline.ts); the page matches on the code, our label and
+ * listing's short name (`headlineMentions` in movers.ts); the page matches on the code, our label and
  * the aliases (`relatedStories` in stories/view.ts).
  */
 import { symLabel } from "./symbols";

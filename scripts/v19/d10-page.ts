@@ -49,7 +49,7 @@ const call = (ticker: string, interest: string): Outlook => ({ interest, ticker,
   await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const V = await import("../../src/lib/stories/view");
   const C = await import("../../src/lib/stories/concepts");
-  const { headlineMentions } = await import("../../src/lib/pipeline");
+  const { headlineMentions } = await import("../../src/lib/movers");
   const { mentionsIn } = await import("../../src/lib/mentions");
   const { US_GROUPS, VN_GROUPS } = await import("../../src/lib/config");
 

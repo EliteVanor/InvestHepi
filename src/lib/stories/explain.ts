@@ -9,7 +9,7 @@
 import { z } from "zod";
 import { generateJSON, type Route } from "../llm";
 import { estimateTokens } from "../llm/openai-compat";
-import { alignMovers } from "../pipeline";
+import { alignMovers } from "../movers";
 import type { Analysis, CalendarEvent, Direction, NewsItem, Quote, SectionId } from "../types";
 import type { Story } from "./cluster";
 import { EXPLAIN_HINT, buildExplainSystem, buildExplainUser, contextText } from "./explain-prompt";

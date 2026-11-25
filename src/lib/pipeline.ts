@@ -27,8 +27,6 @@ import { waitUntil } from "./lock-wait";
 import { getTechnicals, type Technicals } from "./technicals";
 import { computeStats, loadCalls } from "./track";
 import { multiUser } from "./users";
-import { vnNameSync } from "./vnlist";
-import { mentionsIn } from "./mentions";
 import type { Action, Analysis, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
 import { callsKeyFor, currentCallsKey, currentInterestSet, interestHash, loadInterests, withHoldings } from "./interests";
 import { basePrefix, interestBriefingStale, loadDigest, pretranslateSet, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
@@ -224,8 +222,6 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
 /** The briefing's mood from the gauge (0 fear - 100 greed): 60+ risk-on, 40 or less risk-off. */
 export const moodOf = (score?: number): Analysis["mood"] => (score == null ? "mixed" : score >= 60 ? "risk-on" : score <= 40 ? "risk-off" : "mixed");
 
-const NO_CLEAR_NEWS = "No clear news in today's headlines.";
-
 /**
  * An action that contradicts its call's direction is replaced: "up" with Sell/Trim/Avoid becomes
  * Hold, "down" with Buy/Add becomes Wait, and "down" with Hold becomes Wait unless the investor holds
@@ -236,28 +232,6 @@ export function alignAction(direction: Direction, action: Action, hasPositions =
   if (direction === "down" && (action === "BUY" || action === "ADD")) return "WAIT";
   if (direction === "down" && action === "HOLD" && !hasPositions) return "WAIT";
   return action;
-}
-
-/** Whether a headline mentions the company (code as a whole word, names as substrings; accents ignored), the Vietnamese listing's short name included. */
-export function headlineMentions(title: string, symbol: string): boolean {
-  return mentionsIn(title, symbol, [vnNameSync(symbol.replace(/\.VN$/i, "").replace(/^\^/, "")) ?? ""]);
-}
-
-/**
- * Movers with the snapshot's own last-session change (tickers not in the snapshot are dropped), and a
- * reason only when a cited headline actually mentions the company; otherwise "No clear news". The model
- * once explained VHM's move with an "earnings beat" no headline mentioned. Exported for tests.
- */
-export function alignMovers<M extends { ticker: string; changePct: number; why: string; sourceIds?: number[] }>(movers: M[], quotes: Quote[], news?: NewsItem[]): M[] {
-  const by = new Map(quotes.map((q) => [q.symbol.toUpperCase(), q]));
-  return movers.flatMap((m) => {
-    const q = by.get(m.ticker.toUpperCase());
-    if (!q) return [];
-    const out = { ...m, ticker: q.symbol, changePct: q.changePct };
-    if (!news) return [out];
-    const backed = (m.sourceIds ?? []).filter((i) => news[i] && headlineMentions(news[i].title, q.symbol));
-    return [backed.length ? { ...out, sourceIds: backed } : { ...out, why: NO_CLEAR_NEWS, sourceIds: [] }];
-  });
 }
 
 /** Refresh one shared section in one language. */

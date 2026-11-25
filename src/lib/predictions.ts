@@ -26,7 +26,8 @@ import { buildPredictSystem, buildPredictUser, parsePrediction, PREDICT_HINT, pr
 import { loadHeadlines } from "./headlines";
 import { isLang } from "./languages";
 import { MARKET_TZ, WORLD_MARKETS, WORLD_ORDER, calendarKey, closeUtc, dailyTarget, lastFinishedSession, nthWeekday, sectionOfMarket, tradesToday, type Phase, type SlotMarket } from "./markets";
-import { alignAction, coverage, headlineMentions, marketData, SHARED_CALLS } from "./pipeline";
+import { headlineMentions } from "./movers";
+import { alignAction, coverage, marketData, SHARED_CALLS } from "./pipeline";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, setJSON } from "./store";
 import { PROXIES, exchangeTz } from "./symbols";
