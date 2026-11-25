@@ -100,6 +100,20 @@ const SPLIT: [string, string][] = [
   const x = stories([mk("VN-Index closes 20 points lower as banks sell off", "Reuters", 2), mk("VN-Index đóng cửa giảm 20 điểm khi nhóm ngân hàng bị bán", "VnExpress", 1)]);
   assert.equal(x.length, 2);
   assert.deepEqual(x.map((s) => s.lang).sort(), ["en", "vi"]);
+  // Opposite moves are different events, even with the same figure and wording.
+  assert.equal(stories([mk("VN-Index tăng 20 điểm nhờ nhóm ngân hàng", "VnExpress", 2), mk("VN-Index mất 20 điểm, nhóm ngân hàng bị bán", "Tuổi Trẻ", 1)]).length, 2, "tăng vs mất stay apart");
+  assert.equal(stories([mk("Nvidia shares jump 5% after earnings beat", "Reuters", 2), mk("Nvidia shares fall 5% after earnings", "CNBC", 1)]).length, 2, "jump vs fall stay apart");
+  // Dates are not figures: daily columns on the same date stay apart, and different dates never merge.
+  assert.equal(stories([mk("Chứng khoán phái sinh ngày 25/11/2026: Đã bớt bi quan?", "VnExpress", 2), mk("Cổ phiếu cần quan tâm ngày 25/11", "Tuổi Trẻ", 1)]).length, 2, "a shared date is not a shared figure");
+  assert.equal(stories([mk("Tỷ giá USD hôm nay 25/11: Đồng USD quay đầu giảm", "VnExpress", 2), mk("Tỷ giá USD hôm nay 24.11: Đồng USD quay đầu giảm", "Tuổi Trẻ", 1)]).length, 2, "24.11 vs 25/11 stay apart");
+  assert.equal(stories([mk("Tỷ giá USD hôm nay 25/11: Đồng USD quay đầu giảm", "VnExpress", 2), mk("Tỷ giá USD hôm nay (25-11): Đồng USD quay đầu giảm", "Tuổi Trẻ", 1)]).length, 1, "same date written two ways still merges");
+  assert.equal(stories([mk("VN-Index tiến sát 1.700 điểm", "VnExpress", 2), mk("VN-Index thử thách mốc 1.700 điểm", "Tuổi Trẻ", 1)]).length, 1, "1.700 is a figure, not a date");
+  // A previous story that splits in two: only one part keeps its id, ids stay unique.
+  const split2 = stories([mk("Bão số 9 đổ bộ vào miền Trung, hơn chục nghìn người được sơ tán", "Tuổi Trẻ", 3, { id: "s1" }), mk("Fed holds rates steady at December meeting", "Reuters", 1, { id: "s2" })],
+    { at: NOW.toISOString(), stories: [{ id: "old", memberIds: ["s1", "s2"], outlets: [], firstSeen: hAgo(9) }] });
+  assert.equal(split2.length, 2);
+  assert.equal(new Set(split2.map((s) => s.id)).size, 2, "no duplicate ids after a split");
+  assert.ok(split2.some((s) => s.id === "old"), "one part keeps the old id");
   // Same id always merges.
   const same = stories([mk("Hello world story one", "a", 2, { id: "same" }), mk("Completely different words here", "b", 1, { id: "same" })]);
   assert.equal(same.length, 1);
@@ -153,8 +167,6 @@ const SPLIT: [string, string][] = [
   // dedupe wrapper keeps working for both ages.
   const { dedupe } = await import("../../src/lib/news");
   assert.equal(dedupe([old, edge]).length, 1);
-  assert.equal(dedupe([old, edge], 12).length, 0);
-  assert.equal(dedupe([old, edge], 48).length, 1, "never wider than the 36 h cluster window");
 
   console.log("ROW21 CLUSTER OK");
 })();

@@ -46,6 +46,22 @@ const split = (title: string) =>
     .split(/[^\p{L}\p{N}$%]+/u)
     .filter(Boolean);
 
+/** "25/11", "25-11", "25/11/2026", and in Vietnamese titles "25.11": a day/month, not a figure. */
+const DATE = /(?<![\d.,])(\d{1,2})[/-](\d{1,2})(?:[/-]\d{2,4})?(?![\d%])/g;
+const DATE_VI = /(?<![\d.,])(\d{1,2})\.(\d{1,2})(?![\d%.,])/g;
+function datesOf(title: string, lang: "vi" | "en"): { dates: Set<string>; rest: string } {
+  const dates = new Set<string>();
+  const take = (re: RegExp, t: string) =>
+    t.replace(re, (m, d, mo) => {
+      if (+d < 1 || +d > 31 || +mo < 1 || +mo > 12) return m;
+      dates.add(`${+d}/${+mo}`);
+      return " ";
+    });
+  let rest = take(DATE, title);
+  if (lang === "vi") rest = take(DATE_VI, rest);
+  return { dates, rest };
+}
+
 function words(title: string, lang: "vi" | "en"): Set<string> {
   const w = split(title);
   if (lang === "en") return new Set(w.filter((x) => x.length > 2 && !STOP_EN.has(x)).map((x) => x.replace(/(ing|ed|es|s)$/, "")));
@@ -72,11 +88,22 @@ const dice = (a: Set<string>, b: Set<string>) => (2 * overlap(a, b)) / (a.size +
 
 const sharesFigure = (a: Set<string>, b: Set<string>) => [...a].some((w) => b.has(w) && !w.includes(" ") && /^(\d{2,}|\d+%|\$\d+)$/.test(w));
 
+const UP = new Set("rise rises rose rising jump jumps jumped gain gains gained climb climbs climbed rally rallies rallied surge surges surged soar soars soared up higher tăng".split(" "));
+const DOWN = new Set("fall falls fell falling drop drops dropped slide slides slid slump slumps slumped sink sinks sank plunge plunges plunged tumble tumbles tumbled down lower lose loses lost giảm mất sụt rơi".split(" "));
+/** +1 up, -1 down, 0 neither or both: two headlines moving opposite ways report different events. */
+function direction(title: string): number {
+  const w = split(title);
+  const up = w.some((x) => UP.has(x)), down = w.some((x) => DOWN.has(x));
+  return up === down ? 0 : up ? 1 : -1;
+}
+
 interface Sig {
   item: NewsItem;
   lang: "vi" | "en";
   w: Set<string>;
   t: Set<string>;
+  dir: number;
+  dates: Set<string>;
 }
 const ms = (i: NewsItem) => new Date(i.publishedAt).getTime();
 
@@ -86,11 +113,14 @@ export function clusterStories(items: NewsItem[], prev: StoryIndex | null, now: 
   const clusters: Sig[][] = [];
   for (const item of sorted) {
     const lang = detectLang(item.title);
-    const sig: Sig = { item, lang, w: words(item.title, lang), t: trigrams(item.title) };
+    // Dates are taken out before comparing (daily columns share "25/11"); two different dates are two events.
+    const { dates, rest } = datesOf(item.title, lang);
+    const sig: Sig = { item, lang, w: words(rest, lang), t: trigrams(rest), dir: direction(rest), dates };
     const home = clusters.find((c) => {
       const f = c[0];
       if (f.item.id === item.id) return true;
-      if (f.lang !== lang) return false;
+      if (f.lang !== lang || f.dir * sig.dir < 0) return false;
+      if (f.dates.size && sig.dates.size && ![...sig.dates].some((d) => f.dates.has(d))) return false;
       const j = jaccard(f.w, sig.w);
       if (j >= (lang === "vi" ? JACCARD_MIN_VI : JACCARD_MIN) || dice(f.t, sig.t) >= DICE_MIN) return true;
       return lang === "vi" && j >= JACCARD_MIN_VI_FIGURE && sharesFigure(f.w, sig.w);
@@ -100,15 +130,18 @@ export function clusterStories(items: NewsItem[], prev: StoryIndex | null, now: 
   }
 
   const prevStories = prev?.stories ?? [];
+  const taken = new Set<string>(); // a previous story split in two: only the first part keeps its id
   return clusters.map((c) => {
     const members = c.map((s) => s.item);
     const times = members.map(ms);
     const earliest = members.reduce((a, b) => (ms(b) < ms(a) ? b : a));
     const carried = prevStories
-      .filter((p) => members.some((m) => p.memberIds.includes(m.id)))
+      .filter((p) => !taken.has(p.id) && members.some((m) => p.memberIds.includes(m.id)))
       .sort((a, b) => +new Date(a.firstSeen) - +new Date(b.firstSeen))[0];
+    const id = carried?.id ?? (taken.has(earliest.id) ? `${earliest.id}~${members.length}` : earliest.id);
+    taken.add(id);
     return {
-      id: carried?.id ?? earliest.id,
+      id,
       members,
       outlets: [...new Set(members.map((m) => m.source).filter(Boolean))].slice(0, MAX_OUTLETS),
       firstSeen: new Date(Math.min(...times)).toISOString(),

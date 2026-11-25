@@ -163,13 +163,9 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
   return { items: results.flat(), errors };
 }
 
-/** Drop old items and merge headlines about the same story (see stories/cluster.ts). Keeps the first (newest) of each. */
-export function dedupe(items: NewsItem[], maxAgeHours = 36): NewsItem[] {
-  const now = new Date();
-  if (maxAgeHours === 36) return toHeadlines(clusterStories(items, null, now));
-  const cutoff = now.getTime() - maxAgeHours * 3600_000;
-  // The cluster's own cutoff is 36 h; a shorter one filters first, a longer one is capped at 36 h.
-  return toHeadlines(clusterStories(items.filter((i) => new Date(i.publishedAt).getTime() >= cutoff), null, now));
+/** Drop items older than 36 h and merge headlines about the same story (see stories/cluster.ts). Keeps the first (newest) of each. */
+export function dedupe(items: NewsItem[]): NewsItem[] {
+  return toHeadlines(clusterStories(items, null, new Date()));
 }
 
 /** Build a matcher for an interest from its query words and tickers. */
