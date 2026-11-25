@@ -10,7 +10,7 @@
  */
 import { headlineMentions } from "../pipeline";
 import type { Quote } from "../types";
-import type { Story } from "./cluster";
+import { relatedStories, type Story } from "./cluster";
 import type { StoryCard } from "./types";
 
 export interface PickOpts {
@@ -49,7 +49,10 @@ export function shownStories(stories: Story[], quotes: Quote[], opts: PickOpts):
   const ranked = pool
     .map((s, i) => ({ s, i, score: storyScore(s, quotes) }))
     .sort((a, b) => b.score - a.score || a.i - b.i) // ties: clustering order (newest first)
-    .map((x) => x.s);
+    .map((x) => x.s)
+    // One card per subject: a story related to a better-ranked one (same event in another cluster, or another
+    // event of the same subject) gives its slot to the next subject.
+    .reduce<Story[]>((kept, s) => (kept.some((k) => relatedStories(k, s)) ? kept : [...kept, s]), []);
   if (opts.interests) return ranked.slice(0, Math.min(opts.important, opts.toModel));
   const top = ranked.slice(0, opts.toModel);
   const interesting = ranked.filter((s) => s.kind === "interesting").slice(0, opts.interesting);

@@ -100,6 +100,20 @@ const SPLIT: [string, string][] = [
   const x = stories([mk("VN-Index closes 20 points lower as banks sell off", "Reuters", 2), mk("VN-Index đóng cửa giảm 20 điểm khi nhóm ngân hàng bị bán", "VnExpress", 1)]);
   assert.equal(x.length, 2);
   assert.deepEqual(x.map((s) => s.lang).sort(), ["en", "vi"]);
+  // Related stories (real World titles, Nov 25 2026): two clusters on Taiwan's elections are related; the
+  // fake-accounts story and two different Ukraine war events are judged by shared distinctive words only.
+  const ts = (t: string, o: string, h: number) => stories([mk(t, o, h)])[0];
+  const twA = ts("Taiwan's elections not about China, but Beijing has a lot to say", "AP", 1);
+  const twB = ts("Taiwan local elections draw China’s attention as tensions rise", "Reuters", 2);
+  const twC = ts("China Accused of Using 20,000 Fake Accounts to Influence Taiwan", "WSJ", 3);
+  assert.ok(C.relatedStories(twA, twB), "two election clusters are related");
+  assert.ok(!C.relatedStories(twA, twC), "the fake-accounts story is not");
+  assert.ok(!C.relatedStories(ts("VN-Index tăng 20 điểm nhờ ngân hàng", "a", 1), ts("VN-Index mất 20 điểm vì ngân hàng", "b", 2)), "opposite moves are never related");
+  // The picker shows one card per subject: of two related stories, only the better-ranked one is shown.
+  const { shownStories, SHARED_PICK } = await import("../../src/lib/stories/pick");
+  const big = stories([mk("Taiwan's elections not about China, but Beijing has a lot to say", "AP", 1), mk("Taiwan's elections not about China, and Beijing has a lot to say", "Reuters", 1)])[0];
+  const shownIds = shownStories([big, twB, twC], [], SHARED_PICK).map((s) => s.id);
+  assert.ok(shownIds.includes(big.id) && !shownIds.includes(twB.id) && shownIds.includes(twC.id), "related story gives its slot away; unrelated stays");
   // Opposite moves are different events, even with the same figure and wording.
   assert.equal(stories([mk("VN-Index tăng 20 điểm nhờ nhóm ngân hàng", "VnExpress", 2), mk("VN-Index mất 20 điểm, nhóm ngân hàng bị bán", "Tuổi Trẻ", 1)]).length, 2, "tăng vs mất stay apart");
   assert.equal(stories([mk("Nvidia shares jump 5% after earnings beat", "Reuters", 2), mk("Nvidia shares fall 5% after earnings", "CNBC", 1)]).length, 2, "jump vs fall stay apart");

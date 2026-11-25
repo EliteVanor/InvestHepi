@@ -107,6 +107,36 @@ interface Sig {
 }
 const ms = (i: NewsItem) => new Date(i.publishedAt).getTime();
 
+/** Words too common in market news to tie two stories together (second pass only). */
+const GENERIC_EN = new Set("stock market share price index investor percent point today week year report update live new rate".split(" "));
+const GENERIC_VI = new Set(["chứng khoán", "cổ phiếu", "thị trường", "nhà đầu", "đầu tư", "hôm nay", "giá vàng", "tỷ giá", "ngân hàng", "doanh nghiệp"]);
+/** Second pass: the story's distinctive words (English single words, Vietnamese syllable pairs), first member only. */
+function core(sig: Sig): Set<string> {
+  return new Set([...sig.w].filter((w) => (sig.lang === "en" ? !w.includes(" ") && !GENERIC_EN.has(w) : w.includes(" ") && !GENERIC_VI.has(w)) && !/^[\d$%.,]+$/.test(w)));
+}
+/** Shared distinctive words for two stories to count as related (and overlap >= RELATED_OVERLAP of the smaller). */
+export const RELATED_SHARED = 3;
+export const RELATED_OVERLAP = 0.3;
+const sigOf = (item: NewsItem): Sig => {
+  const lang = detectLang(item.title);
+  const { dates, rest } = datesOf(item.title, lang);
+  return { item, lang, w: words(rest, lang), t: trigrams(rest), dir: direction(rest), dates };
+};
+/**
+ * Two stories about the same event or topic (one event worded differently by outlets can land in two clusters;
+ * so can two events of one war): their first headlines share RELATED_SHARED distinctive words, same language,
+ * no opposite moves, no different dates. Used by the picker to avoid two cards on one subject; clustering itself
+ * never merges on it (word counts can't tell "same event" from "same topic", so cards and sources stay exact).
+ */
+export function relatedStories(a: Story, b: Story): boolean {
+  const x = sigOf(a.members[0]), y = sigOf(b.members[0]);
+  if (x.lang !== y.lang || x.dir * y.dir < 0) return false;
+  if (x.dates.size && y.dates.size && ![...y.dates].some((d) => x.dates.has(d))) return false;
+  const cx = core(x), cy = core(y);
+  const shared = overlap(cx, cy);
+  return shared >= RELATED_SHARED && shared / Math.max(1, Math.min(cx.size, cy.size)) >= RELATED_OVERLAP;
+}
+
 export function clusterStories(items: NewsItem[], prev: StoryIndex | null, now: Date): Story[] {
   const cutoff = now.getTime() - MAX_AGE_HOURS * 3600_000;
   const sorted = items.filter((i) => ms(i) >= cutoff).sort((a, b) => ms(b) - ms(a));
