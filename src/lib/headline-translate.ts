@@ -5,7 +5,6 @@
  */
 import { isLang } from "./languages";
 import { createHash } from "node:crypto";
-import { waitUntil } from "./lock-wait";
 import { getJSON, releaseLock, setJSON, takeLock } from "./store";
 import { detectLang } from "./stories/cluster";
 import { translateSlots } from "./translate";
@@ -49,12 +48,11 @@ export async function translateHeadlines(items: NewsItem[], lang: string, maySta
     );
     const batch = out.filter((n) => need.has(n)).slice(0, HEADLINE_TRANSLATE_CAP);
     if (!batch.length) return out;
-    // One translation per batch across instances: the loser waits briefly, then returns what is cached.
+    // One translation per batch across instances: the loser doesn't wait (polling would cost a Redis read per
+    // headline per poll); it returns what is cached now, and the page's next poll gets the winner's result.
     const lockKey = `tr:hl:lock:${lang}:${createHash("sha1").update(batch.map((n) => n.id).join("|")).digest("hex").slice(0, 16)}`;
     const token = await takeLock(lockKey, Math.ceil(BUDGET_MS / 1000) + 20);
     if (!token) {
-      const cached = async () => Promise.all(batch.map(async (n) => (await getJSON<Kept>(hlKey(n.id, lang)).catch(() => null))?.o === n.title));
-      await waitUntil(async () => (await cached()).every(Boolean));
       await Promise.all(
         batch.map(async (n) => {
           const kept = await getJSON<Kept>(hlKey(n.id, lang)).catch(() => null);

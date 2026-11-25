@@ -131,7 +131,10 @@ globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) =>
   const [a, b] = await Promise.all([HL.translateHeadlines(mk(), "vi"), HL.translateHeadlines(mk(), "vi")]);
   assert.equal(translatorCalls, 1, "one translator call for two concurrent batches");
   assert.ok(a.every((n) => n.title.startsWith("vi:")), "winner translated");
-  assert.ok(b.every((n) => n.title.startsWith("vi:")), "loser returns the winner's cached translations");
+  assert.ok(b.every((n) => !n.title.startsWith("vi:")), "loser returns at once, untranslated (no polling)");
+  const again = await HL.translateHeadlines(mk(), "vi");
+  assert.ok(again.every((n) => n.title.startsWith("vi:")), "the next poll gets the winner's cached translations");
+  assert.equal(translatorCalls, 1, "...without a second translator call");
   // A loser with nothing cached after the wait (winner failed) returns the list as it was
   const stuck = await takeLock(`tr:hl:lock:vi:${createHash("sha1").update("z1").digest("hex").slice(0, 16)}`, 30);
   assert.ok(stuck);
