@@ -114,6 +114,8 @@ const gnewsTopic = (topic: string) =>
 export interface Feed {
   name: string;
   url: string;
+  /** "interesting" for science and culture feeds; unset means important news. */
+  kind?: "interesting";
 }
 
 /** Static feeds per section. Interest-specific feeds are generated from the interest list. */

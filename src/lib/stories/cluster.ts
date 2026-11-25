@@ -1,0 +1,141 @@
+/**
+ * Story clustering (v19 row 21): groups headlines that report the same event. Pure, no I/O.
+ * Replaces the old `dedupe` tokens (a-z only: Vietnamese titles shrank to 1-2 words). Unicode-aware tokens,
+ * word bigrams for Vietnamese, character trigrams, one language per story, and no chaining: an item joins a
+ * cluster only if it is close to the cluster's FIRST member.
+ */
+import type { NewsItem } from "../types";
+
+export interface Story {
+  id: string;
+  members: NewsItem[];
+  outlets: string[];
+  firstSeen: string;
+  lastSeen: string;
+  lang: "vi" | "en";
+  kind: "important" | "interesting";
+}
+export interface StoryIndex {
+  at: string;
+  stories: { id: string; memberIds: string[]; outlets: string[]; firstSeen: string }[];
+}
+
+export const MAX_AGE_HOURS = 36;
+const MAX_OUTLETS = 12;
+/** Word Jaccard floor (today's English dedupe behaviour). */
+export const JACCARD_MIN = 0.55;
+/** Vietnamese word sets hold syllables and bigrams, and outlets word the same event differently. */
+export const JACCARD_MIN_VI = 0.4;
+/** Character-trigram Dice threshold. */
+export const DICE_MIN = 0.6;
+/** Vietnamese: a weaker word overlap still counts when both titles carry the same figure (a number of 2+ digits, or a %). */
+export const JACCARD_MIN_VI_FIGURE = 0.2;
+
+const VI_ONLY = /[ăâđêôơưàáảãạằắẳẵặầấẩẫậèéẻẽẹềếểễệìíỉĩịòóỏõọồốổỗộờớởỡợùúủũụừứửữựỳýỷỹỵ]/;
+export function detectLang(title: string): "vi" | "en" {
+  return VI_ONLY.test(title.normalize("NFC").toLowerCase()) ? "vi" : "en";
+}
+
+const STOP_EN = new Set("a an the of to in on for and or with at by from as is are was be after over amid says said new its it this that".split(" "));
+const STOP_VI = new Set("của và các những là có được cho với trong này khi đã sẽ từ về theo tại một người".split(" "));
+
+const split = (title: string) =>
+  title
+    .normalize("NFC")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}$%]+/u)
+    .filter(Boolean);
+
+function words(title: string, lang: "vi" | "en"): Set<string> {
+  const w = split(title);
+  if (lang === "en") return new Set(w.filter((x) => x.length > 2 && !STOP_EN.has(x)).map((x) => x.replace(/(ing|ed|es|s)$/, "")));
+  const syl = w.filter((x) => !STOP_VI.has(x));
+  const out = new Set(syl);
+  for (let i = 0; i + 1 < syl.length; i++) out.add(`${syl[i]} ${syl[i + 1]}`);
+  return out;
+}
+
+function trigrams(title: string): Set<string> {
+  const f = ` ${split(title).join(" ").normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d")} `;
+  const out = new Set<string>();
+  for (let i = 0; i + 3 <= f.length; i++) out.add(f.slice(i, i + 3));
+  return out;
+}
+
+function overlap(a: Set<string>, b: Set<string>): number {
+  let n = 0;
+  for (const x of a) if (b.has(x)) n++;
+  return n;
+}
+const jaccard = (a: Set<string>, b: Set<string>) => overlap(a, b) / (a.size + b.size - overlap(a, b) || 1);
+const dice = (a: Set<string>, b: Set<string>) => (2 * overlap(a, b)) / (a.size + b.size || 1);
+
+const sharesFigure = (a: Set<string>, b: Set<string>) => [...a].some((w) => b.has(w) && !w.includes(" ") && /^(\d{2,}|\d+%|\$\d+)$/.test(w));
+
+interface Sig {
+  item: NewsItem;
+  lang: "vi" | "en";
+  w: Set<string>;
+  t: Set<string>;
+}
+const ms = (i: NewsItem) => new Date(i.publishedAt).getTime();
+
+export function clusterStories(items: NewsItem[], prev: StoryIndex | null, now: Date): Story[] {
+  const cutoff = now.getTime() - MAX_AGE_HOURS * 3600_000;
+  const sorted = items.filter((i) => ms(i) >= cutoff).sort((a, b) => ms(b) - ms(a));
+  const clusters: Sig[][] = [];
+  for (const item of sorted) {
+    const lang = detectLang(item.title);
+    const sig: Sig = { item, lang, w: words(item.title, lang), t: trigrams(item.title) };
+    const home = clusters.find((c) => {
+      const f = c[0];
+      if (f.item.id === item.id) return true;
+      if (f.lang !== lang) return false;
+      const j = jaccard(f.w, sig.w);
+      if (j >= (lang === "vi" ? JACCARD_MIN_VI : JACCARD_MIN) || dice(f.t, sig.t) >= DICE_MIN) return true;
+      return lang === "vi" && j >= JACCARD_MIN_VI_FIGURE && sharesFigure(f.w, sig.w);
+    });
+    if (home) home.push(sig);
+    else clusters.push([sig]);
+  }
+
+  const prevStories = prev?.stories ?? [];
+  return clusters.map((c) => {
+    const members = c.map((s) => s.item);
+    const times = members.map(ms);
+    const earliest = members.reduce((a, b) => (ms(b) < ms(a) ? b : a));
+    const carried = prevStories
+      .filter((p) => members.some((m) => p.memberIds.includes(m.id)))
+      .sort((a, b) => +new Date(a.firstSeen) - +new Date(b.firstSeen))[0];
+    return {
+      id: carried?.id ?? earliest.id,
+      members,
+      outlets: [...new Set(members.map((m) => m.source).filter(Boolean))].slice(0, MAX_OUTLETS),
+      firstSeen: new Date(Math.min(...times)).toISOString(),
+      lastSeen: new Date(Math.max(...times)).toISOString(),
+      lang: c[0].lang,
+      kind: members.some((m) => m.feedKind === "interesting") ? "interesting" : "important",
+    };
+  });
+}
+
+/** One headline per story: its first (newest) member, as dedupe kept; other outlets in `alsoIn`, tags merged. */
+export function toHeadlines(stories: Story[]): NewsItem[] {
+  return stories.map((s) => {
+    const first = { ...s.members[0] };
+    const tags = new Set(first.tags ?? []);
+    for (const m of s.members.slice(1)) for (const g of m.tags ?? []) tags.add(g);
+    if (tags.size) first.tags = [...tags];
+    const also = [...new Set(s.members.map((m) => m.source))].filter((o) => o && o !== first.source);
+    const merged = [...new Set([...(first.alsoIn ?? []), ...also])].slice(0, MAX_OUTLETS);
+    if (merged.length) first.alsoIn = merged;
+    return first;
+  });
+}
+
+export function toIndex(stories: Story[], now: Date): StoryIndex {
+  return {
+    at: now.toISOString(),
+    stories: stories.map((s) => ({ id: s.id, memberIds: s.members.map((m) => m.id), outlets: s.outlets, firstSeen: s.firstSeen })),
+  };
+}

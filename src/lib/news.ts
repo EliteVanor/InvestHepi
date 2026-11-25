@@ -1,6 +1,7 @@
 import { XMLParser } from "fast-xml-parser";
 import type { Feed } from "./config";
 import { safeHttpUrl } from "./safe-url";
+import { clusterStories, toHeadlines } from "./stories/cluster";
 import { getJSON, setJSON } from "./store";
 import type { Interest, NewsItem } from "./types";
 
@@ -148,7 +149,7 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
           backoff[host] = now + Math.max(COOL_MS, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 0);
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return fixFeedTimes(parseFeed(await res.text(), f.name), f.url);
+        return fixFeedTimes(parseFeed(await res.text(), f.name), f.url).map((i) => (f.kind ? { ...i, feedKind: f.kind } : i));
       } catch (e) {
         errors.push(`${f.name}: ${(e as Error).message}`);
         return [];
@@ -162,44 +163,13 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
   return { items: results.flat(), errors };
 }
 
-const STOP = new Set("a an the of to in on for and or with at by from as is are was be after over amid says said new its it this that".split(" "));
-function tokens(title: string): Set<string> {
-  return new Set(
-    title
-      .toLowerCase()
-      .replace(/[^a-z0-9$% ]/g, " ")
-      .split(/\s+/)
-      .filter((w) => w.length > 2 && !STOP.has(w))
-      .map((w) => w.replace(/(ing|ed|es|s)$/, "")),
-  );
-}
-function jaccard(a: Set<string>, b: Set<string>): number {
-  let inter = 0;
-  for (const w of a) if (b.has(w)) inter++;
-  return inter / (a.size + b.size - inter || 1);
-}
-
-/** Drop old items and near-duplicate headlines (same story from several outlets). Keeps the earliest seen. */
+/** Drop old items and merge headlines about the same story (see stories/cluster.ts). Keeps the first (newest) of each. */
 export function dedupe(items: NewsItem[], maxAgeHours = 36): NewsItem[] {
-  const cutoff = Date.now() - maxAgeHours * 3600_000;
-  const sorted = items
-    .filter((i) => new Date(i.publishedAt).getTime() >= cutoff)
-    .sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt));
-  const kept: { item: NewsItem; tok: Set<string> }[] = [];
-  for (const item of sorted) {
-    const tok = tokens(item.title);
-    const dup = kept.find((k) => k.item.id === item.id || jaccard(k.tok, tok) >= 0.55);
-    if (dup) {
-      if (item.tags) dup.item.tags = [...new Set([...(dup.item.tags ?? []), ...item.tags])];
-      // Remember other outlets covering the same story (coverage breadth = importance signal).
-      if (item.source && item.source !== dup.item.source && !dup.item.alsoIn?.includes(item.source)) {
-        dup.item.alsoIn = [...(dup.item.alsoIn ?? []), item.source].slice(0, 12);
-      }
-      continue;
-    }
-    kept.push({ item, tok });
-  }
-  return kept.map((k) => k.item);
+  const now = new Date();
+  if (maxAgeHours === 36) return toHeadlines(clusterStories(items, null, now));
+  const cutoff = now.getTime() - maxAgeHours * 3600_000;
+  // The cluster's own cutoff is 36 h; a shorter one filters first, a longer one is capped at 36 h.
+  return toHeadlines(clusterStories(items.filter((i) => new Date(i.publishedAt).getTime() >= cutoff), null, now));
 }
 
 /** Build a matcher for an interest from its query words and tickers. */

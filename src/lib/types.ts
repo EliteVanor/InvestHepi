@@ -26,6 +26,8 @@ export interface NewsItem {
   alsoIn?: string[];
   /** The headline as published, when `title` holds a translation. */
   titleOrig?: string;
+  /** Set from the feed (`Feed.kind`): science and culture feeds mark their items "interesting". */
+  feedKind?: "interesting";
 }
 
 export interface Quote {
