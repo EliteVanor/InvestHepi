@@ -23,7 +23,8 @@
  * when the provider says the daily quota is gone) so we stop knocking on a closed door.
  */
 import { getJSON, setJSON } from "../store";
-import { plannedPerDay } from "../timetable";
+import { briefingUnitsLeft, plannedPerDay } from "../timetable";
+import { bigLimit } from "../stories/big";
 import { geminiProvider, groqProvider, type CompatProvider } from "./openai-compat";
 import { dayIn } from "../dates";
 import { ceilingMarked, currentUid, OWNER } from "../context";
@@ -169,6 +170,32 @@ export function reserveFor120(u: ModelUsage, now = new Date()): number {
   return left * avg;
 }
 
+/** Flash-Lite requests one scheduled briefing unit can use: the story call and the concepts call. */
+const FLASH_CALLS_PER_UNIT = 2;
+
+/**
+ * Flash-Lite requests (both models together) that visitor work must leave alone: the scheduled shared
+ * and admin briefing units still due today (timetable.ts), plus a margin for big-story cards,
+ * min(BIG_STORY_DAILY_LIMIT x 3, units left). Mirrors reserveFor120; shared, admin and scheduled
+ * routes ignore it.
+ */
+export function reserveForFlash(now = new Date()): number {
+  const left = briefingUnitsLeft(now);
+  return left * FLASH_CALLS_PER_UNIT + Math.min(Math.max(0, bigLimit()) * 3, left);
+}
+
+const FLASH_KEYS: ModelKey[] = ["gem35", "gem31"];
+
+/** Flash-Lite requests left today across both models, up to the usual 97%. */
+async function flashRemaining(now: Date): Promise<number> {
+  let left = 0;
+  for (const k of FLASH_KEYS) {
+    const d = modelDef(k);
+    if (d?.requestsPerDay) left += Math.max(0, d.requestsPerDay * 0.97 - (await loadUsage(d, now)).requests);
+  }
+  return left;
+}
+
 /** Routes that visitors' own actions use; the admin (owner) is exempt, and guests' translation is marked with withCeiling(). */
 const VISITOR_ROUTES: ReadonlySet<Route> = new Set(["userAuto", "userManual", "ask", "predUser"]);
 function ceilingApplies(route: Route): boolean {
@@ -182,6 +209,7 @@ export async function available(def: ModelDef, route: Route, now = new Date()): 
   if (def.tokensPerDay && u.tokens >= def.tokensPerDay * 0.97) return { ok: false, why: "daily tokens used up" };
   if (def.requestsPerDay && u.requests >= def.requestsPerDay * 0.97) return { ok: false, why: "daily requests used up" };
   if (ceilingApplies(route) && overUserCeiling(def, u)) return { ok: false, why: "kept for shared and admin runs (past the visitor ceiling)" };
+  if (FLASH_KEYS.includes(def.key) && ceilingApplies(route) && (await flashRemaining(now)) < reserveForFlash(now)) return { ok: false, why: "kept for shared and admin briefings" };
   if (def.key === "groq120" && (route === "userAuto" || route === "predUser") && def.tokensPerDay) {
     const room = def.tokensPerDay * 0.97 - u.tokens - reserveFor120(u, now);
     if (room < AVG_RUN_TOKENS) return { ok: false, why: "kept for shared and admin predictions" };
@@ -235,6 +263,7 @@ export async function usageReport(now = new Date()) {
       requests: u.requests,
       requestsPerDay: def.requestsPerDay,
       byRoute: u.byRoute,
+      reserve: k === "groq120" ? { tokens: reserveFor120(u, now) } : FLASH_KEYS.includes(k) ? { requests: reserveForFlash(now) } : undefined,
       cooldownUntil: u.cooldownUntil && u.cooldownUntil > now.getTime() ? new Date(u.cooldownUntil).toISOString() : undefined,
       lastError: u.lastError,
     });
