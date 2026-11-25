@@ -139,7 +139,12 @@ export function relatedStories(a: Story, b: Story): boolean {
 
 export function clusterStories(items: NewsItem[], prev: StoryIndex | null, now: Date): Story[] {
   const cutoff = now.getTime() - MAX_AGE_HOURS * 3600_000;
-  const sorted = items.filter((i) => ms(i) >= cutoff).sort((a, b) => ms(b) - ms(a));
+  // One headline once: an outlet's feeds overlap (BBC World and BBC Business carry the same story), so the same
+  // id can arrive several times; keep the first copy so a story never lists one headline twice.
+  const seen = new Set<string>();
+  const sorted = items
+    .filter((i) => ms(i) >= cutoff && !seen.has(i.id) && (seen.add(i.id), true))
+    .sort((a, b) => ms(b) - ms(a));
   const clusters: Sig[][] = [];
   for (const item of sorted) {
     const lang = detectLang(item.title);
