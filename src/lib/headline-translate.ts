@@ -4,7 +4,9 @@
  * batch through the chunked translator. A failure returns the list as it was: news never errors.
  */
 import { isLang } from "./languages";
-import { getJSON, setJSON } from "./store";
+import { createHash } from "node:crypto";
+import { waitUntil } from "./lock-wait";
+import { getJSON, releaseLock, setJSON, takeLock } from "./store";
 import { detectLang } from "./stories/cluster";
 import { translateSlots } from "./translate";
 import type { NewsItem } from "./types";
@@ -46,7 +48,49 @@ export async function translateHeadlines(items: NewsItem[], lang: string, maySta
       }),
     );
     const batch = out.filter((n) => need.has(n)).slice(0, HEADLINE_TRANSLATE_CAP);
-    if (!batch.length || !(await mayStart())) return out;
+    if (!batch.length) return out;
+    // One translation per batch across instances: the loser waits briefly, then returns what is cached.
+    const lockKey = `tr:hl:lock:${lang}:${createHash("sha1").update(batch.map((n) => n.id).join("|")).digest("hex").slice(0, 16)}`;
+    const token = await takeLock(lockKey, Math.ceil(BUDGET_MS / 1000) + 20);
+    if (!token) {
+      const cached = async () => Promise.all(batch.map(async (n) => (await getJSON<Kept>(hlKey(n.id, lang)).catch(() => null))?.o === n.title));
+      await waitUntil(async () => (await cached()).every(Boolean));
+      await Promise.all(
+        batch.map(async (n) => {
+          const kept = await getJSON<Kept>(hlKey(n.id, lang)).catch(() => null);
+          if (kept && kept.o === n.title && typeof kept.t === "string") {
+            n.titleOrig = n.title;
+            n.title = kept.t;
+          }
+        }),
+      );
+      return out;
+    }
+    try {
+      // The previous holder may have finished between our cache read and our lock: use its result.
+      const fresh: NewsItem[] = [];
+      await Promise.all(
+        batch.map(async (n) => {
+          const kept = await getJSON<Kept>(hlKey(n.id, lang)).catch(() => null);
+          if (kept && kept.o === n.title && typeof kept.t === "string") {
+            n.titleOrig = n.title;
+            n.title = kept.t;
+          } else fresh.push(n);
+        }),
+      );
+      return fresh.length ? await translateBatch(out, batch.filter((n) => fresh.includes(n)), lang, mayStart) : out;
+    } finally {
+      await releaseLock(lockKey, token).catch(() => {});
+    }
+  } catch (e) {
+    console.error("headline translation failed:", e);
+    return items;
+  }
+}
+
+async function translateBatch(out: NewsItem[], batch: NewsItem[], lang: string, mayStart: () => Promise<boolean>): Promise<NewsItem[]> {
+  {
+    if (!(await mayStart())) return out;
     const done: { id: string; o: string; t: string }[] = [];
     const slots = batch.map((n) => ({
       text: n.title,
@@ -64,8 +108,5 @@ export async function translateHeadlines(items: NewsItem[], lang: string, maySta
     }
     await Promise.all(done.map((d) => setJSON(hlKey(d.id, lang), { o: d.o, t: d.t } satisfies Kept, TTL_SEC).catch(() => {})));
     return out;
-  } catch (e) {
-    console.error("headline translation failed:", e);
-    return items;
   }
 }

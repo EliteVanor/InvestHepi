@@ -11,7 +11,8 @@
  */
 import { z } from "zod";
 import { generateJSON, type Route } from "../llm";
-import { getJSON, setJSON } from "../store";
+import { getJSON, releaseLock, setJSON, takeLock } from "../store";
+import { waitUntil } from "../lock-wait";
 import { translateSlots } from "../translate";
 import { conceptSlug } from "./view";
 
@@ -128,13 +129,41 @@ export async function loadConcepts(slugs: string[], lang: string): Promise<Conce
     }),
   );
   if (todo.length) {
-    const ok = await translateSlots(todo.flatMap(conceptSlots), lang, "short plain-language explanations of terms from the news").then(() => true, () => false);
-    if (ok) {
+    // One translation per slug and language across instances: take a lock per concept; the ones another
+    // instance holds are read from its cached result after ours is done.
+    const locks = await Promise.all(todo.map(async (c) => ({ c, key: `${conceptTrKey(c.slug, lang)}:lock`, token: await takeLock(`${conceptTrKey(c.slug, lang)}:lock`, 90) })));
+    const mine: typeof locks = [];
+    for (const l of locks.filter((l) => l.token)) {
+      const done = await getJSON<Concept>(conceptTrKey(l.c.slug, lang)).catch(() => null); // finished just before our lock
+      if (done) out.set(l.c.slug, done);
+      mine.push(l);
+    }
+    const toTranslate = mine.filter((l) => !out.has(l.c.slug));
+    const theirs = locks.filter((l) => !l.token).map((l) => l.c.slug);
+    try {
+      if (toTranslate.length) {
+        const cards = toTranslate.map((l) => l.c);
+        const ok = await translateSlots(cards.flatMap(conceptSlots), lang, "short plain-language explanations of terms from the news").then(() => true, () => false);
+        if (ok) {
+          await Promise.all(
+            cards.map(async (c) => {
+              c.lang = lang;
+              out.set(c.slug, c);
+              await setJSON(conceptTrKey(c.slug, lang), c).catch(() => {});
+            }),
+          );
+        }
+      }
+    } finally {
+      await Promise.all(mine.map((l) => releaseLock(l.key, l.token!).catch(() => {})));
+    }
+    if (theirs.length) {
+      const cachedAll = async () => (await Promise.all(theirs.map((s) => getJSON(conceptTrKey(s, lang))))).every(Boolean);
+      await waitUntil(cachedAll);
       await Promise.all(
-        todo.map(async (c) => {
-          c.lang = lang;
-          out.set(c.slug, c);
-          await setJSON(conceptTrKey(c.slug, lang), c).catch(() => {});
+        theirs.map(async (slug) => {
+          const cached = await getJSON<Concept>(conceptTrKey(slug, lang)).catch(() => null);
+          if (cached) out.set(slug, cached);
         }),
       );
     }

@@ -22,7 +22,8 @@ import { fetchSectionItems, newsKey, saveHeadlines, storyScope } from "./headlin
 import { clusterStories, toHeadlines } from "./stories/cluster";
 import { runStories } from "./stories/job";
 import { loadHoldings, positionsAsText } from "./portfolio";
-import { getJSON, setJSON } from "./store";
+import { getJSON, releaseLock, setJSON, takeLock } from "./store";
+import { waitUntil } from "./lock-wait";
 import { getTechnicals, type Technicals } from "./technicals";
 import { computeStats, loadCalls } from "./track";
 import { multiUser } from "./users";
@@ -43,10 +44,22 @@ export const CATCH_UP_AFTER_MS = 12 * 3600_000;
 export async function ensureInterestBriefing(uid: string, allowed?: () => Promise<boolean>, maxAgeMs = Infinity): Promise<"fresh" | "capped" | "refreshed"> {
   const { interests, hash } = await currentInterestSet();
   if (!(await interestBriefingStale(hash, maxAgeMs))) return "fresh";
-  if (allowed && !(await allowed())) return "capped";
-  await refreshInterestSet(interests, "en", [uid]);
-  await pretranslateSet(hash, [uid]).catch(() => []); // opens already translated for a reader of another language
-  return "refreshed";
+  // One briefing per interest set across instances: the loser waits for the winner's briefing, never writes a second.
+  const lockKey = `ib:${hash}:lock`;
+  const token = await takeLock(lockKey, 330);
+  if (!token) {
+    await waitUntil(async () => !(await interestBriefingStale(hash, maxAgeMs)));
+    return "fresh";
+  }
+  try {
+    if (!(await interestBriefingStale(hash, maxAgeMs))) return "fresh"; // the previous holder finished just before our lock
+    if (allowed && !(await allowed())) return "capped";
+    await refreshInterestSet(interests, "en", [uid]);
+    await pretranslateSet(hash, [uid]).catch(() => []); // opens already translated for a reader of another language
+    return "refreshed";
+  } finally {
+    await releaseLock(lockKey, token).catch(() => {});
+  }
 }
 
 /**
