@@ -8,7 +8,7 @@ import type { Route } from "../llm";
 import { cachedCards } from "../translate";
 import type { Analysis, CalendarEvent, NewsItem, Quote, SectionId } from "../types";
 import type { Story } from "./cluster";
-import { writeConcepts } from "./concepts";
+import { loadConcepts, writeConcepts } from "./concepts";
 import { explainStories } from "./explain";
 import { INTERESTS_PICK, SHARED_PICK, pickForRun, shownStories } from "./pick";
 import { indexStories, loadCards, loadRun, saveCards, saveRun, type RunRecord } from "./store";
@@ -74,7 +74,10 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
   const r = await explainStories({ scope, section: o.section, stories: explain, covered: [...keep.map((c) => c.title), ...skipped], market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
   const fresh = r.cards;
   await saveCards(fresh);
-  await writeConcepts(fresh.flatMap((c) => c.concepts), storyLang(o.section), o.route, o.now).catch(() => []);
+  const slugs = await writeConcepts(fresh.flatMap((c) => c.concepts), storyLang(o.section), o.route, o.now).catch(() => [] as string[]);
+  // Owner decision 13: World and US concepts are pre-translated into Vietnamese now (cached for good), so Vietnamese
+  // readers never wait. Vietnam is written in Vietnamese and interest sets translate on read. Never throws.
+  if (slugs.length && (scope === "world" || scope === "us")) await loadConcepts(slugs, "vi").catch(() => []);
   const sent = explain.filter((s) => !r.leftOut.includes(s.id));
   const run = { bigPicture: r.bigPicture, movers: r.movers, watch: r.watch, provider: r.provider, note: r.note, leftOut: r.leftOut, news: members(sent) };
 

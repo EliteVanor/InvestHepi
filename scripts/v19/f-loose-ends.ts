@@ -5,6 +5,12 @@ import { pinClock } from "../clock";
 
 pinClock("2026-11-25T14:00:00Z");
 process.env.VERCEL = "1";
+process.env.GEMINI_API_KEY = "g";
+delete process.env.GROQ_API_KEY;
+delete process.env.ANTHROPIC_API_KEY;
+delete process.env.LLM_PROVIDER;
+delete process.env.GROQ_TPM;
+delete process.env.CONCEPTS_DAILY_LIMIT;
 
 type Digest = import("../../src/lib/types").Digest;
 type StoryCard = import("../../src/lib/stories/types").StoryCard;
@@ -23,6 +29,41 @@ const v19 = base({
 const v18 = base({
   analysis: { headline: "Head", mood: "mixed", summary: ["s1"], events: [{ title: "Fed holds rates", whyItMatters: "Rates steady.", importance: 4, impacts: [{ interest: "Banks", direction: "up", confidence: 60 }], whatCouldGoWrong: "x" }], outlook: [], watchNext: [], movers: [] },
 } as unknown as Partial<Digest>);
+
+// ---- fetch mock for F2: Gemini answers the story call, the concepts call and translations by what the prompt says
+const ai: { system: string; user: string }[] = [];
+globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+  const url = String(input instanceof Request ? input.url : input);
+  if (url.includes("generativelanguage") || url.includes("api.groq.com")) {
+    const body = JSON.parse(String(init?.body ?? "{}"));
+    const system: string = body.messages?.[0]?.content ?? "";
+    const user: string = body.messages?.[1]?.content ?? "";
+    ai.push({ system, user });
+    let content: string;
+    if (system.includes("concept cards")) {
+      const terms = [...user.matchAll(/^\d+\. (.*)$/gm)].map((m) => m[1]);
+      content = JSON.stringify({ concepts: terms.map((t) => ({ term: t, plain: `${t} means something simple.`, example: `Example of ${t}.` })) });
+    } else if (system.startsWith("You translate")) {
+      content = JSON.stringify((JSON.parse(user) as string[]).map((s) => `[vi] ${s}`));
+    } else {
+      const stories = [...user.matchAll(/^S(\d+) \(/gm)].map((m) => m[1]);
+      const blocks = user.split(/^S\d+ \(/m).slice(1);
+      content = JSON.stringify({
+        big_picture: ["Markets weighed the news.", "Rates mattered.", "Prices moved."],
+        stories: stories.map((n, i) => {
+          const [, id, title] = blocks[i].match(/\[([^\]]+)\] [^:]*: ([^\n|]*)/)!;
+          return { story: `S${n}`, title: `Card ${n}: ${title.trim()}`, what: "They reported it.", why: "It may matter.", markets: [], world: "Beyond markets.", past_id: null, different: "", concepts: [CONCEPT[0]], source_ids: [id] };
+        }),
+        movers: [],
+        watch: ["The next data release."],
+      });
+    }
+    return new Response(JSON.stringify({ choices: [{ message: { content } }], usage: { total_tokens: 100 } }), { status: 200 });
+  }
+  return new Response("{}", { status: 404 });
+}) as typeof fetch;
+const CONCEPT = ["Yield curve"];
+const trCalls = () => ai.filter((a) => a.system.startsWith("You translate"));
 
 (async () => {
   await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
@@ -70,6 +111,43 @@ const v18 = base({
   assert.ok(s19[0].includes("Chipmaker beats forecasts"), `first suggestion names the top story: ${s19[0]}`);
   const s18 = suggestionsFor(t, v18, [], "world", calls);
   assert.ok(s18[0].includes("Fed holds rates"), `v18 still the top event: ${s18[0]}`);
+
+  // ---- F2. World and US pre-translate the run's new concepts into Vietnamese; Vietnam and interest sets don't
+  const J = await import("../../src/lib/stories/job");
+  const { getJSON } = await import("../../src/lib/store");
+  const item = (id: string, source: string, title: string) => ({ id, title, source, link: `https://x/${id}`, publishedAt: "2026-11-25T12:00:00.000Z" });
+  const run = (scope: "world" | "us" | "vn" | `ib:${string}`, section: "world" | "us" | "vn" | "interests", title: string) =>
+    J.runStories(scope, { section, headlines: [item(`${scope}-${title.length}a`, "Reuters", title), item(`${scope}-${title.length}b`, "AP", title)], route: "shared", now: new Date("2026-11-25T14:00:00Z"), market: { quotes: [] }, calendar: [] });
+
+  CONCEPT[0] = "Yield curve";
+  ai.length = 0;
+  await run("world", "world", "Treasury yields move after the auction");
+  assert.equal(trCalls().length, 1, "World: one translation call for the new concept");
+  assert.equal((await getJSON<{ lang: string; plain: string }>("concept:yield-curve:vi"))?.lang, "vi", "cached at concept:<slug>:vi");
+  assert.match((await getJSON<{ plain: string }>("concept:yield-curve:vi"))!.plain, /^\[vi\]/);
+
+  ai.length = 0;
+  CONCEPT[0] = "Yield curve";
+  await run("us", "us", "Wall Street ends flat as bond yields settle");
+  assert.equal(trCalls().length, 0, "US: the concept is already stored and translated, so nothing is asked again (cached forever)");
+
+  CONCEPT[0] = "Stock buyback";
+  ai.length = 0;
+  await run("us", "us", "Apple announces a large share repurchase program");
+  assert.equal(trCalls().length, 1, "US: a new concept is translated once");
+  assert.ok(await getJSON("concept:stock-buyback:vi"));
+
+  CONCEPT[0] = "Lam phat";
+  ai.length = 0;
+  await run("vn", "vn", "Lạm phát tháng 11 tăng nhẹ so với tháng trước");
+  assert.equal(trCalls().length, 0, "Vietnam: written in Vietnamese, nothing to translate");
+  assert.equal(await getJSON("concept:lam-phat:vi"), null);
+
+  CONCEPT[0] = "Dividend";
+  ai.length = 0;
+  await run("ib:abc123", "interests", "Nvidia declares a quarterly dividend");
+  assert.equal(trCalls().length, 0, "interest sets: no pre-translation");
+  assert.equal(await getJSON("concept:dividend:vi"), null);
 
   console.log("F-LOOSE OK");
 })().catch((e) => {
