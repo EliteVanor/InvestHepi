@@ -81,3 +81,12 @@ export function mainCall(items: Outlook[], groups: Interest[] = []): Outlook | u
   }
   return items[0];
 }
+
+/**
+ * A story's market line shows today's change from the current quote the strip shows (prices agree everywhere);
+ * the card's own snapshot (taken when it was explained) only when the page has no quote for the symbol.
+ */
+export function marketChange(m: { changePct?: number }, quote?: { changePct?: number }): number | undefined {
+  const live = quote?.changePct;
+  return typeof live === "number" && Number.isFinite(live) ? live : m.changePct;
+}

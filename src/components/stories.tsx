@@ -8,7 +8,7 @@
  */
 import { useEffect, useState } from "react";
 import { safeHttpUrl } from "@/lib/safe-url";
-import { cardMembers, conceptSlug, pastView, storyDomId } from "@/lib/stories/view";
+import { cardMembers, conceptSlug, marketChange, pastView, storyDomId } from "@/lib/stories/view";
 import type { StoryCard } from "@/lib/stories/types";
 import type { Digest, Quote } from "@/lib/types";
 import { IconArrow, IconEye, IconGlobe, IconHistory, IconNews } from "./Icons";
@@ -78,7 +78,7 @@ function Story({ card, digest, quotes, onTicker, onConcept }: { card: StoryCard;
               <h4>{t("story.markets")}</h4>
               <ul className="story-mkts">
                 {card.markets.map((m) => (
-                  <MarketLine key={m.symbol} m={m} quote={quotes.find((q) => q.symbol === m.symbol) ?? digest.macro?.find((q) => q.symbol === m.symbol)} onTicker={onTicker} />
+                  <MarketLine key={m.symbol} m={m} quote={quotes.find((q) => q.symbol === m.symbol)} onTicker={onTicker} />
                 ))}
               </ul>
             </div>
@@ -119,10 +119,10 @@ function Story({ card, digest, quotes, onTicker, onConcept }: { card: StoryCard;
   );
 }
 
-/** One market the story moves: its day change from the price snapshot (never the model), colored like the strip. */
+/** One market the story moves: today's change from the same current quote the strip shows (the card's snapshot only when there is none), never the model's. */
 function MarketLine({ m, quote, onTicker }: { m: StoryCard["markets"][number]; quote?: Quote; onTicker: (s: string) => void }) {
   const { t } = usePrefs();
-  const chg = m.changePct;
+  const chg = marketChange(m, quote);
   return (
     <li className="story-mkt">
       <button className="story-mkt-name" onClick={() => onTicker(m.symbol)}>

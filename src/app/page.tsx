@@ -169,6 +169,8 @@ function App() {
   const live = useLiveQuotes(stripSyms);
   const strip = useMemo(() => buildStripRows(shown, plan, live), [shown, plan, live]);
   const liveQuotes = useMemo(() => (shown ? withLive(shown.quotes, live) : []), [shown, live]);
+  // Story market lines may name a macro symbol (VIX, oil, the dollar): the same overlay as the strip.
+  const storyQuotes = useMemo(() => (shown ? [...liveQuotes, ...withLive(shown.macro ?? [], live)] : []), [shown, liveQuotes, live]);
   const interestsDigest = digests.interests;
   const interestsLive = useMemo(() => (interestsDigest ? withLive(interestsDigest.quotes, live) : []), [interestsDigest, live]);
   const chartSymbols = useMemo(() => chartSymbolsFor(interests), [interests]);
@@ -423,7 +425,7 @@ function App() {
               />
               {v19 && (
                 <>
-                  <StoryList digest={shown} quotes={liveQuotes} onTicker={openTicker} />
+                  <StoryList digest={shown} quotes={storyQuotes} onTicker={openTicker} />
                   <section className="markets" aria-labelledby="markets-h">
                     <h2 className="section-label" id="markets-h">
                       {t("story.marketsTitle")}

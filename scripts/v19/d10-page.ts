@@ -138,7 +138,14 @@ const call = (ticker: string, interest: string): Outlook => ({ interest, ticker,
   r = await get("slugs=lai-suat&lang=vi");
   assert.equal(r.body.concepts[0].term, "Lãi suất", "written in Vietnamese: served as is");
 
-  console.log("D10 PAGE OK");
+  // The card's % follows the strip's current quote; its snapshot only without one (prices agree everywhere).
+{
+  const { marketChange } = await import("../../src/lib/stories/view");
+  assert.equal(marketChange({ changePct: 0.19 }, { changePct: -1.16 }), -1.16, "current quote wins");
+  assert.equal(marketChange({ changePct: 0.19 }, undefined), 0.19, "snapshot without a quote");
+  assert.equal(marketChange({ changePct: 0.19 }, { changePct: NaN }), 0.19, "a broken quote falls back");
+}
+console.log("D10 PAGE OK");
 })().catch((e) => {
   console.error(e);
   process.exit(1);
