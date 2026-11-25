@@ -22,8 +22,8 @@ export interface PastEvent {
 
 /** Re-verified by opened pages (past-events.ts); cited only once the owner approves (below). */
 export const PAST_EVENTS: PastEvent[] = PAST_EVENT_DATA;
-/** Flips in one commit when the owner approves the list. */
-export const LIBRARY_APPROVED: boolean = false;
+/** Owner approved the whole list on Nov 25 2026. */
+export const LIBRARY_APPROVED: boolean = true;
 
 const REGION: Partial<Record<SectionId, string>> = { vn: "vn", us: "us" };
 

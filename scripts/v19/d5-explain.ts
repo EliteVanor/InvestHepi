@@ -80,8 +80,8 @@ const card = (o: Record<string, unknown> = {}) => ({ story: "S1", title: "Oil ju
   assert.equal(E.dropUntraceable("Analysts expect 15% more.", hay), "");
 
   // --- past.ts ---
-  assert.deepEqual(P.candidates(S[0], "world"), [], "library not approved: no candidates");
-  assert.equal(P.LIBRARY_APPROVED, false);
+  assert.equal(P.LIBRARY_APPROVED, true, "approved by the owner");
+  assert.ok(P.candidates(S[0], "world").every((e) => P.PAST_EVENTS.some((x) => x.id === e.id)), "candidates come only from the library");
   const evVn = { ...ev, id: "opec-vn", region: "vn", date: "2019-01-01", keywords: ["OPEC"] };
   const evOther = { ...ev, id: "fed", keywords: ["federal reserve"] };
   assert.deepEqual(P.candidates(S[0], "world", 3, { approved: true, events: [ev, evVn, evOther] }).map((e) => e.id), ["opec-2020", "opec-vn"]);
@@ -130,7 +130,7 @@ const card = (o: Record<string, unknown> = {}) => ({ story: "S1", title: "Oil ju
   const c0 = r.cards[0];
   assert.deepEqual(c0.markets, [{ symbol: "CL=F", direction: "up", changePct: 3.9, text: "Oil rose about 4%." }]);
   assert.equal(c0.what, "OPEC+ cut output by 1,700 barrels.", "the 9,999 sentence is dropped");
-  assert.equal(c0.past, null, "no candidates while the library isn't approved");
+  assert.equal(c0.past, null, "a past_id that isn't one of the story's candidates is dropped");
   assert.deepEqual([c0.scope, c0.kind, c0.lang, c0.explainedAt, c0.outletsAtExplain], ["world", "important", "en", "2026-11-25T14:00:00.000Z", 2]);
   assert.deepEqual(c0.memberIds, ["oil1", "oil2"]);
   assert.deepEqual(c0.outlets, ["Reuters", "AP"]);
