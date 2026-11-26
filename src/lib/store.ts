@@ -33,7 +33,11 @@ export async function setJSON<T>(key: string, value: T, ttlSec?: number): Promis
     return;
   }
   await fs.mkdir(dir, { recursive: true });
-  await fs.writeFile(fileFor(key), JSON.stringify(value, null, 2));
+  // Write aside, then rename into place (atomic): writeFile empties the file first, so a reader in between got null.
+  const file = fileFor(key);
+  const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(value, null, 2));
+  await fs.rename(tmp, file);
 }
 
 /**
