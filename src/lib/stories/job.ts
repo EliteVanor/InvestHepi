@@ -10,7 +10,7 @@ import type { Analysis, CalendarEvent, NewsItem, Quote, SectionId } from "../typ
 import type { Story } from "./cluster";
 import { loadConcepts, writeConcepts } from "./concepts";
 import { explainStories } from "./explain";
-import { INTERESTS_PICK, SHARED_PICK, pickForRun, selectCards } from "./pick";
+import { INTERESTS_PICK, SHARED_PICK, pickForRun, selectCards, storyCompanies } from "./pick";
 import { indexStories, loadCards, loadRun, saveCards, saveRun, type RunRecord } from "./store";
 import type { StoryCard, StoryScope } from "./types";
 
@@ -88,7 +88,8 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
 
   const byId = new Map([...Object.values(cards), ...keep, ...fresh].map((c) => [c.id, c] as const));
   // A candidate whose new card was dropped (or left out) keeps its previous card, if any; then the quota by importance.
-  const ordered = selectCards(candidates.flatMap((s) => (byId.has(s.id) ? [byId.get(s.id)!] : [])), opts, new Set(o.only ?? []));
+  const companies = new Map(candidates.map((s) => [s.id, storyCompanies(s, quotes)] as const));
+  const ordered = selectCards(candidates.flatMap((s) => (byId.has(s.id) ? [byId.get(s.id)!] : [])), opts, new Set(o.only ?? []), companies);
   const record: RunRecord = {
     at: o.now.toISOString(),
     cardIds: ordered.map((c) => c.id),
