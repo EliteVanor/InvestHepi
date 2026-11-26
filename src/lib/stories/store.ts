@@ -3,7 +3,7 @@
  *
  *   stories:<scope>          the story index (ids and their headline ids), written by the tick and by runs
  *   story:<scope>:<id>       one explained card, 3 days
- *   stories:<scope>:run      the latest run: the shown card ids in order, big picture, movers, watch, provider
+ *   stories:<scope>:run      the latest run: the shown card ids in order, big picture, watch, provider
  */
 import { getJSON, setJSON } from "../store";
 import type { NewsItem } from "../types";

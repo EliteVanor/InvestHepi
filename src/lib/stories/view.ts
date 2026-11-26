@@ -20,6 +20,21 @@ export function conceptSlug(term: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/**
+ * A concept label as the card shows it: the term alone. The model sometimes writes an explanation into the term
+ * ("tariff (a tax on imports)", "yield: what a bond pays"); the explanation goes, and a label still longer than
+ * a short term (6+ words or 48+ characters) is dropped (""), since the concept card is where explanations live.
+ */
+export function conceptTerm(raw: string): string {
+  const t = raw
+    .replace(/\s*[(（][^)）]*[)）]?/g, "")
+    .split(/\s[-–—:]\s|:\s/)[0]
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.,;:]+$/, "");
+  return t && t.length < 48 && t.split(" ").length < 6 ? t : "";
+}
+
 /** What `/api/concepts` accepts as a slug (what `conceptSlug` makes, capped). */
 export const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 export const SLUG_MAX = 80;

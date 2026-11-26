@@ -9,12 +9,14 @@
 import { z } from "zod";
 import { generateJSON, type Route } from "../llm";
 import { estimateTokens } from "../llm/openai-compat";
-import { alignMovers } from "../movers";
+import { alignMovers, headlineMentions } from "../movers";
+import { isMarketWide } from "../symbols";
 import type { Analysis, CalendarEvent, Direction, NewsItem, Quote, SectionId } from "../types";
 import type { Story } from "./cluster";
 import { EXPLAIN_HINT, buildExplainSystem, buildExplainUser, contextText } from "./explain-prompt";
 import { candidates, type PastEvent } from "./past";
 import type { StoryCard, StoryScope } from "./types";
+import { conceptTerm } from "./view";
 
 export interface ExplainInput {
   scope: StoryScope;
@@ -133,12 +135,17 @@ export function pastFor(id: string | null | undefined, cands: PastEvent[]): stri
   return cands.some((c) => c.id === clean) ? clean : null;
 }
 
-/** c. Snapshot tickers only, with the snapshot's % (never the model's). */
-export function alignMarkets(markets: { ticker: string; direction: Direction; text: string }[], quotes: Quote[]): StoryCard["markets"] {
+/**
+ * c. Snapshot tickers only, with the snapshot's % (never the model's). With the story: a company's shares only
+ * when one of its reports names the company (Nov 26: Apple's iPhone story was tied to FPT "though not directly
+ * related", a Taiwan tariff story to TSMC); a whole market (index, oil, a currency, a fund) stays the prompt's call.
+ */
+export function alignMarkets(markets: { ticker: string; direction: Direction; text: string }[], quotes: Quote[], story?: Story): StoryCard["markets"] {
   const by = new Map(quotes.map((q) => [q.symbol.toUpperCase(), q]));
+  const named = (symbol: string) => !story || isMarketWide(symbol) || story.members.some((m) => headlineMentions(`${m.title} ${m.summary ?? ""}`, symbol));
   return markets.flatMap((m) => {
     const q = by.get(m.ticker.trim().toUpperCase());
-    return q ? [{ symbol: q.symbol, direction: m.direction, changePct: q.changePct, text: m.text }] : [];
+    return q && named(q.symbol) ? [{ symbol: q.symbol, direction: m.direction, changePct: q.changePct, text: m.text }] : [];
   });
 }
 
@@ -234,11 +241,11 @@ export async function explainStories(input: ExplainInput, route: Route): Promise
       outlets: s.outlets,
       what,
       why: clean(c.why),
-      markets: alignMarkets(c.markets, input.market.quotes).map((m) => ({ ...m, text: clean(m.text) })),
+      markets: alignMarkets(c.markets, input.market.quotes, s).map((m) => ({ ...m, text: clean(m.text) })),
       world: clean(c.world),
       past: past ? { id: past, different: clean(c.different) } : null,
       ...(watch ? { watch } : {}),
-      concepts: c.concepts.map((t) => t.trim()).filter(Boolean).slice(0, 3),
+      concepts: [...new Set(c.concepts.map(conceptTerm).filter(Boolean))].slice(0, 3),
       importance: c.importance,
       memberIds: s.members.map((m) => m.id),
     });

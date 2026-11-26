@@ -76,6 +76,13 @@ export const PROXIES: Record<string, string> = {
   "^VIX": "VIXY",
 };
 
+/** Funds that track a market (the stand-ins above, the benchmarks, sector SPDRs match /^XL/ below). */
+const FUNDS = new Set([...Object.values(PROXIES), "SPY", "QQQ", "SOXX", "DIA", "IWM", "GLD", "USO", "E1VFVN30.VN"]);
+/** A market as a whole (an index, future, currency, crypto or fund), as opposed to one company's shares. */
+export function isMarketWide(s: string): boolean {
+  return s.startsWith("^") || /=|-USD$|\.NYB$/.test(s) || s === "000001.SS" || FUNDS.has(s) || /^XL[A-Z]{1,2}$/.test(s);
+}
+
 /** "^VNINDEX.VN" → "VN-Index", "FPT.VN" → "FPT", "AAPL" → "AAPL". */
 export function symLabel(s: string): string {
   return SYMBOL_LABELS[s] ?? s.replace(/\.VN$/, "");

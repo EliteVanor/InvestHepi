@@ -117,7 +117,7 @@ const gnewsTopicVi = (topic: string) => `https://news.google.com/rss/headlines/s
  * after production's Google News answered 429 on Nov 25 and World lost every Google feed at once, so no
  * section depends on one host for its news or its interesting stories (pinned by scripts/v19/d9-feeds.ts). */
 const INTERESTING_MAX = 8;
-const interesting = (name: string, url: string): Feed => ({ name, url, kind: "interesting", max: INTERESTING_MAX });
+const interesting = (f: Feed): Feed => ({ ...f, kind: "interesting", max: INTERESTING_MAX });
 
 export interface Feed {
   name: string;
@@ -126,50 +126,65 @@ export interface Feed {
   kind?: "interesting";
   /** Most items taken from this feed per fetch (science and culture feeds would otherwise crowd out market news). */
   max?: number;
+  /** The publisher, when it has several feeds (BBC World and BBC Business are one outlet, "BBC"): a story's outlet count must not grow because one publisher files it twice. Defaults to `name`. */
+  outlet?: string;
 }
+
+/** Feeds from one publisher: each headline's source is the publisher, so its feeds count as one outlet. */
+const bbc = (name: string, path: string): Feed => ({ name, url: `https://feeds.bbci.co.uk/news/${path}/rss.xml`, outlet: "BBC" });
+const npr = (name: string, id: number): Feed => ({ name, url: `https://feeds.npr.org/${id}/rss.xml`, outlet: "NPR" });
+const cnbc = (name: string, id: number): Feed => ({ name, url: `https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=${id}`, outlet: "CNBC" });
 
 /** Static feeds per section. Interest-specific feeds are generated from the interest list. */
 export const SECTION_FEEDS: Record<SectionId, Feed[]> = {
   interests: [
-    { name: "CNBC Top News", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=100003114" },
+    cnbc("CNBC Top News", 100003114),
     { name: "MarketWatch", url: "https://feeds.content.dowjones.io/public/rss/mw_topstories" },
     { name: "Google News Business", url: gnewsTopic("BUSINESS") },
   ],
   world: [
     { name: "Google News World", url: gnewsTopic("WORLD") },
-    { name: "BBC World", url: "https://feeds.bbci.co.uk/news/world/rss.xml" },
+    bbc("BBC World", "world"),
     { name: "Al Jazeera", url: "https://www.aljazeera.com/xml/rss/all.xml" },
+    // Hosts production already answers (Google News refuses it): a story reported by several of these counts as big.
+    npr("NPR World", 1004),
+    cnbc("CNBC World", 100727362),
     {
       name: "Global macro",
       url: gnewsSearch('"central bank" OR "oil prices" OR "global economy" OR tariffs OR China economy OR Taiwan'),
     },
-    { name: "BBC Business", url: "https://feeds.bbci.co.uk/news/business/rss.xml" },
-    interesting("Google News Science", gnewsTopic("SCIENCE")),
-    interesting("BBC Science", "https://feeds.bbci.co.uk/news/science_and_environment/rss.xml"),
-    interesting("Google News Health", gnewsTopic("HEALTH")),
+    bbc("BBC Business", "business"),
+    interesting({ name: "Google News Science", url: gnewsTopic("SCIENCE") }),
+    interesting(bbc("BBC Science", "science_and_environment")),
+    interesting({ name: "Google News Health", url: gnewsTopic("HEALTH") }),
   ],
   us: [
     { name: "Google News US", url: gnewsTopic("NATION") },
-    { name: "NPR News", url: "https://feeds.npr.org/1001/rss.xml" },
-    { name: "CNBC Economy", url: "https://search.cnbc.com/rs/search/combinedcms/view.xml?partnerId=wrss01&id=20910258" },
+    npr("NPR News", 1001),
+    cnbc("CNBC Economy", 20910258),
+    // More from hosts production already answers: the US section had 15 headlines while Google News refused it (Nov 25).
+    bbc("BBC US & Canada", "world/us_and_canada"),
+    npr("NPR Business", 1006),
+    npr("NPR Politics", 1014),
+    cnbc("CNBC Top News", 100003114),
     {
       name: "US policy",
       url: gnewsSearch('"Federal Reserve" OR inflation OR "jobs report" OR Congress OR "White House" economy OR Treasury yields'),
     },
-    interesting("Google News Science", gnewsTopic("SCIENCE")),
-    interesting("NPR Science", "https://feeds.npr.org/1007/rss.xml"),
-    interesting("Google News Health", gnewsTopic("HEALTH")),
+    interesting({ name: "Google News Science", url: gnewsTopic("SCIENCE") }),
+    interesting(npr("NPR Science", 1007)),
+    interesting({ name: "Google News Health", url: gnewsTopic("HEALTH") }),
   ],
   vn: [
-    { name: "VnExpress Kinh doanh", url: "https://vnexpress.net/rss/kinh-doanh.rss" },
+    { name: "VnExpress Kinh doanh", url: "https://vnexpress.net/rss/kinh-doanh.rss", outlet: "VnExpress" },
     { name: "CafeF Chứng khoán", url: "https://cafef.vn/thi-truong-chung-khoan.rss" },
     { name: "Vietstock", url: "https://vietstock.vn/830/chung-khoan/co-phieu.rss" },
     { name: "Tuổi Trẻ Kinh doanh", url: "https://tuoitre.vn/rss/kinh-doanh.rss" },
     { name: "Google News VN", url: gnewsSearchVi('"VN-Index" OR "chứng khoán" OR "Ngân hàng Nhà nước" OR "tỷ giá" OR "FDI"') },
     { name: "Vietnam markets (EN)", url: gnewsSearch('"Vietnam stock" OR "VN-Index" OR "Vietnam economy" OR "State Bank of Vietnam"') },
-    interesting("VnExpress Khoa học công nghệ", "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss"),
-    interesting("VnExpress Giải trí", "https://vnexpress.net/rss/giai-tri.rss"),
-    interesting("Google News Khoa học", gnewsTopicVi("SCIENCE")),
+    interesting({ name: "VnExpress Khoa học công nghệ", url: "https://vnexpress.net/rss/khoa-hoc-cong-nghe.rss", outlet: "VnExpress" }),
+    interesting({ name: "VnExpress Giải trí", url: "https://vnexpress.net/rss/giai-tri.rss", outlet: "VnExpress" }),
+    interesting({ name: "Google News Khoa học", url: gnewsTopicVi("SCIENCE") }),
   ],
 };
 

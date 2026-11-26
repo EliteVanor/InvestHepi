@@ -155,10 +155,9 @@ export function clusterStories(items: NewsItem[], prev: StoryIndex | null, now: 
     .sort((a, b) => ms(b) - ms(a));
   const clusters: Sig[][] = [];
   for (const item of sorted) {
-    const lang = detectLang(item.title);
     // Dates are taken out before comparing (daily columns share "25/11"); two different dates are two events.
-    const { dates, rest } = datesOf(item.title, lang);
-    const sig: Sig = { item, lang, w: words(rest, lang), t: trigrams(rest), dir: direction(rest), dates };
+    const sig = sigOf(item);
+    const lang = sig.lang;
     const home = clusters.find((c) => {
       const f = c[0];
       if (f.item.id === item.id) return true;

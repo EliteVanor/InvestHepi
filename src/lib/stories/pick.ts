@@ -81,15 +81,17 @@ export function selectCards(cards: StoryCard[], opts: PickOpts, pinned: Set<stri
   return [...important.slice(0, Math.max(opts.important, fill)), ...interesting];
 }
 
-export function pickForRun(stories: Story[], cards: Record<string, StoryCard>, quotes: Quote[], now: Date, opts: PickOpts = SHARED_PICK): { explain: Story[]; keep: StoryCard[] } {
+/** The run's candidates (`shownStories`), split into those to explain and those whose fresh card is kept. */
+export function pickForRun(stories: Story[], cards: Record<string, StoryCard>, quotes: Quote[], now: Date, opts: PickOpts = SHARED_PICK): { candidates: Story[]; explain: Story[]; keep: StoryCard[] } {
+  const candidates = shownStories(stories, quotes, opts);
   const explain: Story[] = [];
   const keep: StoryCard[] = [];
-  for (const s of shownStories(stories, quotes, opts)) {
+  for (const s of candidates) {
     const card = cards[s.id];
     if (cardFresh(card, s, now)) keep.push({ ...card, outlets: s.outlets });
     else explain.push(s);
   }
-  return { explain, keep };
+  return { candidates, explain, keep };
 }
 
 /** A story is "big" when 4+ distinct outlets ran it within 30 min of its first headline (owner Q18). */
