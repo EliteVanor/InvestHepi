@@ -216,7 +216,7 @@ These are the habits from past sessions. Follow them without being asked.
 - Ask before merging to `main` (it deploys) unless the owner said to merge without asking. After a merge, check production with read-only GET requests only. Don't wait for the build inside the session (no polling loops, no background waits): schedule a check-in (`send_later`) about 5 minutes after the push and end the turn. The check-in confirms the new build is live (something only it has: a new CSS rule, UI string or API field), then checks the endpoints, then does a real-browser pass (wide and phone, no console errors). If the build isn't live yet, it schedules itself again rather than waiting.
 - Refactors that must not change the UI: screenshot the views before and after with the same seeded data and a frozen clock, and compare pixel by pixel (`compare -metric AE`); report the counts.
 - When a result can only be checked later (a deploy, a market close, an hourly job, the next scheduler tick), schedule a check-in (`send_later`) instead of holding the session or polling.
-- On long tasks, post a one-line status now and then.
+- Work silently: no status lines, no narration between steps. Speak only to ask a question that blocks the work, or to give the final report (what's finished, verified, not verified, open questions), visual first.
 - End with: what changed, what was verified, what wasn't, open risks, and the one question that decides the next step.
 
 **Lines not to cross**
