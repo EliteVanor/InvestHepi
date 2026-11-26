@@ -23,7 +23,7 @@ import { isHoliday } from "./holidays";
 import { SETTLE_MINS, calendarKey, closeUtc, dailyTarget, localNow, nextTradingDay, nthWeekday, sessionClosed, type Phase } from "./markets";
 import { exchangeTz } from "./symbols";
 import { getJSON, setJSON } from "./store";
-import type { Call, Interest, Outlook } from "./types";
+import type { Action, Call, Direction, Interest, Outlook } from "./types";
 
 export { sessionClosed } from "./markets";
 
@@ -455,4 +455,19 @@ export function trackRecordText(stats: TrackStats): string {
   if (tick.length) lines.push(`Per ticker (right/graded): ${tick.join(", ")}.`);
   lines.push("Use this: lower confidence where your record at that level or on that ticker is weak, raise it only where the record is strong and the sample is large. If you have no edge over \"always up\", say so in the rationale.");
   return lines.join("\n");
+}
+
+/** Track records of the shared sections (calls on market groups, graded like personal ones). */
+export const SHARED_CALLS: Record<"world" | "us" | "vn", string> = { world: "calls:world", us: "calls:us", vn: "calls:vn" };
+
+/**
+ * An action that contradicts its call's direction is replaced: "up" with Sell/Trim/Avoid becomes
+ * Hold, "down" with Buy/Add becomes Wait, and "down" with Hold becomes Wait unless the investor holds
+ * positions (then holding through an expected dip is a real choice). The prompt asks for this too.
+ */
+export function alignAction(direction: Direction, action: Action, hasPositions = false): Action {
+  if (direction === "up" && (action === "SELL" || action === "TRIM" || action === "AVOID")) return "HOLD";
+  if (direction === "down" && (action === "BUY" || action === "ADD")) return "WAIT";
+  if (direction === "down" && action === "HOLD" && !hasPositions) return "WAIT";
+  return action;
 }

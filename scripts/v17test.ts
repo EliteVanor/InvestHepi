@@ -42,7 +42,6 @@ globalThis.fetch = (async (input: string | URL | Request) => {
 (async () => {
   await fs.rm(process.env.STORE_DIR || "/tmp/invest-helper", { recursive: true, force: true });
   const T = await import("../src/lib/track");
-  const P = await import("../src/lib/pipeline");
   const { setJSON, getJSON } = await import("../src/lib/store");
   type Call = import("../src/lib/types").Call;
   const base = { madeAt: "2026-11-15T00:00:00Z", interest: "x", ticker: "AAA", confidence: 60, provider: "groq" };
@@ -70,13 +69,13 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.match(T.trackRecordText(T.computeStats([...many, ...got])), /2 up\/down calls moved less than the ticker's usual range and were not counted/);
 
   /* ---------------- actions agree with directions */
-  assert.equal(P.alignAction("down", "BUY"), "WAIT");
-  assert.equal(P.alignAction("down", "ADD"), "WAIT");
-  assert.equal(P.alignAction("down", "HOLD"), "WAIT", "down + hold (no positions): wait");
-  assert.equal(P.alignAction("down", "HOLD", true), "HOLD", "someone who holds it may hold through a dip");
-  assert.equal(P.alignAction("up", "SELL"), "HOLD");
-  assert.equal(P.alignAction("up", "AVOID"), "HOLD");
-  for (const [d, a] of [["up", "BUY"], ["up", "WAIT"], ["down", "SELL"], ["down", "WAIT"], ["flat", "HOLD"], ["flat", "WAIT"]] as const) assert.equal(P.alignAction(d, a), a, `${d} + ${a} is fine`);
+  assert.equal(T.alignAction("down", "BUY"), "WAIT");
+  assert.equal(T.alignAction("down", "ADD"), "WAIT");
+  assert.equal(T.alignAction("down", "HOLD"), "WAIT", "down + hold (no positions): wait");
+  assert.equal(T.alignAction("down", "HOLD", true), "HOLD", "someone who holds it may hold through a dip");
+  assert.equal(T.alignAction("up", "SELL"), "HOLD");
+  assert.equal(T.alignAction("up", "AVOID"), "HOLD");
+  for (const [d, a] of [["up", "BUY"], ["up", "WAIT"], ["down", "SELL"], ["down", "WAIT"], ["flat", "HOLD"], ["flat", "WAIT"]] as const) assert.equal(T.alignAction(d, a), a, `${d} + ${a} is fine`);
   const prompt = readFileSync(path.join(__dirname, "../src/lib/llm/predict.ts"), "utf8");
   assert.match(prompt, /The action must agree with the direction/, "the prediction prompt asks for it");
 

@@ -1,6 +1,6 @@
 import { gate } from "@/lib/users";
 import { currentCallsKey } from "@/lib/interests";
-import { SHARED_CALLS } from "@/lib/pipeline";
+import { SHARED_CALLS } from "@/lib/track";
 import { computeStats, loadCalls } from "@/lib/track";
 
 export const dynamic = "force-dynamic";

@@ -260,7 +260,7 @@ globalThis.fetch = (async (input: string | URL | Request) => {
   assert.deepEqual(r.paused, ["lvl"], "the level rule is reported paused");
 
   /* ---------------- briefings: a snapshot with a stale price is reused for a minute, not 10 */
-  const Pl = await import("../../src/lib/pipeline");
+  const Pl = await import("../../src/lib/market-data");
   const fresh = { symbol: "SPY", price: 1, prevClose: 1, changePct: 0, history: [], source: "nasdaq" as const };
   assert.equal(Pl.marketTtl({ quotes: [fresh], macro: [], sectors: [] }), 10 * 60_000);
   assert.equal(Pl.marketTtl({ quotes: [fresh], macro: [], sectors: [{ ...fresh, symbol: "XLK", stale: true }] }), 60_000, "a stale sector price expires after a minute");

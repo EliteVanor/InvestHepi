@@ -200,7 +200,7 @@ const count = (re: RegExp) => hits.filter((u) => re.test(u)).length;
   Y.resetYahoo();
 
   // ---- shared sections: market coverage, no personal stocks
-  const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")) }; // pipeline.ts was split in v14
+  const P = { ...(await import("../src/lib/pipeline")), ...(await import("../src/lib/briefings")), ...(await import("../src/lib/interests")), ...(await import("../src/lib/track")) }; // pipeline.ts was split in v14
   const { SECTION_STRIPS } = await import("../src/lib/config");
   const d = await P.refreshShared("vn", "vi");
   assert.equal(d.analysis.outlook, undefined, "briefings make no calls (v18)");
