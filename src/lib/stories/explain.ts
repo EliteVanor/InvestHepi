@@ -15,6 +15,7 @@ import type { Story } from "./cluster";
 import { EXPLAIN_HINT, buildExplainSystem, buildExplainUser, contextText } from "./explain-prompt";
 import { candidates, type PastEvent } from "./past";
 import type { StoryCard, StoryScope } from "./types";
+import { conceptTerm } from "./view";
 
 export interface ExplainInput {
   scope: StoryScope;
@@ -238,7 +239,7 @@ export async function explainStories(input: ExplainInput, route: Route): Promise
       world: clean(c.world),
       past: past ? { id: past, different: clean(c.different) } : null,
       ...(watch ? { watch } : {}),
-      concepts: c.concepts.map((t) => t.trim()).filter(Boolean).slice(0, 3),
+      concepts: [...new Set(c.concepts.map(conceptTerm).filter(Boolean))].slice(0, 3),
       importance: c.importance,
       memberIds: s.members.map((m) => m.id),
     });

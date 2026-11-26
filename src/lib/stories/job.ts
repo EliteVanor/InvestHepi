@@ -10,7 +10,7 @@ import type { Analysis, CalendarEvent, NewsItem, Quote, SectionId } from "../typ
 import type { Story } from "./cluster";
 import { loadConcepts, writeConcepts } from "./concepts";
 import { explainStories } from "./explain";
-import { INTERESTS_PICK, SHARED_PICK, pickForRun, selectCards, shownStories } from "./pick";
+import { INTERESTS_PICK, SHARED_PICK, pickForRun, selectCards } from "./pick";
 import { indexStories, loadCards, loadRun, saveCards, saveRun, type RunRecord } from "./store";
 import type { StoryCard, StoryScope } from "./types";
 
@@ -50,30 +50,31 @@ export const storyLang = (section: SectionId): "en" | "vi" => (section === "vn" 
 const pickOpts = (scope: StoryScope) => (scope.startsWith("ib:") ? INTERESTS_PICK : SHARED_PICK);
 const members = (stories: Story[]) => stories.flatMap((s) => s.members);
 
+/** Big-story run: explain only the named stories (offered even when they are not candidates); other stale candidates keep their old card and are named as covered. */
+function bigStoryPlan(p: ReturnType<typeof pickForRun>, stories: Story[], cards: Record<string, StoryCard>, only: string[]) {
+  const ids = new Set(only);
+  const extra = stories.filter((s) => ids.has(s.id) && !p.candidates.includes(s));
+  return {
+    candidates: [...extra, ...p.candidates],
+    explain: [...extra, ...p.explain].filter((s) => ids.has(s.id)),
+    skipped: p.explain.filter((s) => !ids.has(s.id) && cards[s.id]).map((s) => cards[s.id].title),
+  };
+}
+
 export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRun> {
   const stories = await indexStories(scope, o.headlines, o.now);
   const prev = await loadRun(scope);
   const quotes = o.market.quotes;
   const cards = await loadCards(scope, prev?.cardIds ?? [], o.now);
-  let shown = shownStories(stories, quotes, pickOpts(scope));
-  const picked = pickForRun(stories, cards, quotes, o.now, pickOpts(scope));
+  const opts = pickOpts(scope);
+  const picked = pickForRun(stories, cards, quotes, o.now, opts);
   const { keep } = picked;
-  let explain = picked.explain;
-  let skipped: string[] = [];
-  if (o.only) {
-    // Big-story run: only the named stories are explained; other stale stories keep their old card (named as covered).
-    const ids = new Set(o.only);
-    const extra = stories.filter((s) => ids.has(s.id) && !shown.includes(s));
-    shown = [...extra, ...shown];
-    skipped = picked.explain.filter((s) => !ids.has(s.id) && cards[s.id]).map((s) => cards[s.id].title);
-    explain = [...extra, ...picked.explain].filter((s) => ids.has(s.id));
-  }
+  const { candidates, explain, skipped } = o.only ? bigStoryPlan(picked, stories, cards, o.only) : { ...picked, skipped: [] as string[] };
 
   // One AI call per run (owner Q14): new and stale stories get cards; fresh ones are only named, so the big
   // picture, movers and watch line always come from today's data.
   // Candidates mode (owner Q16): the model picks the most important among the candidates and scores them;
   // a big-story run explains only its story.
-  const opts = pickOpts(scope);
   const want = o.only ? undefined : { important: opts.important, interesting: opts.interests ? 0 : opts.interesting };
   const r = await explainStories({ scope, section: o.section, stories: explain, covered: [...keep.map((c) => c.title), ...skipped], want, market: o.market, calendar: o.calendar, lang: storyLang(o.section), now: o.now }, o.route);
   const fresh = r.cards;
@@ -87,7 +88,7 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
 
   const byId = new Map([...Object.values(cards), ...keep, ...fresh].map((c) => [c.id, c] as const));
   // A candidate whose new card was dropped (or left out) keeps its previous card, if any; then the quota by importance.
-  const ordered = selectCards(shown.flatMap((s) => (byId.has(s.id) ? [byId.get(s.id)!] : [])), opts, new Set(o.only ?? []));
+  const ordered = selectCards(candidates.flatMap((s) => (byId.has(s.id) ? [byId.get(s.id)!] : [])), opts, new Set(o.only ?? []));
   const record: RunRecord = {
     at: o.now.toISOString(),
     cardIds: ordered.map((c) => c.id),
@@ -98,7 +99,7 @@ export async function runStories(scope: StoryScope, o: RunOpts): Promise<StoryRu
   await saveRun(scope, record);
   const inNews = new Set(run.news.map((n) => n.id));
   const shownIds = new Set(record.cardIds);
-  const shownNews = members(shown.filter((s) => shownIds.has(s.id))).filter((n) => !inNews.has(n.id) && (inNews.add(n.id), true));
+  const shownNews = members(candidates.filter((s) => shownIds.has(s.id))).filter((n) => !inNews.has(n.id) && (inNews.add(n.id), true));
   return { ...run, cards: ordered, shownNews, explained: explain.map((s) => s.id) };
 }
 
