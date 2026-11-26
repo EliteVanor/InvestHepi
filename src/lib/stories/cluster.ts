@@ -122,16 +122,16 @@ const sigOf = (item: NewsItem): Sig => {
   const { dates, rest } = datesOf(item.title, lang);
   return { item, lang, w: words(rest, lang), t: trigrams(rest), dir: direction(rest), dates };
 };
+/** All-caps 3-4 letter words that name a company or index (PNJ, FPT, NVDA), not common acronyms. */
+const NOT_CODES = new Set("USD VND EUR GDP CPI CEO CFO IPO ETF FED ECB BOJ IMF WTO OPEC NATO AI UK US EU USA UAE BBC CNN AP HNX HOSE UBCK NHNN SBV FDI MSCI FTSE TP HCM".split(" "));
+const codesOf = (title: string) => new Set((title.match(/\b[A-Z]{3,4}\b/g) ?? []).filter((w) => !NOT_CODES.has(w)));
+
 /**
  * Two stories about the same event or topic (one event worded differently by outlets can land in two clusters;
  * so can two events of one war): their first headlines share RELATED_SHARED distinctive words, same language,
  * no opposite moves, no different dates. Used by the picker to avoid two cards on one subject; clustering itself
  * never merges on it (word counts can't tell "same event" from "same topic", so cards and sources stay exact).
  */
-/** All-caps 3-4 letter words that name a company or index (PNJ, FPT, NVDA), not common acronyms. */
-const NOT_CODES = new Set("USD VND EUR GDP CPI CEO CFO IPO ETF FED ECB BOJ IMF WTO OPEC NATO AI UK US EU USA UAE BBC CNN AP HNX HOSE UBCK NHNN SBV FDI MSCI FTSE TP HCM".split(" "));
-const codesOf = (title: string) => new Set((title.match(/\b[A-Z]{3,4}\b/g) ?? []).filter((w) => !NOT_CODES.has(w)));
-
 export function relatedStories(a: Story, b: Story): boolean {
   const x = sigOf(a.members[0]), y = sigOf(b.members[0]);
   if (x.lang !== y.lang || x.dir * y.dir < 0) return false;
