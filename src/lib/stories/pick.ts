@@ -9,6 +9,7 @@
  * fewer than 3 new outlets since it was explained) keeps its card; the rest go to the model, best first.
  */
 import { headlineMentions } from "../movers";
+import { isMarketWide } from "../symbols";
 import type { Quote } from "../types";
 import { relatedStories, type Story } from "./cluster";
 import type { StoryCard } from "./types";
@@ -19,9 +20,14 @@ export interface PickOpts {
   toModel: number;
   /** My Interests: only stories with a tagged headline, `important` of them, no interesting quota. */
   interests?: boolean;
+  /**
+   * At most this many cards per company in a run (owner, Nov 26: 4 of 5 important US cards were Nvidia).
+   * Shared sections only: someone who follows one company wants all its news.
+   */
+  perCompany?: number;
 }
 
-export const SHARED_PICK: PickOpts = { important: 5, interesting: 2, toModel: 10 };
+export const SHARED_PICK: PickOpts = { important: 5, interesting: 2, toModel: 10, perCompany: 2 };
 export const INTERESTS_PICK: PickOpts = { important: 6, interesting: 0, toModel: 10, interests: true };
 
 /** A card is re-explained once it is this old, or once its story gained this many outlets. */
@@ -35,6 +41,23 @@ export function storyScore(s: Story, quotes: Quote[]): number {
     if (m > move && Number.isFinite(m) && s.members.some((i) => headlineMentions(i.title, q.symbol))) move = m;
   }
   return s.outlets.length + move;
+}
+
+/** The companies a story is about: snapshot tickers of single companies (not indexes, funds or futures) that one of its headlines names. */
+export function storyCompanies(s: Story, quotes: Quote[]): string[] {
+  return quotes.filter((q) => !isMarketWide(q.symbol) && s.members.some((m) => headlineMentions(m.title, q.symbol))).map((q) => q.symbol);
+}
+
+/** `items` in order, dropping an item once every company it names already has `max` kept items (no limit without `max`). */
+export function capPerCompany<T>(items: T[], companiesOf: (t: T) => string[], max?: number): T[] {
+  if (!max) return items;
+  const count = new Map<string, number>();
+  return items.filter((t) => {
+    const cos = companiesOf(t);
+    if (cos.some((c) => (count.get(c) ?? 0) >= max)) return false;
+    for (const c of cos) count.set(c, (count.get(c) ?? 0) + 1);
+    return true;
+  });
 }
 
 export function cardFresh(card: StoryCard | undefined, s: Story, now: Date): card is StoryCard {
@@ -57,23 +80,27 @@ export function shownStories(stories: Story[], quotes: Quote[], opts: PickOpts):
     // One card per subject: a story related to a better-ranked one (same event in another cluster, or another
     // event of the same subject) gives its slot to the next subject.
     .reduce<Story[]>((kept, s) => (kept.some((k) => relatedStories(k, s)) ? kept : [...kept, s]), []);
-  if (opts.interests) return ranked.slice(0, opts.toModel);
-  const important = ranked.filter((s) => s.kind === "important").slice(0, opts.toModel);
-  const interesting = ranked.filter((s) => s.kind === "interesting").slice(0, opts.interesting * 2);
+  const capped = capPerCompany(ranked, (s) => storyCompanies(s, quotes), opts.perCompany);
+  if (opts.interests) return capped.slice(0, opts.toModel);
+  const important = capped.filter((s) => s.kind === "important").slice(0, opts.toModel);
+  const interesting = capped.filter((s) => s.kind === "interesting").slice(0, opts.interesting * 2);
   const chosen = new Set([...important, ...interesting]);
-  return ranked.filter((s) => chosen.has(s));
+  return capped.filter((s) => chosen.has(s));
 }
 
 /**
  * The cards to show, from the candidates' cards (in candidate order): the `important` quota of important cards
  * and the `interesting` quota of interesting ones, each by the model's importance (cards without one count 3),
  * ties by candidate rank; too few interesting cards: important ones fill in. `pinned` (a big story) always shows.
- * My Interests: `important` cards whatever their kind. Shown most important first.
+ * My Interests: `important` cards whatever their kind. Shown most important first. With `perCompany`, a card
+ * whose company (`companies`, by card id) already has that many better cards gives its place to the next one.
  */
-export function selectCards(cards: StoryCard[], opts: PickOpts, pinned: Set<string> = new Set()): StoryCard[] {
+export function selectCards(cards: StoryCard[], opts: PickOpts, pinned: Set<string> = new Set(), companies: Map<string, string[]> = new Map()): StoryCard[] {
   const rank = new Map(cards.map((c, i) => [c.id, i]));
-  const best = (xs: StoryCard[]) =>
-    [...xs].sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)) || (b.importance ?? 3) - (a.importance ?? 3) || rank.get(a.id)! - rank.get(b.id)!);
+  const sorted = [...cards].sort((a, b) => Number(pinned.has(b.id)) - Number(pinned.has(a.id)) || (b.importance ?? 3) - (a.importance ?? 3) || rank.get(a.id)! - rank.get(b.id)!);
+  // One count across important and interesting cards: the cap is per run.
+  const allowed = new Set(capPerCompany(sorted, (c) => companies.get(c.id) ?? [], opts.perCompany));
+  const best = (xs: StoryCard[]) => sorted.filter((c) => xs.includes(c) && allowed.has(c));
   if (opts.interests) return best(cards).slice(0, opts.important);
   const important = best(cards.filter((c) => c.kind !== "interesting"));
   const interesting = best(cards.filter((c) => c.kind === "interesting")).slice(0, opts.interesting);
