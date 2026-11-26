@@ -26,7 +26,7 @@ export const en = {
   "mkt.closesIn": "Closes in {t}",
   "brief.title": "Briefing",
   "brief.updated": "Updated {t}",
-  "brief.stories": "{n} stories",
+  "brief.stories": "{n} headlines",
   "brief.rules": "Rule-based (no AI key)",
   "brief.feedsFailed": "{n} feeds failed",
   "brief.history": "Earlier briefings",
