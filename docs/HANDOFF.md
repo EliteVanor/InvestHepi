@@ -177,6 +177,16 @@ Checked against production. Fixed on the branch (not deployed yet):
 - Not verified: the new feed URLs from production; the prompt changes on a real model (no keys in the sandbox).
 - Later: one event reported by different outlets in different words stays in separate clusters, so outlet counts are low; the picker's `relatedStories` could add a related story's outlets to the kept one's score (it inherits relatedStories' false positives, so measure first). Pre-existing: the three shared sections' parallel fetches read and write `news:cool` without a lock (a lost update only shortens a rest).
 
+**Final check (Nov 26, branch `v19-final`): did v19 go as planned?**
+- Plan coverage: fix plan 1-10, design Q1-Q11, stories Q12-Q19 and audit rows 1-30 each map to a commit and a test (`scripts/v19/row*.ts`, `d*.ts`, `f-*.ts`, `audit*.ts`); row 22 was folded into D5, row 1 is phase A (tests and CI). Nothing planned is missing.
+- Review coverage: v19a and D6 onward were reviewed with review-code + thermo-nuclear; `src/lib/stories/*` (D1, D5) was re-reviewed with the skills in audit 2. Not yet reviewed with the skills: `news.ts` (row 23, D9, the back-off) and F1 (catch-up, email, Ask AI). Reviewed now; found and fixed:
+  1. My Interests called `fetchFeeds` once per interest in parallel: a refusing host (Google) was asked once per interest before its rest was written, and the calls raced on `news:cool`/`news:strikes`. Now one call per set (`interestFeeds`, `Feed.tag`).
+  2. Finnhub items skipped the parse-time guards RSS items get (http(s) links, capped title and summary) and one item without a headline dropped the ticker's whole reply. Now both go through `newsItem`.
+  3. Ask AI's top-news suggestion used one variable for two meanings (a market label or an interest id); now `topNews` returns the title and the name.
+- Architecture: the TS files are split (row 30; the "sections.tsx 644 lines" note above is from before the split, the largest part is now 209 lines). The one file over 1,000 lines was `globals.css` (1,150 before v19, 1,218 after): split at its own top-level banners into four parts imported in order by `layout.tsx`. Verified: the parts concatenate byte for byte to the old file, and both builds serve the same 814 CSS rules in the same order (read from the browser). It is still grouped by round (v3, v4, v16) inside the parts; regrouping by feature would reorder rules, so it needs a pixel check with seeded v19 story data first (later).
+- Not changed (known, low impact): the three shared sections' parallel fetches can still race on `news:cool` (a lost write only shortens a rest).
+- Tests: `scripts/v19/final-news.ts` (fails on the old code at the Finnhub link guard); `row02-safe-area` reads the stylesheet parts.
+
 **Story design decisions (owner, Nov 20, grilling round 2, all as recommended unless noted)**
 - Q12 grouping: word matching with no AI, Unicode-aware (Vietnamese accents) plus character trigrams, within one language only.
 - Q13 a story keeps its id while it shares headlines with the previous tick's story (id from its earliest headline); re-explained only when it gains 3+ new outlets or its card is over 12 h old.

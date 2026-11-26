@@ -59,7 +59,6 @@ async function fetchWithTimeout(url: string, ms = 9000): Promise<Response> {
   }
 }
 
-/** Parse an RSS 2.0 or Atom document into NewsItems. */
 const AHEAD_MS = 10 * 60_000;
 
 /**
@@ -84,7 +83,24 @@ export function fixFeedTimes(items: NewsItem[], url: string, now = new Date()): 
   return items.map((i) => (ahead(i) ? { ...i, publishedAt: now.toISOString() } : i));
 }
 
-/** `outlet` is the publisher a feed belongs to (BBC World and BBC Business are one outlet, "BBC"); defaults to the feed's name. */
+/**
+ * One headline as every source makes it (RSS, Atom, Finnhub): title and summary capped, link http(s) only,
+ * id from the title. With no usable date it is stamped now and marked `undated` (headlines.ts keeps its first-seen time).
+ */
+function newsItem(title: string, link: string, source: string, published: Date | null, summary?: string): NewsItem {
+  const dated = published && !isNaN(published.getTime());
+  return {
+    id: hash(title.toLowerCase()),
+    title: capText(title, MAX_TITLE_CHARS),
+    link: safeHttpUrl(link),
+    source,
+    publishedAt: (dated ? published : new Date()).toISOString(),
+    ...(dated ? {} : { undated: true }),
+    summary: summary ? capText(summary, MAX_SUMMARY_CHARS) : undefined,
+  };
+}
+
+/** Parse an RSS 2.0 or Atom document into NewsItems. `outlet` is the publisher a feed belongs to (BBC World and BBC Business are one outlet, "BBC"); defaults to the feed's name. */
 export function parseFeed(xml: string, feedName: string, outlet = feedName): NewsItem[] {
   const doc = parser.parse(xml);
   const rawItems: Record<string, unknown>[] = [];
@@ -117,19 +133,9 @@ export function parseFeed(xml: string, feedName: string, outlet = feedName): New
       }
     }
     const dateStr = text(r.pubDate) || text(r.published) || text(r.updated) || text(r["dc:date"]);
-    const d = dateStr ? new Date(dateStr) : new Date();
-    const undated = !dateStr || isNaN(d.getTime());
-    const summary = capText(stripHtml(text(r.description) || text(r.summary)), MAX_SUMMARY_CHARS);
-    out.push({
-      id: hash(title.toLowerCase()),
-      title: capText(title, MAX_TITLE_CHARS),
-      link: safeHttpUrl(link),
-      source,
-      publishedAt: undated ? new Date().toISOString() : d.toISOString(),
-      ...(undated ? { undated: true } : {}),
-      // Google News descriptions just repeat the title + publisher list, so drop them
-      summary: summary && !summary.startsWith(title.slice(0, 30)) ? summary : undefined,
-    });
+    const summary = stripHtml(text(r.description) || text(r.summary));
+    // Google News descriptions just repeat the title + publisher list, so drop them
+    out.push(newsItem(title, link, source, dateStr ? new Date(dateStr) : null, summary && !summary.startsWith(title.slice(0, 30)) ? summary : undefined));
   }
   return out;
 }
@@ -178,7 +184,7 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         answered.add(host);
-        const items = fixFeedTimes(parseFeed(await res.text(), f.name, f.outlet), f.url).map((i) => (f.kind ? { ...i, feedKind: f.kind } : i));
+        const items = fixFeedTimes(parseFeed(await res.text(), f.name, f.outlet), f.url).map((i) => ({ ...i, ...(f.kind && { feedKind: f.kind }), ...(f.tag && { tags: [f.tag] }) }));
         return f.max ? items.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt)).slice(0, f.max) : items;
       } catch (e) {
         errors.push(`${f.name}: ${(e as Error).message}`);
@@ -228,49 +234,42 @@ export function tagInterests(items: NewsItem[], interests: Interest[]): NewsItem
   });
 }
 
+/** An interest's own feeds: Google News for its query (Vietnam's edition for VN stocks or Vietnamese words) and Yahoo per US ticker. */
+function interestFeeds(it: Interest): Feed[] {
+  const vi = /[^\x00-\x7F]/.test(it.query) || it.tickers.every((t) => t.endsWith(".VN"));
+  return [
+    {
+      name: `Google News: ${it.name}`,
+      url: `https://news.google.com/rss/search?q=${encodeURIComponent(it.query + " when:1d")}&${vi ? "hl=vi&gl=VN&ceid=VN:vi" : "hl=en-US&gl=US&ceid=US:en"}`,
+      tag: it.id,
+    },
+    // Yahoo's per-ticker feeds have nothing for Vietnamese listings or index symbols.
+    ...it.tickers
+      .filter((t) => !t.endsWith(".VN") && !t.startsWith("^"))
+      .slice(0, 4)
+      .map((t) => ({ name: `Yahoo: ${t}`, url: `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(t)}&region=US&lang=en-US`, tag: it.id })),
+  ];
+}
+
+/**
+ * My Interests' headlines: every interest's own feeds (relevant by construction) and the general market feeds
+ * (kept only when they mention an interest), in ONE `fetchFeeds` call so a host that refuses is asked once
+ * per set and its rest is written once (one call per interest asked Google N times and raced on `news:cool`).
+ */
 export async function fetchInterestNews(
   interests: Interest[],
   generalFeeds: Feed[],
   finnhubKey?: string,
   opts: { raw?: boolean } = {},
 ): Promise<{ items: NewsItem[]; errors: string[] }> {
-  const errors: string[] = [];
-  const all: NewsItem[] = [];
-
-  // Per-interest feeds: everything from these is relevant by construction.
-  await Promise.all(
-    interests.map(async (it) => {
-      const feeds: Feed[] = [
-        {
-          name: `Google News: ${it.name}`,
-          // Vietnamese stocks, or queries with Vietnamese characters, search Google News Vietnam.
-          url: `https://news.google.com/rss/search?q=${encodeURIComponent(it.query + " when:1d")}&${/[^\x00-\x7F]/.test(it.query) || it.tickers.every((t) => t.endsWith(".VN")) ? "hl=vi&gl=VN&ceid=VN:vi" : "hl=en-US&gl=US&ceid=US:en"}`,
-        },
-        // Yahoo's per-ticker feeds have nothing for Vietnamese listings or index symbols.
-        ...it.tickers.filter((t) => !t.endsWith(".VN") && !t.startsWith("^")).slice(0, 4).map((t) => ({
-          name: `Yahoo: ${t}`,
-          url: `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${encodeURIComponent(t)}&region=US&lang=en-US`,
-        })),
-      ];
-      const r = await fetchFeeds(feeds);
-      errors.push(...r.errors);
-      all.push(...r.items.map((i) => ({ ...i, tags: [it.id] })));
-      if (finnhubKey) {
-        const fr = await fetchFinnhub(it, finnhubKey);
-        errors.push(...fr.errors);
-        all.push(...fr.items);
-      }
-    }),
-  );
-
-  // General market feeds: keep only items that mention an interest.
-  const general = await fetchFeeds(generalFeeds);
-  errors.push(...general.errors);
-  all.push(...general.items);
-
-  const tagged = tagInterests(all, interests).filter((i) => (i.tags?.length ?? 0) > 0);
+  const [rss, ...finnhub] = await Promise.all([
+    fetchFeeds([...interests.flatMap(interestFeeds), ...generalFeeds]),
+    ...(finnhubKey ? interests.map((it) => fetchFinnhub(it, finnhubKey)) : []),
+  ]);
+  const all = [rss, ...finnhub];
+  const tagged = tagInterests(all.flatMap((r) => r.items), interests).filter((i) => (i.tags?.length ?? 0) > 0);
   // raw: every outlet's copy, for story clustering (headlines.ts); otherwise one headline per story.
-  return { items: opts.raw ? tagged : dedupe(tagged), errors };
+  return { items: opts.raw ? tagged : dedupe(tagged), errors: all.flatMap((r) => r.errors) };
 }
 
 async function fetchFinnhub(it: Interest, key: string): Promise<{ items: NewsItem[]; errors: string[] }> {
@@ -282,17 +281,10 @@ async function fetchFinnhub(it: Interest, key: string): Promise<{ items: NewsIte
     try {
       const res = await fetchWithTimeout(`https://finnhub.io/api/v1/company-news?symbol=${t}&from=${from}&to=${to}&token=${key}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as { headline: string; url: string; source: string; datetime: number; summary: string }[];
+      const data = (await res.json()) as { headline?: string; url?: string; source?: string; datetime?: number; summary?: string }[];
       for (const n of data.slice(0, 15)) {
-        items.push({
-          id: hash(n.headline.toLowerCase()),
-          title: n.headline,
-          link: n.url,
-          source: n.source,
-          publishedAt: new Date(n.datetime * 1000).toISOString(),
-          summary: n.summary?.slice(0, 400),
-          tags: [it.id],
-        });
+        const title = n.headline?.trim();
+        if (title) items.push({ ...newsItem(title, n.url ?? "", n.source || "Finnhub", n.datetime ? new Date(n.datetime * 1000) : null, n.summary?.trim()), tags: [it.id] });
       }
     } catch (e) {
       errors.push(`Finnhub ${t}: ${(e as Error).message}`);

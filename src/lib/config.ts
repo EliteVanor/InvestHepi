@@ -128,6 +128,8 @@ export interface Feed {
   max?: number;
   /** The publisher, when it has several feeds (BBC World and BBC Business are one outlet, "BBC"): a story's outlet count must not grow because one publisher files it twice. Defaults to `name`. */
   outlet?: string;
+  /** The interest every item of this feed is about (My Interests' own per-interest feeds); the item gets it as its tag. */
+  tag?: string;
 }
 
 /** Feeds from one publisher: each headline's source is the publisher, so its feeds count as one outlet. */
