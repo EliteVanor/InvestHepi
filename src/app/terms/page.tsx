@@ -10,7 +10,7 @@ export default function Terms() {
 
       <h2>Not financial advice</h2>
       <p>
-        InvestHepi summarizes public news with AI and shows predictions, confidence levels and suggested actions. These are automated, can be wrong,
+        InvestHepi explains public news with AI (story cards, past events, market effects) and shows predictions, confidence levels and suggested actions. These are automated, can be wrong,
         and are for information only. They are not investment, tax or legal advice, and are not a recommendation to buy or sell anything. Prices may be
         delayed or inaccurate. You are responsible for your own decisions; check the track record and do your own research.
       </p>

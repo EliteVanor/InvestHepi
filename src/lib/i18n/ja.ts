@@ -389,6 +389,7 @@ export const ja: Dict = {
   "int.vnPreset": "ベトナム株を追加",
   "mkt.break": "昼休み",
   "mkt.breakIn": "あと{t}で昼休み",
+  "foot.about": "概要",
   "foot.privacy": "プライバシー",
   "foot.terms": "利用規約",
   "strip.indexes": "指数",

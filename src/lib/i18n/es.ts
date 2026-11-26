@@ -389,6 +389,7 @@ export const es: Dict = {
   "int.vnPreset": "Añadir acciones de Vietnam",
   "mkt.break": "Pausa de mediodía",
   "mkt.breakIn": "Pausa en {t}",
+  "foot.about": "Acerca de",
   "foot.privacy": "Privacidad",
   "foot.terms": "Términos",
   "strip.indexes": "Índices",

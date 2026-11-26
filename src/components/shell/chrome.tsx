@@ -215,13 +215,17 @@ export function TabBar(p: { tab: SectionId; badge: (s: SectionId) => number; rea
 }
 
 export function Footer() {
-  const { t } = usePrefs();
+  const { t, lang } = usePrefs();
   return (
     <footer className="foot">
       {t("foot.disclaimer")}
       <br />
       <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer" style={{ color: "inherit" }}>
         {t("foot.charts")}
+      </a>
+      {" · "}
+      <a href={lang === "vi" ? "/about?lang=vi" : "/about"} style={{ color: "inherit" }}>
+        {t("foot.about")}
       </a>
       {" · "}
       <a href="/privacy" style={{ color: "inherit" }}>

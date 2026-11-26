@@ -389,6 +389,7 @@ export const vi: Dict = {
   "int.vnPreset": "Thêm cổ phiếu Việt Nam",
   "mkt.break": "Nghỉ trưa",
   "mkt.breakIn": "Nghỉ trưa sau {t}",
+  "foot.about": "Giới thiệu",
   "foot.privacy": "Quyền riêng tư",
   "foot.terms": "Điều khoản",
   "strip.indexes": "Chỉ số",

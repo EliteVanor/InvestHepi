@@ -146,7 +146,7 @@ const explainReply = (bigPicture: string[], movers: (user: string) => { ticker: 
   assert.ok(d1.stories![0].memberIds.some((id) => d1.news.find((n) => n.id === id)?.title.startsWith("TSM")), "TSM (6+% move named) ranks first");
   // v18 shape for old readers
   assert.equal(d1.analysis.headline, "Oil rose on an OPEC+ cut.");
-  assert.deepEqual(d1.analysis.summary, d1.bigPicture);
+  assert.deepEqual(d1.analysis.summary, d1.bigPicture!.slice(1), "the rest of the big picture: the headline isn't repeated (catch-up showed it twice, Nov 26)");
   assert.deepEqual(d1.analysis.events, []);
   assert.deepEqual(d1.analysis.watchNext, ["The next data release."]);
   assert.ok(["risk-on", "risk-off", "mixed"].includes(d1.analysis.mood));

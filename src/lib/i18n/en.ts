@@ -387,6 +387,7 @@ export const en = {
   "int.vnPreset": "Add Vietnam stocks",
   "mkt.break": "Lunch break",
   "mkt.breakIn": "Lunch break in {t}",
+  "foot.about": "About",
   "foot.privacy": "Privacy",
   "foot.terms": "Terms",
   "strip.indexes": "Indexes",

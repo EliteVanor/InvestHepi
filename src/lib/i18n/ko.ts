@@ -389,6 +389,7 @@ export const ko: Dict = {
   "int.vnPreset": "베트남 주식 추가",
   "mkt.break": "점심 휴장",
   "mkt.breakIn": "{t} 후 점심 휴장",
+  "foot.about": "소개",
   "foot.privacy": "개인정보",
   "foot.terms": "이용약관",
   "strip.indexes": "지수",
