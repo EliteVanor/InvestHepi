@@ -84,7 +84,8 @@ export function fixFeedTimes(items: NewsItem[], url: string, now = new Date()): 
   return items.map((i) => (ahead(i) ? { ...i, publishedAt: now.toISOString() } : i));
 }
 
-export function parseFeed(xml: string, feedName: string): NewsItem[] {
+/** `outlet` is the publisher a feed belongs to (BBC World and BBC Business are one outlet, "BBC"); defaults to the feed's name. */
+export function parseFeed(xml: string, feedName: string, outlet = feedName): NewsItem[] {
   const doc = parser.parse(xml);
   const rawItems: Record<string, unknown>[] = [];
   const channel = doc?.rss?.channel ?? doc?.["rdf:RDF"];
@@ -106,7 +107,7 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
       const l = Array.isArray(r.link) ? r.link[0] : r.link;
       link = (l as Record<string, string>)["@_href"] ?? "";
     }
-    let source = text(r.source) || feedName;
+    let source = text(r.source) || outlet;
     // Google News titles look like "Headline - Publisher"
     if (feedName.startsWith("Google News") || /news\.google\.com/.test(link)) {
       const m = title.match(/^(.*) - ([^-]{2,60})$/);
@@ -133,9 +134,18 @@ export function parseFeed(xml: string, feedName: string): NewsItem[] {
   return out;
 }
 
-/** Hosts that answered 429/503 rest this long (Google News and some Vietnamese sites rate-limit). */
+/**
+ * Hosts that answered 429/503 rest, longer each time they refuse again: 30 min, 1 h, 2 h, ... up to 6 h
+ * (Google News refused production for 16+ hours on Nov 25, so a fixed 30 min asked it ~50 times a day
+ * for nothing). A success from the host resets it. `news:cool` is host -> resting until (ms);
+ * `news:strikes` is host -> refusals in a row.
+ */
 const COOL_KEY = "news:cool";
+const STRIKES_KEY = "news:strikes";
 const COOL_MS = 30 * 60_000;
+const COOL_MAX_MS = 6 * 3600_000;
+const STRIKES_TTL_S = 2 * 86400;
+export const coolFor = (strikes: number) => Math.min(COOL_MAX_MS, COOL_MS * 2 ** Math.max(0, strikes - 1));
 const hostOf = (url: string) => {
   try {
     return new URL(url).hostname;
@@ -147,8 +157,12 @@ const hostOf = (url: string) => {
 export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; errors: string[] }> {
   const errors: string[] = [];
   const now = Date.now();
-  const cool = (await getJSON<Record<string, number>>(COOL_KEY).catch(() => null)) ?? {};
-  const backoff: Record<string, number> = {};
+  const [cool, strikes] = await Promise.all([
+    getJSON<Record<string, number>>(COOL_KEY).catch(() => null).then((v) => v ?? {}),
+    getJSON<Record<string, number>>(STRIKES_KEY).catch(() => null).then((v) => v ?? {}),
+  ]);
+  const refused = new Map<string, number>(); // host -> longest Retry-After (ms) this run
+  const answered = new Set<string>();
   const results = await Promise.all(
     feeds.map(async (f) => {
       const host = hostOf(f.url);
@@ -160,10 +174,11 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
         const res = await fetchWithTimeout(f.url);
         if (res.status === 429 || res.status === 503) {
           const ra = Number(res.headers.get("retry-after"));
-          backoff[host] = now + Math.max(COOL_MS, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 0);
+          refused.set(host, Math.max(refused.get(host) ?? 0, Number.isFinite(ra) && ra > 0 ? ra * 1000 : 0));
         }
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const items = fixFeedTimes(parseFeed(await res.text(), f.name), f.url).map((i) => (f.kind ? { ...i, feedKind: f.kind } : i));
+        answered.add(host);
+        const items = fixFeedTimes(parseFeed(await res.text(), f.name, f.outlet), f.url).map((i) => (f.kind ? { ...i, feedKind: f.kind } : i));
         return f.max ? items.sort((a, b) => +new Date(b.publishedAt) - +new Date(a.publishedAt)).slice(0, f.max) : items;
       } catch (e) {
         errors.push(`${f.name}: ${(e as Error).message}`);
@@ -171,9 +186,17 @@ export async function fetchFeeds(feeds: Feed[]): Promise<{ items: NewsItem[]; er
       }
     }),
   );
-  if (Object.keys(backoff).length) {
-    const kept = Object.fromEntries(Object.entries({ ...cool, ...backoff }).filter(([, until]) => until > now));
-    await setJSON(COOL_KEY, kept).catch(() => {});
+  const nextStrikes = { ...strikes };
+  const nextCool = { ...cool };
+  for (const h of answered) if (!refused.has(h)) delete nextStrikes[h];
+  for (const [h, retryAfter] of refused) {
+    nextStrikes[h] = (strikes[h] ?? 0) + 1;
+    nextCool[h] = now + Math.max(coolFor(nextStrikes[h]), retryAfter);
+  }
+  const changed = refused.size > 0 || Object.keys(nextStrikes).length !== Object.keys(strikes).length;
+  if (changed) {
+    const kept = Object.fromEntries(Object.entries(nextCool).filter(([, until]) => until > now));
+    await Promise.all([setJSON(COOL_KEY, kept).catch(() => {}), setJSON(STRIKES_KEY, nextStrikes, STRIKES_TTL_S).catch(() => {})]);
   }
   return { items: results.flat(), errors };
 }
