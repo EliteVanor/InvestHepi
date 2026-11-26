@@ -8,15 +8,13 @@
  *  - Interest briefings: one per interest set (interests.ts); users with identical interests share it.
  * Storage layout: briefings.ts. Per-user data runs as whoever the request or job is (context.ts).
  */
-import { createHash } from "node:crypto";
 import { afterRefresh } from "./alerts";
 import { getCalendar } from "./calendar";
-import { SECTORS } from "./chart";
-import { BENCHMARKS, MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, MOOD_BENCH, SECTION_GROUPS, SECTION_MACRO, SECTION_STRIPS, type SharedSection, type StripGroup } from "./config";
+import { MAX_ITEMS_PER_SECTION, MAX_ITEMS_TO_LLM, SECTION_GROUPS, type SharedSection } from "./config";
 import { OWNER, currentUid, withUser } from "./context";
 import type { Route } from "./llm";
 import { analyzeWithRules } from "./llm/rules";
-import { freshenQuotes, getQuotes } from "./market";
+import { coverage, marketData } from "./market-data";
 import { computeMood } from "./mood";
 import { fetchSectionItems, newsKey, saveHeadlines, storyScope } from "./headlines";
 import { clusterStories, toHeadlines } from "./stories/cluster";
@@ -24,10 +22,10 @@ import { runStories } from "./stories/job";
 import { loadHoldings, positionsAsText } from "./portfolio";
 import { getJSON, releaseLock, setJSON, takeLock } from "./store";
 import { waitUntil } from "./lock-wait";
-import { getTechnicals, type Technicals } from "./technicals";
-import { computeStats, loadCalls } from "./track";
+import { computeStats, loadCalls, SHARED_CALLS } from "./track";
+import { callsOf, loadPredictions } from "./predictions";
 import { multiUser } from "./users";
-import type { Action, Analysis, Digest, Direction, Interest, NewsItem, Quote, SectionId } from "./types";
+import type { Analysis, Digest, Interest, NewsItem, SectionId } from "./types";
 import { callsKeyFor, currentCallsKey, currentInterestSet, interestHash, loadInterests, withHoldings } from "./interests";
 import { basePrefix, interestBriefingStale, loadDigest, pretranslateSet, loadRules, prefixFor, RULES_TTL_MS, storeBriefing } from "./briefings";
 
@@ -87,71 +85,6 @@ async function buildRules(section: SectionId, now: Date): Promise<Digest> {
   return buildDigest({ section, interests: SECTION_GROUPS[shared], lang: "en", callsKey: SHARED_CALLS[shared], now, rulesOnly: true });
 }
 
-export interface MarketData {
-  key: string;
-  at: number;
-  quotes: Quote[];
-  macro: Quote[];
-  sectors: Quote[];
-  technicals: Record<string, Technicals>;
-}
-
-const MARKET_TTL_MS = 10 * 60_000;
-
-/** What one digest prices: strip/AI symbols, macro, whether US sectors matter, and the mood inputs. */
-export interface Coverage {
-  symbols: string[];
-  macro: string[];
-  sectors: boolean;
-  /** Technicals: mood benchmark first, then each group's benchmark (the free-tier prompt keeps those). */
-  tech: string[];
-  bench: string;
-  /** Quotes used for the mood gauge's breadth (US sectors when `sectors`). */
-  breadth: string[];
-  strip?: StripGroup[];
-}
-
-export function coverage(section: SectionId, interests: Interest[], extra: string[] = []): Coverage {
-  const bench = MOOD_BENCH[section];
-  const firsts = interests.map((i) => i.tickers[0]).filter(Boolean);
-  if (section === "interests") {
-    const symbols = [...BENCHMARKS, ...interests.flatMap((i) => i.tickers), ...extra];
-    return { symbols, macro: SECTION_MACRO.interests, sectors: true, tech: [bench, ...firsts, ...symbols], bench, breadth: [] };
-  }
-  const strip = SECTION_STRIPS[section];
-  const stripSyms = strip.flatMap((g) => g.symbols);
-  // Shared sections: the strip, each group's tickers, and the (hidden) mood benchmark. No personal stocks.
-  const symbols = [...stripSyms, ...interests.flatMap((i) => i.tickers), bench];
-  const breadth = section === "world" ? strip[0].symbols : section === "vn" ? strip.slice(1).flatMap((g) => g.symbols) : [];
-  return { symbols, macro: SECTION_MACRO[section], sectors: section === "us", tech: [bench, ...firsts, ...stripSyms], bench, breadth, strip };
-}
-
-/**
- * Prices, macro, sectors and technicals, shared across sections and users for 10 minutes; for one
- * minute when any price is a stale fallback, so a briefing doesn't keep an old price after the source
- * recovers.
- */
-const STALE_MARKET_TTL_MS = 60_000;
-/** How long a market snapshot is reused (exported for tests). */
-export const marketTtl = (d: Pick<MarketData, "quotes" | "macro" | "sectors">) => ([...d.quotes, ...d.macro, ...d.sectors].some((q) => q.stale) ? STALE_MARKET_TTL_MS : MARKET_TTL_MS);
-
-export async function marketData(cov: Coverage): Promise<MarketData> {
-  const key = [[...new Set(cov.symbols.map((s) => s.toUpperCase()))].sort().join(","), cov.macro.join(","), cov.sectors ? "s" : "", cov.tech.slice(0, 16).join(",")].join("|");
-  const slot = `market:${createHash("sha1").update(key).digest("hex").slice(0, 12)}`;
-  const cached = await getJSON<MarketData>(slot).catch(() => null);
-  if (cached && cached.key === key && Date.now() - cached.at < marketTtl(cached) && cached.quotes.length) return cached;
-  // Freshened: a close the daily source hasn't posted yet is taken from an intraday series.
-  const [quotes, macro, sectors, technicals] = await Promise.all([
-    getQuotes(cov.symbols).then((q) => freshenQuotes(q)),
-    getQuotes(cov.macro).then((q) => freshenQuotes(q)),
-    cov.sectors ? getQuotes(SECTORS.map((x) => x.symbol)).then((q) => freshenQuotes(q)) : Promise.resolve([] as Quote[]),
-    getTechnicals(cov.tech).catch(() => ({}) as Record<string, Technicals>),
-  ]);
-  const data: MarketData = { key, at: Date.now(), quotes, macro, sectors, technicals };
-  if (quotes.length) await setJSON(slot, data).catch(() => {});
-  return data;
-}
-
 interface BuildOptions {
   section: SectionId;
   interests: Interest[];
@@ -167,9 +100,6 @@ interface BuildOptions {
   /** Big-story run (v19b D8): explain only these story ids. */
   only?: string[];
 }
-
-/** Track records of the shared sections (calls on market groups, graded like personal ones). */
-export const SHARED_CALLS: Record<"world" | "us" | "vn", string> = { world: "calls:world", us: "calls:us", vn: "calls:vn" };
 
 async function buildDigest(o: BuildOptions): Promise<Digest> {
   const cov = coverage(o.section, o.interests, o.extraSymbols);
@@ -222,22 +152,10 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
 /** The briefing's mood from the gauge (0 fear - 100 greed): 60+ risk-on, 40 or less risk-off. */
 export const moodOf = (score?: number): Analysis["mood"] => (score == null ? "mixed" : score >= 60 ? "risk-on" : score <= 40 ? "risk-off" : "mixed");
 
-/**
- * An action that contradicts its call's direction is replaced: "up" with Sell/Trim/Avoid becomes
- * Hold, "down" with Buy/Add becomes Wait, and "down" with Hold becomes Wait unless the investor holds
- * positions (then holding through an expected dip is a real choice). The prompt asks for this too.
- */
-export function alignAction(direction: Direction, action: Action, hasPositions = false): Action {
-  if (direction === "up" && (action === "SELL" || action === "TRIM" || action === "AVOID")) return "HOLD";
-  if (direction === "down" && (action === "BUY" || action === "ADD")) return "WAIT";
-  if (direction === "down" && action === "HOLD" && !hasPositions) return "WAIT";
-  return action;
-}
-
-/** Refresh one shared section in one language. */
 /** A refresh result: the new briefing, flagged when AI failed and readers kept the previous AI one. */
 export type Refreshed = Digest & { keptAi?: boolean };
 
+/** Refresh one shared section in one language. */
 export async function refreshShared(section: SectionId, lang: string, now = new Date(), route: Route = "shared", only?: string[]): Promise<Refreshed> {
   const shared = section as SharedSection;
   // Each shared section covers its own market groups and keeps its own track record.
@@ -314,8 +232,6 @@ async function runAlerts(prevInterests: Digest | null | undefined) {
   const weekAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
   const week = calls.filter((c) => c.correct !== undefined && (c.gradedAt ?? "") >= weekAgo);
   const held = await loadHoldings().catch(() => []);
-  // Imported late: predictions.ts imports this module.
-  const { callsOf, loadPredictions } = await import("./predictions");
   const preds = await loadPredictions("interests").catch(() => []);
   return afterRefresh({
     interests: withHoldings(interests, held.map((h) => h.symbol)),

@@ -190,6 +190,13 @@ Checked against production. Fixed on the branch (not deployed yet):
 - CI on PR #7 failed v14test once: a reader polled `ib:<hash>:last` while a background catch-up rewrote it, and the local file store returned null (`fs.writeFile` empties the file before writing). Fixed: `setJSON` writes a temp file and renames it into place; `scripts/v19/final-store.ts` (16 of 50 reads were null before, 0 after). Production uses Redis (atomic SET), so only tests and local runs were affected.
 - Tests: `scripts/v19/final-news.ts` (fails on the old code at the Finnhub link guard); `row02-safe-area` reads the stylesheet parts.
 
+**Recheck (Nov 26, branch `claude/vibrant-brown-vax9li`): did the overhaul go as planned?**
+- Plan coverage re-checked against `docs/AUDIT-v19.md` and the decision lists above: every row and decision maps to a commit and a test; the audit's untested items (ukey isolation, touchUser, rulesVariant, gradeAll throttle, the tick chain) are covered by `row28-coverage`, `row08-14-scheduler` and `budgettest`. Review coverage: every v19 file was reviewed with the skills by the end of the final check.
+- Architecture: one runtime import cycle was left: `pipeline.ts` ↔ `predictions.ts`, hidden behind a late `await import("./predictions")` in `runAlerts`. Fixed: `coverage`/`marketData`/`marketTtl` moved to `src/lib/market-data.ts`, `alignAction` and `SHARED_CALLS` to `track.ts` (they are about calls); `predictions.ts` no longer imports the pipeline and the pipeline imports it statically. Tests moved to the new modules (v14test, v17test, vntest, row04). New guard `scripts/v19/final-import-cycles.ts`: fails on any runtime import cycle in `src/` (type-only imports don't count, dynamic local imports do); it failed on the old code with `predictions > pipeline > predictions`. The 9 cycles madge still lists are all type-only.
+- Docs: two stale open items removed (FOMC 2027 is in `calendar.ts`; the strip shows the regular-session price with after-hours apart since row 4); CLAUDE.md code map has `market-data.ts`, and the pipeline paragraph says it runs the story job (it said `analyze()`).
+- Production (read-only GETs, 04:01 UTC): all 19 slots of the last 24 h `done`, grading clean (last pass 03:31), ticks every 15-30 min, `holidayGaps` empty, the three digests 200 with 7 cards each and no feed errors. NPR has no item in World's live list (60 newest: Al Jazeera 15, BBC 14, CNBC 11): the list keeps only the newest, the story run reads every fetched item, and NPR is unreachable from the sandbox, so whether NPR World feeds stories is checked on the 08:10 World run (check-in).
+- Verified: `npm test` (20 suites) twice, typecheck, both builds. Not changed (known, low impact or owner decision): the `news:cool` race between the shared sections' parallel fetches; the stylesheet's grouping by round inside its four parts; the open owner question on capping cards per company per run.
+
 **Story design decisions (owner, Nov 20, grilling round 2, all as recommended unless noted)**
 - Q12 grouping: word matching with no AI, Unicode-aware (Vietnamese accents) plus character trigrams, within one language only.
 - Q13 a story keeps its id while it shares headlines with the previous tick's story (id from its earliest headline); re-explained only when it gains 3+ new outlets or its card is over 12 h old.
@@ -446,7 +453,6 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 ## Open items / known gaps
 
 - BLS release dates (CPI, jobs) return 403 to Vercel, so the calendar has no US macro releases; the AI was inventing dates (now told not to). Options: hardcode the BLS schedule yearly like FOMC (needs dates checked on bls.gov), or fetch it from GitHub Actions.
-- FOMC 2027 dates aren't in `calendar.ts`; needed before mid-December 2026.
 - Yahoo is blocked from Vercel and from GitHub's runners. Real daily levels now come from VNDirect and the US Treasury (see above); still missing: intraday for non-US indexes, Euro Stoxx 50, DXY, VIX, non-US listings (Samsung, Tencent, LVMH). The Treasury file hasn't been confirmed reachable from Vercel yet (BLS, another .gov site, refuses Vercel); check `/api/quotes?symbols=%5ETNX` after deploy.
 - VNDirect's world closes are posted the next day, so Asian indexes in the 01:15 UTC run are one session old (labeled with their date).
 - Nasdaq has no intraday data for share classes (BRK-B): those get no 1-day chart while Yahoo is blocked.
@@ -456,7 +462,6 @@ Plan and decisions: `docs/PLAN-v18.md`. One change during the round: the owner a
 
 - Translations are covered by tests with a fake AI but haven't been checked with a real AI key; verify output quality on the live site.
 - Holidays (v19 row 9): `src/lib/holidays.ts` covers NYSE, HOSE, JPX, HKEX, LSE, Xetra and Euronext for 2026-2027; Seoul, Shanghai and Mumbai have no table (weekends only; Shanghai's 000001.SS is the one benchmark that matters). A closure the table lacks still falls back to the old rule (closed once a later bar exists or 48 h pass). Still weekday-based: price-alert window (13:00-22:00 UTC weekdays), `predictionAlerts` date, VN30 expiry. See the v19 row 9 note for provisional dates.
-- Nasdaq's 1-day series includes extended hours (04:00-20:00 New York), so the strip's evening "live" price for US ETFs is an after-hours print (briefing and prediction data now take the regular-session close; the strip itself doesn't yet).
 - Shanghai (000001.SS) has no intraday source from the cloud: China & HK's benchmark is the Hang Seng, so Shanghai calls are dropped when its data isn't current.
 - cron-job.org: if the owner's job runs on weekdays only, set it to every day (briefings run on weekends now). Vercel Schedules and GitHub were changed in the repo.
 - Time zones: calendar event times ("14:00 ET") stay in their source's zone, labeled; converting them is a later step.
