@@ -1,4 +1,4 @@
-/** Story pipeline types (v19b design, docs/DESIGN-v19b.md sections 1 and 4). */
+/** Story pipeline types (v19b design, docs/dev-notes/DESIGN-v19b.md sections 1 and 4). */
 import type { Direction } from "../types";
 
 export type { Story, StoryIndex } from "./cluster";

@@ -389,6 +389,7 @@ export const fr: Dict = {
   "int.vnPreset": "Ajouter des actions vietnamiennes",
   "mkt.break": "Pause déjeuner",
   "mkt.breakIn": "Pause dans {t}",
+  "foot.about": "À propos",
   "foot.privacy": "Confidentialité",
   "foot.terms": "Conditions",
   "strip.indexes": "Indices",

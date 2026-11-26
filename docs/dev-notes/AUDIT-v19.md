@@ -1,6 +1,6 @@
 # v19 audit: vetted findings (working notes)
 
-Full report (private artifact): https://claude.ai/artifact/PHWikthAG3dygy7usaAzEy. Row numbers in HANDOFF refer to that report. Each line below was checked against the code on Nov 19 2026 (main = v18, c0b9d72 lineage). Request counts marked estimate are from reading code.
+Full report (a private report, not published). Row numbers in HANDOFF refer to that report. Each line below was checked against the code on Nov 19 2026 (main = v18, c0b9d72 lineage). Request counts marked estimate are from reading code.
 
 BASELINE: typecheck ok; selftest.ts:145 + vntest fail on 2026-11-19 (date-dependent); npm audit 4 high (postcss via next: build-time, not reachable), nodemailer via @auth/core (not reachable, no email provider); 6 unused locals.
 FE-01 CONFIRMED layout.tsx:9,16 black-translucent+cover; globals.css:171-178 topbar no safe-area-top => iPhone home-screen hides login/top bar. S.

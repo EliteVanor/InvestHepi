@@ -389,6 +389,7 @@ export const de: Dict = {
   "int.vnPreset": "Vietnam-Aktien hinzufügen",
   "mkt.break": "Mittagspause",
   "mkt.breakIn": "Mittagspause in {t}",
+  "foot.about": "Über",
   "foot.privacy": "Datenschutz",
   "foot.terms": "Nutzungsbedingungen",
   "strip.indexes": "Indizes",

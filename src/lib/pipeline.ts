@@ -135,7 +135,9 @@ async function buildDigest(o: BuildOptions): Promise<Digest> {
     const analysis: Analysis = {
       headline: run.bigPicture[0] ?? "",
       mood: moodOf(gauge?.score),
-      summary: run.bigPicture,
+      // The rest of the big picture: its first line is the headline, so readers of this shape (catch-up, the morning
+      // email, Ask AI) don't show it twice.
+      summary: run.bigPicture.slice(1),
       events: [],
       watchNext: run.watch,
       movers: run.movers,

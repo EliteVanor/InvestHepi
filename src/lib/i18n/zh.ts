@@ -389,6 +389,7 @@ export const zh: Dict = {
   "int.vnPreset": "添加越南股票",
   "mkt.break": "午间休市",
   "mkt.breakIn": "{t}后午休",
+  "foot.about": "关于",
   "foot.privacy": "隐私",
   "foot.terms": "条款",
   "strip.indexes": "指数",
