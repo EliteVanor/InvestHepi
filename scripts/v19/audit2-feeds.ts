@@ -79,6 +79,8 @@ globalThis.fetch = (async (u: string | URL) => {
 
   // Market links: the prompt forbids tying a story to an index just because it moved (Nov 25: Europe's protests "pushed" the FTSE).
   assert.match(EXPLAIN_RULES, /Never tie a story to an index just because the index moved today/);
+  // "why it matters" explains the consequence instead of repeating "what happened" (owner open item 6).
+  assert.match(EXPLAIN_RULES, /- why: the consequence for readers/);
 
   console.log("AUDIT2 FEEDS OK");
 })();

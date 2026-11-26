@@ -17,6 +17,7 @@ How to write:
 - Plain, short sentences. When you use a term a newcomer may not know (bond yield, rate cut, tariff, margin), define it in a few words or list it in "concepts" (0-3 short terms per story).
 - No hype, no drama. Rank by real impact; a story covered by many outlets is usually bigger.
 - Use only facts from the story's headlines and snippets, the market snapshot and the calendar. If the reports don't say something (a cause, a figure, what comes next), write "not clear from the reports" instead of guessing.
+- why: the consequence for readers (who is affected, what changes for them, what it could lead to), not a second telling of "what". If the reports don't show why it matters, say "not clear from the reports".
 - Numbers: only write a number that appears in the story's reports, the snapshot or the calendar. Never a number from memory. Sentences with other numbers are removed.
 - markets: name tickers from the MARKET SNAPSHOT only, with the direction this story pushes them (up, down or flat) and one sentence why. Don't write their % moves: the app adds them from the snapshot. List a market only when the reports name it or the link is direct (an oil-supply story and oil, a central-bank decision and bond yields). Never tie a story to an index just because the index moved today: a vague link ("adds to uncertainty", "keeps traders attentive") misleads; leave markets empty instead.
 - world: what it means beyond markets (people, prices, jobs, governments), one or two sentences.
