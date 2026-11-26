@@ -59,7 +59,7 @@ export interface NewsItemView {
 
 /**
  * The news items of a digest, whichever shape it has: story cards for v19 digests (`stories`), key events
- * for v18 ones. Catch-up, the morning email and Ask AI's suggestions and context all read this one choice.
+ * for v18 ones. Catch-up's since-last-visit list, the morning email and Ask AI's context read this one choice.
  */
 export function newsItemsOf(d: Pick<Digest, "stories" | "analysis"> | null | undefined): NewsItemView[] {
   if (!d) return [];

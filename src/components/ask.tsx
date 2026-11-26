@@ -39,17 +39,31 @@ export function renderAnswer(text: string) {
   return parts.map((p, i) => (/^\[\d{1,2}\]$/.test(p) ? <span className="cite" key={i}>{p.slice(1, -1)}</span> : <span key={i}>{p}</span>));
 }
 
+/**
+ * The top news item and the market it touches, for "What does <title> mean for <name>?": a v19 digest's first
+ * story card and its first market (else the first call's market); a v18 digest's most important event and the
+ * market it names first (else the first call's).
+ */
+function topNews(t: T, d: Digest, calls: Outlook[]): { title: string; name: string } | null {
+  const fallback = calls[0] && groupName(t, calls[0].interest);
+  const story = d.stories?.[0];
+  if (story) {
+    const name = story.markets[0] ? symName(t, story.markets[0].symbol) : fallback;
+    return name ? { title: story.title, name } : null;
+  }
+  const ev = [...d.analysis.events].sort((x, y) => y.importance - x.importance)[0];
+  const interest = ev?.impacts[0]?.interest ?? calls[0]?.interest;
+  return ev && interest ? { title: ev.title, name: groupName(t, interest) } : null;
+}
+
 /** Questions about the briefing on screen, in the reader's language. Exported for tests. */
 export function suggestionsFor(t: T, digest?: Digest | null, events: CalendarEvent[] = [], section?: string, calls: Outlook[] = []): string[] {
   const out: string[] = [];
   const a = digest?.analysis;
   for (const o of calls.filter((c) => c.horizon === "today").slice(0, 2)) out.push(t("ask.sWhy", { action: t(`act.${o.action}`), name: groupName(t, o.interest) }));
   if (a) {
-    const story = digest?.stories?.[0];
-    const ev = story ? undefined : [...a.events].sort((x, y) => y.importance - x.importance)[0];
-    const target = story ? (story.markets[0] ? symName(t, story.markets[0].symbol) : calls[0] ? groupName(t, calls[0].interest) : undefined) : ev?.impacts[0]?.interest ?? calls[0]?.interest;
-    const title = story?.title ?? ev?.title;
-    if (title && target) out.push(t("ask.sEvent", { title: title.length > 70 ? `${title.slice(0, 68)}…` : title, name: ev ? groupName(t, target) : target }));
+    const top = topNews(t, digest, calls);
+    if (top) out.push(t("ask.sEvent", { title: top.title.length > 70 ? `${top.title.slice(0, 68)}…` : top.title, name: top.name }));
     const mv = [...(a.movers ?? [])].sort((x, y) => Math.abs(y.changePct) - Math.abs(x.changePct))[0];
     if (mv) out.push(t("ask.sMover", { name: symName(t, mv.ticker), chg: fmtPct(mv.changePct) }));
   }

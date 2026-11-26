@@ -1,6 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Analytics } from "@vercel/analytics/next";
-import "./globals.css";
+// One stylesheet in four parts, in cascade order (later parts override earlier ones: keep this order).
+import "./styles/1-core.css";
+import "./styles/2-tools.css";
+import "./styles/3-reading-and-wide.css";
+import "./styles/4-panels-and-track.css";
 
 export const metadata: Metadata = {
   title: "InvestHepi",

@@ -2,7 +2,10 @@
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
 
-const css = readFileSync("src/app/globals.css", "utf8");
+// The stylesheet is the parts layout.tsx imports, in its order (src/app/styles/*.css).
+const parts = [...readFileSync("src/app/layout.tsx", "utf8").matchAll(/^import "\.\/(styles\/[\w-]+\.css)";$/gm)].map((m) => m[1]);
+assert.ok(parts.length >= 4, "layout.tsx imports the stylesheet parts");
+const css = parts.map((f) => readFileSync(`src/app/${f}`, "utf8")).join("\n");
 const lines = css.split("\n");
 const rule = (sel: string) => lines.find((l) => l.startsWith(sel + " ") || l.startsWith(sel + "{"));
 
